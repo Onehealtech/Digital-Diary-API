@@ -18,12 +18,12 @@ import { HTTP_STATUS, API_MESSAGES } from '../utils/constants';
 
 // Extends Express Request to include the AppUser object (for authenticated routes)
 export interface AuthenticatedRequest extends Request {
-  AppUser?: AppUser | any; 
+  user?: AppUser | any; 
 }
 
 // Custom Request interface for specific logic (like role checks)
 export interface CustomRequest extends Request {
-  AppUser?: any;
+  user?: AppUser;
   rCode?: number;
   rStatus?: boolean;
   msg?: string;
@@ -68,15 +68,15 @@ export const authCheck = (allowedRoles: string[]) => {
       // We removed the OR condition for phoneNumber because it causes the crash
       // Searching by ID is sufficient and secure for a valid token.
 
-      const AppUser: any = await AppUserModel.findOne({
+      const user: any = await AppUser.findOne({
         where: whereClause,
         raw:true
       });      
       
-      // Check if AppUser exists and has allowed role
-      if (AppUser && allowedRoles.includes(AppUser.role)) {
+      // Check if user exists and has allowed role
+      if (user && allowedRoles.includes(user.role)) {
         res.locals.auth = decoded;
-        req.AppUser = AppUser;
+        req.user = user;
         next();
       } else {
         responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, API_MESSAGES.UNAUTHORIZED);

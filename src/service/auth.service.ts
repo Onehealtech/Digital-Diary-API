@@ -1,7 +1,9 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { AppUser } from "../models/Appuser";
+import dotenv from "dotenv";
 
+dotenv.config(); // ✅ MUST be first
 export class DoctorAuthService {
   static async register(data: {
     fullName: string;
@@ -18,30 +20,30 @@ export class DoctorAuthService {
       throw new Error("Doctor already exists");
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
 
     const doctor = await AppUser.create({
       fullName: data.fullName,
-      email: data.email,
-      password: hashedPassword,
+      email: data.email.toLowerCase(),
+      password: data.password.trim(), // ✅ plain password only
       address: data.address,
       phone: data.phone,
-      role: "doctor", // 🔒 force doctor only
+      role: "doctor",
     });
+
 
     return doctor;
   }
 
   static async login(email: string, password: string) {
     const doctor = await AppUser.findOne({
-      where: { email, role: "doctor" },
+      where: { email: email.toLowerCase(), role: "doctor" },
     });
 
     if (!doctor) {
       throw new Error("Doctor not found");
     }
 
-    const isMatch = await bcrypt.compare(password, doctor.password);
+    const isMatch = await bcrypt.compare(password.trim(), doctor.password);
     if (!isMatch) {
       throw new Error("Invalid credentials");
     }
@@ -57,9 +59,7 @@ export class DoctorAuthService {
       { expiresIn: "7d" }
     );
 
-    return {
-      token,
-      doctor,
-    };
+    return { token, doctor };
   }
+
 }
