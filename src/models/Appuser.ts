@@ -1,0 +1,97 @@
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  BeforeCreate,
+  BeforeUpdate,
+  HasMany,
+} from "sequelize-typescript";
+import bcrypt from "bcrypt";
+import { Patient } from "./Patient";
+
+@Table({
+  tableName: "app-users",
+  timestamps: true,
+})
+export class AppUser extends Model {
+  @Column({
+    type: DataType.UUID,
+    defaultValue: DataType.UUIDV4,
+    primaryKey: true,
+  })
+  id!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: false,
+  })
+  fullName!: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: false,
+  })
+  address!: string;
+
+  @Column({
+    type: DataType.STRING(50),
+    allowNull: true,
+  })
+  phone?: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true,
+    },
+  })
+  email!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: false,
+  })
+  password!: string;
+
+  @Column({
+    type: DataType.STRING(50),
+    allowNull: false,
+    validate: {
+      isIn: [["doctor", "superAdmin"]],
+    },
+  })
+  role!: string;
+
+  // 🔗 Doctor → Patients
+  @HasMany(() => Patient)
+  patients!: Patient[];
+
+  /* =======================
+     Sequelize Hooks
+     ======================= */
+
+  @BeforeCreate
+  static async hashPasswordOnCreate(instance: AppUser) {
+    if (instance.password) {
+      instance.password = await bcrypt.hash(instance.password, 10);
+    }
+  }
+
+  @BeforeUpdate
+  static async hashPasswordOnUpdate(instance: AppUser) {
+    if (instance.changed("password")) {
+      instance.password = await bcrypt.hash(instance.password, 10);
+    }
+  }
+
+  /* =======================
+     Instance Methods
+     ======================= */
+
+  async comparePassword(password: string): Promise<boolean> {
+    return bcrypt.compare(password, this.password);
+  }
+}
