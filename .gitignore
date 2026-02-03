@@ -1,0 +1,16 @@
+# Ignore node_modules
+node_modules
+package-lock.json
+
+# Ignore build output
+dist
+
+# Ignore environment variables
+.env
+
+# Ignore logs
+public/logs
+
+# Ignore bun lock
+bun.lock
+src/uploads
