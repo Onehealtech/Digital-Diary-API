@@ -29,12 +29,6 @@ export class AppUser extends Model {
   fullName!: string;
 
   @Column({
-    type: DataType.TEXT,
-    allowNull: false,
-  })
-  address!: string;
-
-  @Column({
     type: DataType.STRING(50),
     allowNull: true,
   })
@@ -57,13 +51,22 @@ export class AppUser extends Model {
   password!: string;
 
   @Column({
-    type: DataType.STRING(50),
+    type: DataType.ENUM("SUPER_ADMIN", "DOCTOR", "PHARMACIST", "ASSISTANT"),
     allowNull: false,
-    validate: {
-      isIn: [["doctor", "superAdmin"]],
-    },
   })
-  role!: string;
+  role!: "SUPER_ADMIN" | "DOCTOR" | "PHARMACIST" | "ASSISTANT";
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  parentId?: string;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  isEmailVerified!: boolean;
 
   // 🔗 Doctor → Patients
   @HasMany(() => Patient)
