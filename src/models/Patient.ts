@@ -24,8 +24,9 @@ export class Patient extends Model {
   @Column({
     type: DataType.STRING,
     unique: true,
+    allowNull: false,
   })
-  patientCode!: string;
+  stickerId!: string;
 
   @Column({
     type: DataType.STRING,
@@ -42,6 +43,12 @@ export class Patient extends Model {
   @Column(DataType.STRING)
   phone?: string;
 
+  @Column({
+    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED"),
+    defaultValue: "ACTIVE",
+  })
+  status!: "ACTIVE" | "CRITICAL" | "COMPLETED";
+
   // 🔗 Foreign Key → Doctor
   @ForeignKey(() => AppUser)
   @Column({
@@ -52,17 +59,4 @@ export class Patient extends Model {
 
   @BelongsTo(() => AppUser)
   doctor!: AppUser;
-
-  @BeforeCreate
-  static async generatePatientCode(instance: Patient) {
-    const lastPatient = await Patient.findOne({
-      order: [["createdAt", "DESC"]],
-    });
-
-    const lastNumber = lastPatient
-      ? parseInt(lastPatient.patientCode.replace("P", ""))
-      : 0;
-
-    instance.patientCode = `P${String(lastNumber + 1).padStart(3, "0")}`;
-  }
 }

@@ -2,6 +2,7 @@ import { Sequelize } from 'sequelize-typescript';
 import dotenv from 'dotenv';
 import { AppUser } from '../models/Appuser';
 import { Patient } from '../models/Patient';
+import { ScanLog } from '../models/ScanLog';
 
 
 
@@ -22,10 +23,10 @@ export const sequelize = new Sequelize({
   database: process.env.DATABASE_NAME || 'postgres',
   username: process.env.DATABASE_USER || 'postgres',
   password: process.env.DATABASE_PASSWORD,
-  
+
   // Database type
   dialect: 'postgres',
-  
+
   // SSL configuration for secure connection to GCP Cloud SQL
   dialectOptions: {
     ssl: {
@@ -33,14 +34,14 @@ export const sequelize = new Sequelize({
       rejectUnauthorized: false, // Allow self-signed certificates (development only)
     },
   },
-  
+
   // Register sequelize-typescript models only (models using @Table, @Column decorators)
   // Regular Sequelize models (Patient, Organ, CancerGroup) are initialized separately
-  models: [AppUser, Patient],
-  
+  models: [AppUser, Patient, ScanLog],
+
   // Logging configuration
   logging: console.log, // Log all SQL queries (disable in production)
-  
+
   // Connection pool settings for better performance
   pool: {
     max: 5,
@@ -59,10 +60,10 @@ export const initializeDatabase = async (): Promise<void> => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
-    
-    await sequelize.sync(); // Drop and recreate tables
+
+    await sequelize.sync({ alter: true }); // Add new columns to existing tables
     console.log('✅ Database models synchronized');
-    
+
   } catch (error) {
     console.error('❌ Database connection failed:', error);
     process.exit(1);
