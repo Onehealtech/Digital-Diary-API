@@ -37,7 +37,7 @@ export const verifyPatientOTP = async (
     // Get patient details
     const patient = await Patient.findOne({
         where: { stickerId },
-        attributes: ["id", "stickerId", "fullName", "age", "status", "doctorId"],
+        attributes: ["id", "stickerId", "fullName", "age", "status", "caseType", "doctorId"],
     });
 
     if (!patient) {
@@ -64,6 +64,7 @@ export const verifyPatientOTP = async (
             fullName: patient.fullName,
             age: patient.age,
             status: patient.status,
+            caseType: patient.caseType,
         },
     };
 };

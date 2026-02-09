@@ -49,6 +49,23 @@ export class Patient extends Model {
   })
   status!: "ACTIVE" | "CRITICAL" | "COMPLETED";
 
+  @Column({
+    type: DataType.ENUM(
+      "PERI_OPERATIVE",
+      "POST_OPERATIVE",
+      "FOLLOW_UP",
+      "CHEMOTHERAPY",
+      "RADIOLOGY"
+    ),
+    allowNull: true,
+  })
+  caseType?:
+    | "PERI_OPERATIVE"
+    | "POST_OPERATIVE"
+    | "FOLLOW_UP"
+    | "CHEMOTHERAPY"
+    | "RADIOLOGY";
+
   // 🔗 Foreign Key → Doctor
   @ForeignKey(() => AppUser)
   @Column({

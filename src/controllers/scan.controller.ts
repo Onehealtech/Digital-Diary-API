@@ -35,13 +35,32 @@ export const submitScan = async (
         // Get patient ID from authenticated user
         const patientId = req.user!.id;
 
-        // Create scan log entry
-        const scanLog = await ScanLog.create({
-            patientId,
-            pageId,
-            scanData,
-            scannedAt: new Date(),
+        // Check if scan with same patientId + pageId already exists
+        const existingScan = await ScanLog.findOne({
+            where: { patientId, pageId },
         });
+
+        let scanLog;
+
+        if (existingScan) {
+            // Update existing scan
+            existingScan.scanData = scanData;
+            existingScan.isUpdated = true;
+            existingScan.updatedCount = existingScan.updatedCount + 1;
+            existingScan.scannedAt = new Date();
+            await existingScan.save();
+            scanLog = existingScan;
+        } else {
+            // Create new scan log entry
+            scanLog = await ScanLog.create({
+                patientId,
+                pageId,
+                scanData,
+                scannedAt: new Date(),
+                isUpdated: false,
+                updatedCount: 0,
+            });
+        }
 
         // Update patient's lastActive timestamp (using updatedAt)
         await Patient.update(
@@ -49,13 +68,17 @@ export const submitScan = async (
             { where: { id: patientId } }
         );
 
-        res.status(201).json({
+        res.status(existingScan ? 200 : 201).json({
             success: true,
-            message: "Scan submitted successfully",
+            message: existingScan
+                ? "Scan updated successfully"
+                : "Scan submitted successfully",
             data: {
                 id: scanLog.id,
                 pageId: scanLog.pageId,
                 scannedAt: scanLog.scannedAt,
+                isUpdated: scanLog.isUpdated,
+                updatedCount: scanLog.updatedCount,
             },
         });
     } catch (error: any) {

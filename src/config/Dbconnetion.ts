@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { AppUser } from '../models/Appuser';
 import { Patient } from '../models/Patient';
 import { ScanLog } from '../models/ScanLog';
+import { Reminder } from '../models/Reminder';
 
 
 
@@ -37,7 +38,7 @@ export const sequelize = new Sequelize({
 
   // Register sequelize-typescript models only (models using @Table, @Column decorators)
   // Regular Sequelize models (Patient, Organ, CancerGroup) are initialized separately
-  models: [AppUser, Patient, ScanLog],
+  models: [AppUser, Patient, ScanLog, Reminder],
 
   // Logging configuration
   logging: console.log, // Log all SQL queries (disable in production)
