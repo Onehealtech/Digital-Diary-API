@@ -220,7 +220,8 @@ Authorization: Bearer <DOCTOR_OR_ASSISTANT_TOKEN>
   "fullName": "Ramesh Patel",
   "age": 58,
   "phone": "+91-9876543212",
-  "gender": "Male"
+  "gender": "Male",
+  "caseType": "CHEMOTHERAPY"
 }
 ```
 
@@ -236,6 +237,7 @@ Authorization: Bearer <DOCTOR_OR_ASSISTANT_TOKEN>
     "age": 58,
     "phone": "+91-9876543212",
     "gender": "Male",
+    "caseType": "CHEMOTHERAPY",
     "status": "ACTIVE",
     "doctorId": "doctor-uuid",
     "registeredBy": "ASSISTANT"
@@ -246,6 +248,7 @@ Authorization: Bearer <DOCTOR_OR_ASSISTANT_TOKEN>
 **Business Logic**:
 - If DOCTOR: `doctorId = doctor's own ID`
 - If ASSISTANT: `doctorId = assistant's parentId` (Doctor's ID)
+- `caseType` is optional: `PERI_OPERATIVE`, `POST_OPERATIVE`, `FOLLOW_UP`, `CHEMOTHERAPY`, `RADIOLOGY`
 
 ---
 
@@ -346,7 +349,7 @@ Authorization: Bearer <PATIENT_TOKEN>
 }
 ```
 
-**Response** (201):
+**Response** (201 for new, 200 for update):
 ```json
 {
   "success": true,
@@ -354,7 +357,9 @@ Authorization: Bearer <PATIENT_TOKEN>
   "data": {
     "id": "uuid",
     "pageId": "PAGE_05",
-    "scannedAt": "2026-02-04T02:45:00.000Z"
+    "scannedAt": "2026-02-04T02:45:00.000Z",
+    "isUpdated": false,
+    "updatedCount": 0
   }
 }
 ```
@@ -362,6 +367,8 @@ Authorization: Bearer <PATIENT_TOKEN>
 **Notes**:
 - `scanData` is stored as JSONB (flexible schema)
 - Patient's `updatedAt` timestamp is automatically updated
+- **Re-scan behavior**: If same `pageId` is scanned again, existing record is updated
+- Re-scanned pages will have `isUpdated: true` and incremented `updatedCount`
 
 ---
 
@@ -549,6 +556,187 @@ Import this into Postman for quick testing:
 
 ---
 
+## 👤 Patient Profile Endpoints (PATIENT Only)
+
+### 11. Get Patient Profile
+**Endpoint**: `GET /patient/profile`  
+**Access**: PATIENT  
+**Description**: Retrieves current patient profile including case type
+
+**Headers**:
+```
+Authorization: Bearer <PATIENT_TOKEN>
+```
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "message": "Profile retrieved successfully",
+  "data": {
+    "id": "uuid",
+    "stickerId": "QR-2024-001",
+    "fullName": "Ramesh Patel",
+    "age": 58,
+    "gender": "Male",
+    "phone": "+91-9876543212",
+    "caseType": "CHEMOTHERAPY",
+    "status": "ACTIVE"
+  }
+}
+```
+
+---
+
+### 12. Request Edit OTP
+**Endpoint**: `POST /patient/request-edit-otp`  
+**Access**: PATIENT  
+**Description**: Requests OTP to edit profile (hardcoded "1234" for MVP)
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "message": "OTP sent to your registered mobile number",
+  "data": {
+    "phone": "+91-9876****12"
+  }
+}
+```
+
+---
+
+### 13. Update Patient Profile
+**Endpoint**: `POST /patient/update-profile`  
+**Access**: PATIENT  
+**Description**: Updates patient profile after OTP verification
+
+**Request Body**:
+```json
+{
+  "otp": "1234",
+  "fullName": "Updated Name",
+  "age": 59
+}
+```
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "data": {
+    "id": "uuid",
+    "fullName": "Updated Name",
+    "age": 59
+  }
+}
+```
+
+---
+
+## 🔔 Reminder Endpoints
+
+### 14. Create Reminder
+**Endpoint**: `POST /clinic/create-reminder`  
+**Access**: DOCTOR, ASSISTANT  
+**Description**: Creates appointment reminder for a patient
+
+**Request Body**:
+```json
+{
+  "patientId": "patient-uuid",
+  "message": "Chemotherapy session tomorrow at 10 AM",
+  "reminderDate": "2026-02-10T10:00:00Z",
+  "type": "CHEMOTHERAPY"
+}
+```
+
+**Reminder Types**: `APPOINTMENT`, `CHEMOTHERAPY`, `RADIOLOGY`, `FOLLOW_UP`, `OTHER`
+
+**Response** (201):
+```json
+{
+  "success": true,
+  "message": "Reminder created successfully",
+  "data": {
+    "id": "uuid",
+    "message": "Chemotherapy session tomorrow at 10 AM",
+    "type": "CHEMOTHERAPY",
+    "status": "PENDING"
+  }
+}
+```
+
+---
+
+### 15. Get Patient Reminders
+**Endpoint**: `GET /patient/reminders`  
+**Access**: PATIENT  
+**Query**: `?status=PENDING` (optional)
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "data": {
+    "reminders": [
+      {
+        "id": "uuid",
+        "message": "Chemotherapy session tomorrow at 10 AM",
+        "reminderDate": "2026-02-10T10:00:00Z",
+        "type": "CHEMOTHERAPY",
+        "status": "PENDING"
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+---
+
+### 16. Mark Reminder as Read
+**Endpoint**: `PATCH /patient/reminders/:id/read`  
+**Access**: PATIENT
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "message": "Reminder marked as read"
+}
+```
+
+---
+
+### 17. Get Dashboard Reminders
+**Endpoint**: `GET /dashboard/reminders`  
+**Access**: DOCTOR, ASSISTANT  
+**Query**: `?status=PENDING&patientId=uuid` (optional)
+
+**Response** (200):
+```json
+{
+  "success": true,
+  "data": {
+    "reminders": [
+      {
+        "id": "uuid",
+        "message": "Chemotherapy session tomorrow",
+        "patient": {
+          "fullName": "Ramesh Patel",
+          "stickerId": "QR-2024-001"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## 📞 Support
 
 For issues or questions, contact the development team or refer to the [walkthrough.md](file:///C:/Users/Yash%20Srivastava/.gemini/antigravity/brain/a1a63cd6-0268-4d16-9758-9986e3edf75d/walkthrough.md) for detailed implementation guide.
+

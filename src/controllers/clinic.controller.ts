@@ -12,7 +12,7 @@ export const registerPatient = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { stickerId, fullName, age, phone, gender } = req.body;
+        const { stickerId, fullName, age, phone, gender, caseType } = req.body;
 
         // Validate required fields
         if (!stickerId || !fullName) {
@@ -67,6 +67,7 @@ export const registerPatient = async (
             age,
             phone,
             gender,
+            caseType,
             doctorId,
             status: "ACTIVE",
         });
@@ -81,6 +82,7 @@ export const registerPatient = async (
                 age: newPatient.age,
                 phone: newPatient.phone,
                 gender: newPatient.gender,
+                caseType: newPatient.caseType,
                 status: newPatient.status,
                 doctorId: newPatient.doctorId,
                 registeredBy: req.user!.role,

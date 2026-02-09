@@ -48,4 +48,16 @@ export class ScanLog extends Model {
         field: "scannedAt",
     })
     scannedAt!: Date;
+
+    @Column({
+        type: DataType.BOOLEAN,
+        defaultValue: false,
+    })
+    isUpdated!: boolean;
+
+    @Column({
+        type: DataType.INTEGER,
+        defaultValue: 0,
+    })
+    updatedCount!: number;
 }

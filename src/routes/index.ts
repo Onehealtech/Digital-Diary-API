@@ -5,6 +5,7 @@ import doctorRoutes from "./doctor.routes";
 import clinicRoutes from "./clinic.routes";
 import dashboardRoutes from "./dashboard.routes";
 import scanRoutes from "./scan.routes";
+import patientRoutes from "./patient.routes";
 
 const router = express.Router();
 
@@ -15,5 +16,6 @@ router.use("/v1/doctor", doctorRoutes);   // Doctor routes
 router.use("/v1/clinic", clinicRoutes);   // Clinic routes (patient registration)
 router.use("/v1/dashboard", dashboardRoutes); // Dashboard routes
 router.use("/v1/scan", scanRoutes);       // Scan routes (patient symptom logging)
+router.use("/v1/patient", patientRoutes); // Patient routes (profile, reminders)
 
 export default router;
