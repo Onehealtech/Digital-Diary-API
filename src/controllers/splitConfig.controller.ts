@@ -5,8 +5,8 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { SplitConfig } from "../models/SplitConfig";
 import { validateSplitConfig } from "../service/split.service";
 import { responseMiddleware } from "../utils/response";
-import { HttpStatusCode } from "../utils/constants";
 import { sequelize } from "../config/Dbconnetion";
+import { HTTP_STATUS } from "../utils/constants";
 
 /**
  * POST /admin/split-config
@@ -23,7 +23,7 @@ export const createSplitConfig = async (
         if (!splitType || vendorValue === undefined || doctorValue === undefined) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.BAD_REQUEST,
+                HTTP_STATUS.BAD_REQUEST,
                 "Missing required fields: splitType, vendorValue, doctorValue"
             );
         }
@@ -31,7 +31,7 @@ export const createSplitConfig = async (
         if (!["PERCENTAGE", "FIXED"].includes(splitType)) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.BAD_REQUEST,
+                HTTP_STATUS.BAD_REQUEST,
                 "splitType must be PERCENTAGE or FIXED"
             );
         }
@@ -46,7 +46,7 @@ export const createSplitConfig = async (
         if (!validation.isValid) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.BAD_REQUEST,
+                HTTP_STATUS.BAD_REQUEST,
                 validation.errors.join("; ")
             );
         }
@@ -75,7 +75,7 @@ export const createSplitConfig = async (
 
         return responseMiddleware(
             res,
-            HttpStatusCode.CREATED,
+            HTTP_STATUS.CREATED,
             "Split configuration created successfully",
             newConfig
         );
@@ -83,7 +83,7 @@ export const createSplitConfig = async (
         console.error("❌ Error creating split config:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to create split config"
         );
     }
@@ -111,14 +111,14 @@ export const getActiveSplitConfig = async (
         if (!config) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.NOT_FOUND,
+                HTTP_STATUS.NOT_FOUND,
                 "No active split configuration found"
             );
         }
 
         return responseMiddleware(
             res,
-            HttpStatusCode.OK,
+            HTTP_STATUS.OK,
             "Active split config fetched",
             config
         );
@@ -126,7 +126,7 @@ export const getActiveSplitConfig = async (
         console.error("❌ Error fetching split config:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to fetch split config"
         );
     }
@@ -141,14 +141,14 @@ export const updateSplitConfig = async (
     res: Response
 ) => {
     try {
-        const { id } = req.params;
+        const { id }: any = req.params;
         const { splitType, vendorValue, doctorValue, notes } = req.body;
 
         const config = await SplitConfig.findByPk(id);
         if (!config) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.NOT_FOUND,
+                HTTP_STATUS.NOT_FOUND,
                 "Split configuration not found"
             );
         }
@@ -169,7 +169,7 @@ export const updateSplitConfig = async (
         if (!validation.isValid) {
             return responseMiddleware(
                 res,
-                HttpStatusCode.BAD_REQUEST,
+                HTTP_STATUS.BAD_REQUEST,
                 validation.errors.join("; ")
             );
         }
@@ -183,7 +183,7 @@ export const updateSplitConfig = async (
 
         return responseMiddleware(
             res,
-            HttpStatusCode.OK,
+            HTTP_STATUS.OK,
             "Split configuration updated successfully",
             config
         );
@@ -191,7 +191,7 @@ export const updateSplitConfig = async (
         console.error("❌ Error updating split config:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to update split config"
         );
     }
@@ -218,7 +218,7 @@ export const getSplitConfigHistory = async (
 
         return responseMiddleware(
             res,
-            HttpStatusCode.OK,
+            HTTP_STATUS.OK,
             "Split config history fetched",
             configs
         );
@@ -226,7 +226,7 @@ export const getSplitConfigHistory = async (
         console.error("❌ Error fetching split config history:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to fetch split config history"
         );
     }
