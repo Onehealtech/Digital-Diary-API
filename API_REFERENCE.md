@@ -73,7 +73,7 @@
 **Request Body**:
 ```json
 {
-  "stickerId": "QR-2024-001"
+  "diaryId": "QR-2024-001"
 }
 ```
 
@@ -83,7 +83,7 @@
   "success": true,
   "message": "OTP Required. Please enter the verification code.",
   "data": {
-    "stickerId": "QR-2024-001"
+    "diaryId": "QR-2024-001"
   }
 }
 ```
@@ -98,7 +98,7 @@
 **Request Body**:
 ```json
 {
-  "stickerId": "QR-2024-001",
+  "diaryId": "QR-2024-001",
   "otp": "1234"
 }
 ```
@@ -112,7 +112,7 @@
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "patient": {
       "id": "uuid",
-      "stickerId": "QR-2024-001",
+      "diaryId": "QR-2024-001",
       "fullName": "Patient Name",
       "age": 58,
       "status": "ACTIVE"
@@ -216,7 +216,7 @@ Authorization: Bearer <DOCTOR_OR_ASSISTANT_TOKEN>
 **Request Body**:
 ```json
 {
-  "stickerId": "QR-2024-001",
+  "diaryId": "QR-2024-001",
   "fullName": "Ramesh Patel",
   "age": 58,
   "phone": "+91-9876543212",
@@ -232,7 +232,7 @@ Authorization: Bearer <DOCTOR_OR_ASSISTANT_TOKEN>
   "message": "Patient registered successfully",
   "data": {
     "id": "uuid",
-    "stickerId": "QR-2024-001",
+    "diaryId": "QR-2024-001",
     "fullName": "Ramesh Patel",
     "age": 58,
     "phone": "+91-9876543212",
@@ -284,7 +284,7 @@ GET /dashboard/patients?page=1&limit=10&status=ACTIVE&search=Ramesh
     "patients": [
       {
         "id": "uuid",
-        "stickerId": "QR-2024-001",
+        "diaryId": "QR-2024-001",
         "fullName": "Ramesh Patel",
         "age": 58,
         "gender": "Male",
@@ -447,7 +447,7 @@ GET /scan/history?page=1&limit=20
 ```json
 {
   "id": "uuid",
-  "stickerId": "QR-2024-001",
+  "diaryId": "QR-2024-001",
   "fullName": "Patient Name",
   "type": "PATIENT",
   "iat": 1234567890,
@@ -575,7 +575,7 @@ Authorization: Bearer <PATIENT_TOKEN>
   "message": "Profile retrieved successfully",
   "data": {
     "id": "uuid",
-    "stickerId": "QR-2024-001",
+    "diaryId": "QR-2024-001",
     "fullName": "Ramesh Patel",
     "age": 58,
     "gender": "Male",
@@ -726,7 +726,7 @@ Authorization: Bearer <PATIENT_TOKEN>
         "message": "Chemotherapy session tomorrow",
         "patient": {
           "fullName": "Ramesh Patel",
-          "stickerId": "QR-2024-001"
+          "diaryId": "QR-2024-001"
         }
       }
     ]

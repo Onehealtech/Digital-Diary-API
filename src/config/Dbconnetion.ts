@@ -4,6 +4,10 @@ import { AppUser } from '../models/Appuser';
 import { Patient } from '../models/Patient';
 import { ScanLog } from '../models/ScanLog';
 import { Reminder } from '../models/Reminder';
+import { Order } from '../models/Order';
+import { SplitConfig } from '../models/SplitConfig';
+import { SplitTransaction } from '../models/SplitTransaction';
+import { WebhookLog } from '../models/WebhookLog';
 
 
 
@@ -36,9 +40,8 @@ export const sequelize = new Sequelize({
     },
   },
 
-  // Register sequelize-typescript models only (models using @Table, @Column decorators)
-  // Regular Sequelize models (Patient, Organ, CancerGroup) are initialized separately
-  models: [AppUser, Patient, ScanLog, Reminder],
+  // Register sequelize-typescript models
+  models: [AppUser, Patient, ScanLog, Reminder, Order, SplitConfig, SplitTransaction, WebhookLog],
 
   // Logging configuration
   logging: console.log, // Log all SQL queries (disable in production)

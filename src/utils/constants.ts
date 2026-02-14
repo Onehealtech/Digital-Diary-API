@@ -1,12 +1,13 @@
 /**
  * User Roles
- * Defines allowed hospital types in the system
+ * Defines the allowed roles in the system
  */
-export const Role = {
-  EnterpriseHospital: 'enterpriseHospital',
-  SpecialityHospital: 'specialityHospital',
-  Specialist: 'specialist',
-};
+export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  VENDOR = 'VENDOR',
+  DOCTOR = 'DOCTOR',
+  ASSISTANT = 'ASSISTANT',
+}
 
 /**
  * API Response Messages
@@ -23,7 +24,8 @@ export const API_MESSAGES = {
   USER_ALREADY_EXISTS: 'User with this email already exists',
   MISSING_FIELDS: 'Required fields are missing',
   UNAUTHORIZED: 'Unauthorized access',
-  INVALID_ROLE: 'Role must be either enterpriseHospital or specialityHospital',
+  FORBIDDEN: 'You do not have permission to perform this action',
+  INVALID_ROLE: 'Role must be one of: SUPER_ADMIN, VENDOR, DOCTOR, ASSISTANT',
 
   // Server errors
   SERVER_ERROR: 'Internal server error',
@@ -42,6 +44,7 @@ export const HTTP_STATUS = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   SERVER_ERROR: 500,
+  INTERNAL_SERVER_ERROR: 500,
 };
 
 /**

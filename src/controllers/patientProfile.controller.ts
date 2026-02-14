@@ -112,7 +112,7 @@ export const updateProfile = async (
             message: "Profile updated successfully",
             data: {
                 id: patient.id,
-                stickerId: patient.stickerId,
+                diaryId: patient.diaryId,
                 fullName: patient.fullName,
                 age: patient.age,
                 gender: patient.gender,
@@ -144,7 +144,7 @@ export const getProfile = async (
         const patient = await Patient.findByPk(patientId, {
             attributes: [
                 "id",
-                "stickerId",
+                "diaryId",
                 "fullName",
                 "age",
                 "gender",

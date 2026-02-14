@@ -26,7 +26,7 @@ export class Patient extends Model {
     unique: true,
     allowNull: false,
   })
-  stickerId!: string;
+  diaryId!: string;
 
   @Column({
     type: DataType.STRING,

@@ -5,35 +5,35 @@ dotenv.config();
 
 // Create reusable transporter
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-    },
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD,
+  },
 });
 
 /**
  * Send password email to newly created staff member
  * @param email - Recipient email address
  * @param password - Plain text password to send
- * @param role - User role (DOCTOR, PHARMACIST, ASSISTANT)
+ * @param role - User role (DOCTOR, VENDOR, ASSISTANT, SUPER_ADMIN)
  * @param fullName - User's full name
  */
 export const sendPasswordEmail = async (
-    email: string,
-    password: string,
-    role: string,
-    fullName: string
+  email: string,
+  password: string,
+  role: string,
+  fullName: string
 ): Promise<void> => {
-    const roleDisplay = role.replace("_", " ").toLowerCase();
+  const roleDisplay = role.replace("_", " ").toLowerCase();
 
-    const mailOptions = {
-        from: `"OneHeal Support" <${process.env.SMTP_USER}>`,
-        to: email,
-        subject: "OneHeal Login Credentials",
-        html: `
+  const mailOptions = {
+    from: `"OneHeal Support" <${process.env.SMTP_USER}>`,
+    to: email,
+    subject: "OneHeal Login Credentials",
+    html: `
       <!DOCTYPE html>
       <html>
       <head>
@@ -82,15 +82,15 @@ export const sendPasswordEmail = async (
       </body>
       </html>
     `,
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Password email sent to ${email}`);
-    } catch (error) {
-        console.error(`❌ Failed to send email to ${email}:`, error);
-        throw new Error("Failed to send email");
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Password email sent to ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send email to ${email}:`, error);
+    throw new Error("Failed to send email");
+  }
 };
 
 /**
@@ -100,15 +100,15 @@ export const sendPasswordEmail = async (
  * @param fullName - User's full name
  */
 export const sendOTPEmail = async (
-    email: string,
-    otp: string,
-    fullName: string
+  email: string,
+  otp: string,
+  fullName: string
 ): Promise<void> => {
-    const mailOptions = {
-        from: `"OneHeal Support" <${process.env.SMTP_USER}>`,
-        to: email,
-        subject: "OneHeal Login Verification Code",
-        html: `
+  const mailOptions = {
+    from: `"OneHeal Support" <${process.env.SMTP_USER}>`,
+    to: email,
+    subject: "OneHeal Login Verification Code",
+    html: `
       <!DOCTYPE html>
       <html>
       <head>
@@ -151,13 +151,13 @@ export const sendOTPEmail = async (
       </body>
       </html>
     `,
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ OTP email sent to ${email}`);
-    } catch (error) {
-        console.error(`❌ Failed to send OTP email to ${email}:`, error);
-        throw new Error("Failed to send OTP email");
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ OTP email sent to ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send OTP email to ${email}:`, error);
+    throw new Error("Failed to send OTP email");
+  }
 };

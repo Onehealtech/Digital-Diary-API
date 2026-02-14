@@ -7,9 +7,9 @@ import { patientLogin, verifyPatientOTP } from "../service/patientAuth.service";
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { stickerId } = req.body;
+        const { diaryId } = req.body;
 
-        if (!stickerId) {
+        if (!diaryId) {
             res.status(400).json({
                 success: false,
                 message: "Sticker ID is required",
@@ -17,12 +17,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const result = await patientLogin(stickerId);
+        const result = await patientLogin(diaryId);
 
         res.status(200).json({
             success: true,
             message: result.message,
-            data: { stickerId: result.stickerId },
+            data: { diaryId: result.diaryId },
         });
     } catch (error: any) {
         res.status(404).json({
@@ -38,9 +38,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  */
 export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { stickerId, otp } = req.body;
+        const { diaryId, otp } = req.body;
 
-        if (!stickerId || !otp) {
+        if (!diaryId || !otp) {
             res.status(400).json({
                 success: false,
                 message: "Sticker ID and OTP are required",
@@ -48,7 +48,7 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const result = await verifyPatientOTP(stickerId, otp);
+        const result = await verifyPatientOTP(diaryId, otp);
 
         res.status(200).json({
             success: true,

@@ -5,11 +5,11 @@ import { Patient } from "../models/Patient";
  * Patient Login - Step 1: Validate sticker and request OTP
  */
 export const patientLogin = async (
-    stickerId: string
-): Promise<{ message: string; stickerId: string }> => {
+    diaryId: string
+): Promise<{ message: string; diaryId: string }> => {
     // Check if sticker exists
     const patient = await Patient.findOne({
-        where: { stickerId },
+        where: { diaryId },
     });
 
     if (!patient) {
@@ -18,7 +18,7 @@ export const patientLogin = async (
 
     return {
         message: "OTP Required. Please enter the verification code.",
-        stickerId,
+        diaryId,
     };
 };
 
@@ -26,7 +26,7 @@ export const patientLogin = async (
  * Patient Login - Step 2: Verify OTP (hardcoded for MVP) and return JWT
  */
 export const verifyPatientOTP = async (
-    stickerId: string,
+    diaryId: string,
     otp: string
 ): Promise<{ token: string; patient: any }> => {
     // MVP: Hardcoded OTP validation
@@ -36,8 +36,8 @@ export const verifyPatientOTP = async (
 
     // Get patient details
     const patient = await Patient.findOne({
-        where: { stickerId },
-        attributes: ["id", "stickerId", "fullName", "age", "status", "caseType", "doctorId"],
+        where: { diaryId },
+        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId"],
     });
 
     if (!patient) {
@@ -48,7 +48,7 @@ export const verifyPatientOTP = async (
     const token = jwt.sign(
         {
             id: patient.id,
-            stickerId: patient.stickerId,
+            diaryId: patient.diaryId,
             fullName: patient.fullName,
             type: "PATIENT",
         },
@@ -60,7 +60,7 @@ export const verifyPatientOTP = async (
         token,
         patient: {
             id: patient.id,
-            stickerId: patient.stickerId,
+            diaryId: patient.diaryId,
             fullName: patient.fullName,
             age: patient.age,
             status: patient.status,
