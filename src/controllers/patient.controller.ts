@@ -55,7 +55,7 @@ export const getDoctorPatients = async (req: AuthenticatedRequest, res: Response
       include: [
         {
           model: Patient,
-          attributes: ["id", "fullName", "age", "gender"],
+          attributes: ["id", "fullName", "age", "gender", "diaryId"],
         },
       ],
     });

@@ -65,7 +65,7 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
 
-    await sequelize.sync({ alter: true }); // Add new columns to existing tables
+    await sequelize.sync({ alter: false }); // Add new columns to existing tables
     console.log('✅ Database models synchronized');
 
   } catch (error) {

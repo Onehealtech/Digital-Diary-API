@@ -26,7 +26,7 @@ export const vendorEarnings = async (
 
         return responseMiddleware(
             res,
-            HttpStatusCode.OK,
+            HTTP_STATUS.OK,
             "Vendor earnings fetched successfully",
             result
         );
@@ -34,7 +34,7 @@ export const vendorEarnings = async (
         console.error("❌ Error fetching vendor earnings:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to fetch earnings"
         );
     }
@@ -60,7 +60,7 @@ export const doctorEarnings = async (
 
         return responseMiddleware(
             res,
-            HttpStatusCode.OK,
+            HTTP_STATUS.OK,
             "Doctor earnings fetched successfully",
             result
         );
@@ -68,7 +68,7 @@ export const doctorEarnings = async (
         console.error("❌ Error fetching doctor earnings:", error);
         return responseMiddleware(
             res,
-            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            HTTP_STATUS.INTERNAL_SERVER_ERROR,
             error.message || "Failed to fetch earnings"
         );
     }
