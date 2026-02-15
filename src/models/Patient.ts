@@ -43,6 +43,76 @@ export class Patient extends Model {
   @Column(DataType.STRING)
   phone?: string;
 
+  @Column(DataType.TEXT)
+  address?: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  diaryId?: string;
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  vendorId?: string;
+
+  @Column(DataType.STRING)
+  stage?: string;
+
+  @Column(DataType.TEXT)
+  treatmentPlan?: string;
+
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+    defaultValue: [],
+  })
+  prescribedTests?: Array<{
+    testName: string;
+    testType: "major" | "normal";
+    prescribedDate: Date;
+    completed: boolean;
+    completedDate?: Date;
+    reportReceived: boolean;
+    reportReceivedDate?: Date;
+    reportUrl?: string;
+  }>;
+
+  @Column({
+    type: DataType.INTEGER,
+    defaultValue: 0,
+  })
+  totalTestsPrescribed!: number;
+
+  @Column({
+    type: DataType.INTEGER,
+    defaultValue: 0,
+  })
+  testsCompleted!: number;
+
+  @Column({
+    type: DataType.INTEGER,
+    defaultValue: 0,
+  })
+  reportsReceived!: number;
+
+  @Column({
+    type: DataType.FLOAT,
+    defaultValue: 0,
+  })
+  testCompletionPercentage!: number;
+
+  @Column(DataType.DATE)
+  lastDiaryScan?: Date;
+
+  @Column(DataType.DATE)
+  lastDoctorContact?: Date;
+
+  @Column(DataType.DATE)
+  registeredDate?: Date;
+
   @Column({
     type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED"),
     defaultValue: "ACTIVE",

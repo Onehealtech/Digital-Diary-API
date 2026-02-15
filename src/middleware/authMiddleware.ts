@@ -30,6 +30,9 @@ export interface CustomRequest extends Request {
   rData?: any;
 }
 
+// Alias for AuthRequest (used in controllers)
+export interface AuthRequest extends AuthenticatedRequest {}
+
 // -------------------------------------------------------------------------
 // MIDDLEWARE LOGIC
 // -------------------------------------------------------------------------

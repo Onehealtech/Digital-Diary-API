@@ -51,16 +51,27 @@ export class AppUser extends Model {
   password!: string;
 
   @Column({
-    type: DataType.ENUM("SUPER_ADMIN", "DOCTOR", "PHARMACIST", "ASSISTANT"),
+    type: DataType.ENUM("SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"),
     allowNull: false,
   })
-  role!: "SUPER_ADMIN" | "DOCTOR" | "PHARMACIST" | "ASSISTANT";
+  role!: "SUPER_ADMIN" | "DOCTOR" | "VENDOR" | "ASSISTANT";
 
   @Column({
     type: DataType.UUID,
     allowNull: true,
   })
   parentId?: string;
+
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  permissions?: {
+    viewPatients?: boolean;
+    callPatients?: boolean;
+    exportData?: boolean;
+    sendNotifications?: boolean;
+  };
 
   @Column({
     type: DataType.BOOLEAN,

@@ -37,6 +37,18 @@ export class ScanLog extends Model {
     pageId!: string;
 
     @Column({
+        type: DataType.ENUM("test-status", "treatment-update", "symptoms", "notes"),
+        allowNull: true,
+    })
+    pageType?: "test-status" | "treatment-update" | "symptoms" | "notes";
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true,
+    })
+    imageUrl?: string;
+
+    @Column({
         type: DataType.JSONB,
         allowNull: false,
     })
@@ -60,4 +72,28 @@ export class ScanLog extends Model {
         defaultValue: 0,
     })
     updatedCount!: number;
+
+    @Column({
+        type: DataType.BOOLEAN,
+        defaultValue: false,
+    })
+    doctorReviewed!: boolean;
+
+    @Column({
+        type: DataType.UUID,
+        allowNull: true,
+    })
+    reviewedBy?: string;
+
+    @Column(DataType.DATE)
+    reviewedAt?: Date;
+
+    @Column(DataType.TEXT)
+    doctorNotes?: string;
+
+    @Column({
+        type: DataType.BOOLEAN,
+        defaultValue: false,
+    })
+    flagged!: boolean;
 }

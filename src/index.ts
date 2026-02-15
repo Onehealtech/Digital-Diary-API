@@ -104,3 +104,6 @@ const startServer = async () => {
 
 // Start the application
 startServer();
+
+// Export app for testing
+export default app;

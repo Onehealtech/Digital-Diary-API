@@ -2,6 +2,9 @@ import { Response } from "express";
 import { ScanLog } from "../models/ScanLog";
 import { Patient } from "../models/Patient";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { scanService } from "../service/scan.service";
+import { sendResponse, sendError } from "../utils/response";
+import { AuthRequest } from "../middleware/authMiddleware";
 
 /**
  * POST /api/v1/scan/submit
@@ -130,5 +133,194 @@ export const getScanHistory = async (
             success: false,
             message: error.message || "Failed to retrieve scan history",
         });
+    }
+};
+
+/**
+ * GET /api/v1/diary-entries
+ * Get all diary entries for doctor/assistant to review
+ */
+export const getAllDiaryEntries = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const requesterId = req.user?.id;
+        const role = req.user?.role;
+
+        if (!requesterId || !role) {
+            sendError(res, "Unauthorized", 401);
+            return;
+        }
+
+        const {
+            page,
+            limit,
+            pageType,
+            reviewed,
+            flagged,
+            patientId,
+            startDate,
+            endDate,
+        } = req.query;
+
+        const result = await scanService.getAllDiaryEntries(
+            requesterId,
+            role,
+            {
+                page: page ? Number(page) : undefined,
+                limit: limit ? Number(limit) : undefined,
+                pageType: pageType as string,
+                reviewed: reviewed === "true" ? true : reviewed === "false" ? false : undefined,
+                flagged: flagged === "true" ? true : flagged === "false" ? false : undefined,
+                patientId: patientId as string,
+                startDate: startDate ? new Date(startDate as string) : undefined,
+                endDate: endDate ? new Date(endDate as string) : undefined,
+            }
+        );
+
+        sendResponse(res, result, "Diary entries fetched successfully");
+    } catch (error: any) {
+        sendError(res, error.message);
+    }
+};
+
+/**
+ * GET /api/v1/diary-entries/:id
+ * Get single diary entry by ID
+ */
+export const getDiaryEntryById = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const id = req.params.id as string;
+        const requesterId = req.user?.id;
+        const role = req.user?.role;
+
+        if (!requesterId || !role) {
+            sendError(res, "Unauthorized", 401);
+            return;
+        }
+
+        const entry = await scanService.getDiaryEntryById(id, requesterId, role);
+
+        sendResponse(res, entry, "Diary entry fetched successfully");
+    } catch (error: any) {
+        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+};
+
+/**
+ * PUT /api/v1/diary-entries/:id/review
+ * Mark diary entry as reviewed by doctor
+ */
+export const reviewDiaryEntry = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const id = req.params.id as string;
+        const doctorId = req.user?.id as string;
+        const role = req.user?.role;
+
+        if (!doctorId || role !== "DOCTOR") {
+            sendError(res, "Only doctors can review diary entries", 403);
+            return;
+        }
+
+        const { doctorNotes, flagged } = req.body;
+
+        const entry = await scanService.reviewDiaryEntry(id, doctorId, {
+            doctorNotes,
+            flagged,
+        });
+
+        sendResponse(res, entry, "Diary entry reviewed successfully");
+    } catch (error: any) {
+        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+};
+
+/**
+ * PUT /api/v1/diary-entries/:id/flag
+ * Flag/unflag a diary entry
+ */
+export const toggleFlag = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const id = req.params.id as string;
+        const doctorId = req.user?.id as string;
+        const role = req.user?.role;
+
+        if (!doctorId || role !== "DOCTOR") {
+            sendError(res, "Only doctors can flag diary entries", 403);
+            return;
+        }
+
+        const { flagged } = req.body;
+
+        if (flagged === undefined) {
+            sendError(res, "flagged field is required", 400);
+            return;
+        }
+
+        const entry = await scanService.toggleFlag(id, doctorId, flagged);
+
+        sendResponse(res, entry, `Diary entry ${flagged ? "flagged" : "unflagged"} successfully`);
+    } catch (error: any) {
+        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+};
+
+/**
+ * GET /api/v1/diary-entries/review/pending
+ * Get diary entries that need review
+ */
+export const getEntriesNeedingReview = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const doctorId = req.user?.id;
+        const role = req.user?.role;
+
+        if (!doctorId || role !== "DOCTOR") {
+            sendError(res, "Only doctors can view pending reviews", 403);
+            return;
+        }
+
+        const entries = await scanService.getEntriesNeedingReview(doctorId);
+
+        sendResponse(res, entries, "Pending reviews fetched successfully");
+    } catch (error: any) {
+        sendError(res, error.message);
+    }
+};
+
+/**
+ * GET /api/v1/diary-entries/stats
+ * Get diary entry statistics for a doctor
+ */
+export const getDiaryEntryStats = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const doctorId = req.user?.id;
+        const role = req.user?.role;
+
+        if (!doctorId || role !== "DOCTOR") {
+            sendError(res, "Only doctors can view diary stats", 403);
+            return;
+        }
+
+        const stats = await scanService.getDiaryEntryStats(doctorId);
+
+        sendResponse(res, stats, "Diary stats fetched successfully");
+    } catch (error: any) {
+        sendError(res, error.message);
     }
 };

@@ -14,7 +14,10 @@ const otpStore = new Map<string, OTPData>();
  * @returns Generated OTP string
  */
 export const generateOTP = (email: string): string => {
-    const otp = crypto.randomInt(100000, 999999).toString();
+    // Use fixed OTP for testing environment
+    const otp = process.env.NODE_ENV === 'test'
+        ? '123456'
+        : crypto.randomInt(100000, 999999).toString();
 
     const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES || "5");
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
