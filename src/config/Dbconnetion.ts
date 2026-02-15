@@ -13,6 +13,10 @@ import { Notification } from '../models/Notification';
 import { Transaction } from '../models/Transaction';
 import { AuditLog } from '../models/AuditLog';
 import { Export } from '../models/Export';
+import { Order } from '../models/Order';
+import { SplitConfig } from '../models/SplitConfig';
+import { SplitTransaction } from '../models/SplitTransaction';
+import { WebhookLog } from '../models/WebhookLog';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -55,6 +59,10 @@ export const sequelize = new Sequelize({
     Transaction,
     AuditLog,
     Export,
+    Order,
+    SplitConfig,
+    SplitTransaction,
+    WebhookLog,
   ],
 
   // Logging configuration
@@ -79,7 +87,7 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
 
-    await sequelize.sync({ alter: true }); // Add new columns to existing tables
+    await sequelize.sync({ alter: false }); // Add new columns to existing tables
     console.log('✅ Database models synchronized');
 
   } catch (error) {

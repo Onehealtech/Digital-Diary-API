@@ -5,13 +5,14 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { dashboardService } from "../service/dashboard.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 /**
  * GET /api/v1/dashboard/patients
  * Returns patients based on user role:
  * - Doctor: their own patients
  * - Assistant: parent Doctor's patients
- * - Pharmacist: all patients (view-only)
+ * - Vendor: all patients (works on behalf of pharmacist)
  */
 export const getPatients = async (
     req: AuthenticatedRequest,
@@ -25,10 +26,10 @@ export const getPatients = async (
         let whereClause: any = {};
 
         // Determine which patients to show based on role
-        if (req.user!.role === "DOCTOR") {
+        if (req.user!.role === UserRole.DOCTOR) {
             // Doctor sees their own patients
             whereClause.doctorId = req.user!.id;
-        } else if (req.user!.role === "ASSISTANT") {
+        } else if (req.user!.role === UserRole.ASSISTANT) {
             // Assistant sees parent Doctor's patients
             if (!req.user!.parentId) {
                 res.status(400).json({
@@ -38,9 +39,9 @@ export const getPatients = async (
                 return;
             }
             whereClause.doctorId = req.user!.parentId;
-        } else if (req.user!.role === "PHARMACIST") {
-            // Pharmacist sees all patients (no filter)
-            // whereClause remains empty
+        } else if (req.user!.role === UserRole.VENDOR) {
+            // Vendor sees all patients (acts on behalf of pharmacist)
+            // NOTE: Can be scoped later with a VendorDoctor mapping table
         } else {
             res.status(403).json({
                 success: false,

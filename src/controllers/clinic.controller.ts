@@ -12,10 +12,10 @@ export const registerPatient = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { stickerId, fullName, age, phone, gender, caseType } = req.body;
+        const { diaryId, fullName, age, phone, gender, caseType } = req.body;
 
         // Validate required fields
-        if (!stickerId || !fullName) {
+        if (!diaryId || !fullName) {
             res.status(400).json({
                 success: false,
                 message: "Sticker ID and full name are required",
@@ -25,7 +25,7 @@ export const registerPatient = async (
 
         // Check if sticker already exists
         const existingPatient = await Patient.findOne({
-            where: { stickerId },
+            where: { diaryId },
         });
 
         if (existingPatient) {
@@ -62,7 +62,7 @@ export const registerPatient = async (
 
         // Create patient
         const newPatient = await Patient.create({
-            stickerId,
+            diaryId,
             fullName,
             age,
             phone,
@@ -77,7 +77,7 @@ export const registerPatient = async (
             message: "Patient registered successfully",
             data: {
                 id: newPatient.id,
-                stickerId: newPatient.stickerId,
+                diaryId: newPatient.diaryId,
                 fullName: newPatient.fullName,
                 age: newPatient.age,
                 phone: newPatient.phone,

@@ -3,10 +3,11 @@ import { AppUser } from "../models/Appuser";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "../service/emailService";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 /**
  * POST /api/v1/admin/create-staff
- * Super Admin creates Doctor or Pharmacist
+ * Super Admin creates Vendor, Doctor, or another Super Admin
  */
 export const createStaff = async (
     req: AuthenticatedRequest,
@@ -24,11 +25,17 @@ export const createStaff = async (
             return;
         }
 
-        // Validate role (only DOCTOR or PHARMACIST can be created by Super Admin)
-        if (role !== "DOCTOR" && role !== "PHARMACIST") {
+        // Validate role – only these roles can be created by Super Admin
+        const creatableRoles: UserRole[] = [
+            UserRole.DOCTOR,
+            UserRole.VENDOR,
+            UserRole.SUPER_ADMIN,
+        ];
+
+        if (!creatableRoles.includes(role as UserRole)) {
             res.status(400).json({
                 success: false,
-                message: "Role must be either DOCTOR or PHARMACIST",
+                message: `Invalid role. Super Admin can create: ${creatableRoles.join(", ")}`,
             });
             return;
         }
@@ -56,6 +63,7 @@ export const createStaff = async (
             password: plainPassword,
             phone,
             role,
+            parentId: req.user!.id, // Track who created this user
             isEmailVerified: false,
         });
 
@@ -70,6 +78,7 @@ export const createStaff = async (
                 fullName: newUser.fullName,
                 email: newUser.email,
                 role: newUser.role,
+                createdBy: req.user!.id,
             },
         });
     } catch (error: any) {

@@ -21,12 +21,13 @@ import {
 } from "../controllers/reminder.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 const router = Router();
 
 // Legacy routes (Accessed by Doctors)
-router.post("/", authCheck(["doctor"]), createPatient);
-router.get("/getAllPatients", authCheck(["doctor"]), getDoctorPatients);
+router.post("/", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), createPatient);
+router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), getDoctorPatients);
 
 // Patient profile management (Accessed by Patients)
 router.post("/request-edit-otp", patientAuthCheck, requestEditOTP);

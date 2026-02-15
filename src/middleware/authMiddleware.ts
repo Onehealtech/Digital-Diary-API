@@ -9,8 +9,7 @@ import { AppUser, AppUser as AppUserModel } from '../models/Appuser';
 
 // Import Utils
 import { responseMiddleware } from '../utils/response';
-// FIX: Importing from 'constants' because that is where your code is
-import { HTTP_STATUS, API_MESSAGES } from '../utils/constants';
+import { HTTP_STATUS, API_MESSAGES, UserRole } from '../utils/constants';
 
 // -------------------------------------------------------------------------
 // TYPE DEFINITIONS
@@ -46,12 +45,12 @@ export interface AuthRequest extends AuthenticatedRequest {}
 /**
  * Role Check Middleware
  * Verifies if the authenticated AppUser has permission to access the route
+ * Uses UserRole enum for type-safe role checking
  */
-export const authCheck = (allowedRoles: string[]) => {
+export const authCheck = (allowedRoles: UserRole[]) => {
   return async (req: CustomRequest, res: Response, next: NextFunction): Promise<void> => {
 
     const token = req.headers["authorization"]?.split(" ")[1];
-    console.log(token);
 
     if (!token) {
       responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, API_MESSAGES.UNAUTHORIZED);
@@ -60,16 +59,13 @@ export const authCheck = (allowedRoles: string[]) => {
 
     try {
       const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-      // FIX: Build the query dynamically to avoid 'undefined' errors
-      const whereClause: any = { id: decoded.AppUserId || decoded.id }; // Handle 'AppUserId' vs 'id' naming
+      // Build the query dynamically to avoid 'undefined' errors
+      const whereClause: any = { id: decoded.AppUserId || decoded.id };
 
       // Only add email check if it exists in token
       if (decoded.email) {
         whereClause.email = decoded.email;
       }
-
-      // We removed the OR condition for phoneNumber because it causes the crash
-      // Searching by ID is sufficient and secure for a valid token.
 
       const user: any = await AppUser.findOne({
         where: whereClause,
@@ -77,7 +73,7 @@ export const authCheck = (allowedRoles: string[]) => {
       });
 
       // Check if user exists and has allowed role
-      if (user && allowedRoles.includes(user.role)) {
+      if (user && allowedRoles.includes(user.role as UserRole)) {
         res.locals.auth = decoded;
         req.user = user;
         next();
@@ -122,7 +118,7 @@ export const patientAuthCheck = async (
     // Attach patient info to request
     req.user = {
       id: decoded.id,
-      stickerId: decoded.stickerId,
+      diaryId: decoded.diaryId,
       fullName: decoded.fullName,
       type: decoded.type,
     } as any;

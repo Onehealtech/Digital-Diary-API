@@ -6,6 +6,8 @@ import {
   BeforeCreate,
   BeforeUpdate,
   HasMany,
+  ForeignKey,
+  BelongsTo,
 } from "sequelize-typescript";
 import bcrypt from "bcrypt";
 import { Patient } from "./Patient";
@@ -51,16 +53,21 @@ export class AppUser extends Model {
   password!: string;
 
   @Column({
-    type: DataType.ENUM("SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"),
+    type: DataType.ENUM("SUPER_ADMIN", "VENDOR", "DOCTOR", "ASSISTANT"),
     allowNull: false,
   })
-  role!: "SUPER_ADMIN" | "DOCTOR" | "VENDOR" | "ASSISTANT";
+  role!: "SUPER_ADMIN" | "VENDOR" | "DOCTOR" | "ASSISTANT";
 
+  // 🔗 Self-referencing parent (Doctor → Assistant, SuperAdmin → Vendor)
+  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
     allowNull: true,
   })
   parentId?: string;
+
+  @BelongsTo(() => AppUser, "parentId")
+  parent?: AppUser;
 
   @Column({
     type: DataType.JSONB,

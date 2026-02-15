@@ -213,7 +213,7 @@ export const getDashboardReminders = async (
             include: [
                 {
                     model: Patient,
-                    attributes: ["id", "stickerId", "fullName", "phone"],
+                    attributes: ["id", "diaryId", "fullName", "phone"],
                 },
             ],
             order: [["reminderDate", "DESC"]],
