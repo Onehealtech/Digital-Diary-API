@@ -42,49 +42,49 @@ router.patch("/reminders/:id/read", patientAuthCheck, markReminderAsRead);
 // Get patients needing follow-up (must be before /:id to avoid route conflict)
 router.get(
     "/follow-up",
-    newAuthCheck(["DOCTOR"]),
+    newAuthCheck([UserRole.DOCTOR]),
     getPatientsNeedingFollowUp
 );
 
 // Get patient by ID with full details
 router.get(
     "/:id",
-    newAuthCheck(["DOCTOR", "ASSISTANT", "VENDOR"]),
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
     getPatientById
 );
 
 // Update patient details
 router.put(
     "/:id",
-    newAuthCheck(["DOCTOR", "ASSISTANT"]),
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     updatePatient
 );
 
 // Prescribe tests to patient
 router.post(
     "/:id/tests",
-    newAuthCheck(["DOCTOR"]),
+    newAuthCheck([UserRole.DOCTOR]),
     prescribeTests
 );
 
 // Update test status
 router.put(
     "/:id/tests/:testName",
-    newAuthCheck(["DOCTOR"]),
+    newAuthCheck([UserRole.DOCTOR]),
     updateTestStatus
 );
 
 // Log call attempt
 router.post(
     "/:id/call",
-    newAuthCheck(["DOCTOR", "ASSISTANT"]),
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     logCallAttempt
 );
 
 // Get test progress
 router.get(
     "/:id/test-progress",
-    newAuthCheck(["DOCTOR", "ASSISTANT"]),
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     getTestProgress
 );
 

@@ -8,6 +8,7 @@ import {
     getDiaryEntryStats,
 } from "../controllers/scan.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 const router = Router();
 
@@ -19,42 +20,42 @@ const router = Router();
 // Get diary entry statistics
 router.get(
     "/stats",
-    authCheck(["DOCTOR"]),
+    authCheck([UserRole.DOCTOR]),
     getDiaryEntryStats
 );
 
 // Get pending reviews (must be before /:id to avoid route conflict)
 router.get(
     "/review/pending",
-    authCheck(["DOCTOR"]),
+    authCheck([UserRole.DOCTOR]),
     getEntriesNeedingReview
 );
 
 // Get all diary entries (with filters)
 router.get(
     "/",
-    authCheck(["DOCTOR", "ASSISTANT"]),
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     getAllDiaryEntries
 );
 
 // Get diary entry by ID
 router.get(
     "/:id",
-    authCheck(["DOCTOR", "ASSISTANT"]),
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     getDiaryEntryById
 );
 
 // Mark diary entry as reviewed
 router.put(
     "/:id/review",
-    authCheck(["DOCTOR"]),
+    authCheck([UserRole.DOCTOR]),
     reviewDiaryEntry
 );
 
 // Flag/unflag diary entry
 router.put(
     "/:id/flag",
-    authCheck(["DOCTOR"]),
+    authCheck([UserRole.DOCTOR]),
     toggleFlag
 );
 

@@ -4,6 +4,7 @@ import * as patientAuthController from "../controllers/patientAuth.controller";
 import * as setupController from "../controllers/setup.controller";
 import { DoctorAuthController } from "../controllers/auth.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 const router = express.Router();
 
@@ -21,13 +22,13 @@ router.post("/patient/verify-otp", patientAuthController.verifyOTP);
 // Authentication Enhancements
 router.get(
   "/auth/me",
-  authCheck(["SUPER_ADMIN", "DOCTOR", "ASSISTANT", "VENDOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
   DoctorAuthController.getCurrentUser
 );
 
 router.post(
   "/auth/logout",
-  authCheck(["SUPER_ADMIN", "DOCTOR", "ASSISTANT", "VENDOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
   DoctorAuthController.logout
 );
 

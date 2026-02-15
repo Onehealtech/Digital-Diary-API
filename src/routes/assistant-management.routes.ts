@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { staffController } from "../controllers/staff.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { UserRole } from "../utils/constants";
 
 const router = Router();
 
@@ -13,28 +14,28 @@ const router = Router();
 // Get all assistants (Super Admin sees all, Doctor sees their own)
 router.get(
   "/",
-  authCheck(["SUPER_ADMIN", "DOCTOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.getAllAssistants
 );
 
 // Get assistant by ID
 router.get(
   "/:id",
-  authCheck(["SUPER_ADMIN", "DOCTOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.getAssistantById
 );
 
 // Update assistant
 router.put(
   "/:id",
-  authCheck(["SUPER_ADMIN", "DOCTOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.updateAssistant
 );
 
 // Delete assistant
 router.delete(
   "/:id",
-  authCheck(["SUPER_ADMIN", "DOCTOR"]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.deleteAssistant
 );
 

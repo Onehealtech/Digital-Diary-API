@@ -47,12 +47,6 @@ export class Patient extends Model {
   address?: string;
 
   @Column({
-    type: DataType.STRING,
-    allowNull: true,
-  })
-  diaryId?: string;
-
-  @Column({
     type: DataType.UUID,
     allowNull: true,
   })
