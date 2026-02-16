@@ -70,6 +70,17 @@ export class AppUser extends Model {
   parent?: AppUser;
 
   @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  permissions?: {
+    viewPatients?: boolean;
+    callPatients?: boolean;
+    exportData?: boolean;
+    sendNotifications?: boolean;
+  };
+
+  @Column({
     type: DataType.BOOLEAN,
     defaultValue: false,
   })

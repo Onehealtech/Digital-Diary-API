@@ -7,6 +7,15 @@ import dashboardRoutes from "./dashboard.routes";
 import scanRoutes from "./scan.routes";
 import patientRoutes from "./patient.routes";
 import vendorRoutes from "./vendor.routes";
+import diaryRoutes from "./diary.routes";
+import taskRoutes from "./task.routes";
+import notificationRoutes from "./notification.routes";
+import diaryEntryRoutes from "./diary-entry.routes";
+import financialRoutes from "./financial.routes";
+import exportRoutes from "./export.routes";
+import doctorManagementRoutes from "./doctor-management.routes";
+import assistantManagementRoutes from "./assistant-management.routes";
+import auditRoutes from "./audit.routes";
 
 const router = express.Router();
 
@@ -18,6 +27,15 @@ router.use("/v1/clinic", clinicRoutes);   // Clinic routes (patient registration
 router.use("/v1/dashboard", dashboardRoutes); // Dashboard routes
 router.use("/v1/scan", scanRoutes);       // Scan routes (patient symptom logging)
 router.use("/v1/patient", patientRoutes); // Patient routes (profile, reminders)
-router.use("/v1/vendor", vendorRoutes);   // Vendor routes
+router.use("/v1/vendors", vendorRoutes);  // Vendor routes (sales, inventory, wallet)
+router.use("/v1", diaryRoutes);          // Diary routes (inventory, generation, approval)
+router.use("/v1/tasks", taskRoutes);     // Task routes (Doctor → Assistant task management)
+router.use("/v1/notifications", notificationRoutes); // Notification routes (Doctor/Assistant → Patient)
+router.use("/v1/diary-entries", diaryEntryRoutes); // Diary entry routes (Doctor/Assistant review system)
+router.use("/v1/financials", financialRoutes); // Financial routes (Transactions, Payouts, Statements)
+router.use("/v1/reports", exportRoutes); // Reports & Export routes (Patient data, Diary pages, Analytics)
+router.use("/v1/doctors", doctorManagementRoutes); // Doctor management routes (Super Admin)
+router.use("/v1/assistants", assistantManagementRoutes); // Assistant management routes (Super Admin & Doctor)
+router.use("/v1/audit-logs", auditRoutes); // Audit log routes (Super Admin only)
 
 export default router;

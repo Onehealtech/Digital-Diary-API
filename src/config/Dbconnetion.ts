@@ -4,15 +4,19 @@ import { AppUser } from '../models/Appuser';
 import { Patient } from '../models/Patient';
 import { ScanLog } from '../models/ScanLog';
 import { Reminder } from '../models/Reminder';
+import { VendorProfile } from '../models/VendorProfile';
+import { GeneratedDiary } from '../models/GeneratedDiary';
+import { Diary } from '../models/Diary';
+import { DiaryRequest } from '../models/DiaryRequest';
+import { Task } from '../models/Task';
+import { Notification } from '../models/Notification';
+import { Transaction } from '../models/Transaction';
+import { AuditLog } from '../models/AuditLog';
+import { Export } from '../models/Export';
 import { Order } from '../models/Order';
 import { SplitConfig } from '../models/SplitConfig';
 import { SplitTransaction } from '../models/SplitTransaction';
 import { WebhookLog } from '../models/WebhookLog';
-
-
-
-// Note: Patient, Organ, and CancerGroup use regular Sequelize (not sequelize-typescript)
-// and are initialized in their own model files via Model.init()
 
 // Load environment variables from .env file
 dotenv.config();
@@ -41,7 +45,25 @@ export const sequelize = new Sequelize({
   },
 
   // Register sequelize-typescript models
-  models: [AppUser, Patient, ScanLog, Reminder, Order, SplitConfig, SplitTransaction, WebhookLog],
+  models: [
+    AppUser,
+    Patient,
+    ScanLog,
+    Reminder,
+    VendorProfile,
+    GeneratedDiary,
+    Diary,
+    DiaryRequest,
+    Task,
+    Notification,
+    Transaction,
+    AuditLog,
+    Export,
+    Order,
+    SplitConfig,
+    SplitTransaction,
+    WebhookLog,
+  ],
 
   // Logging configuration
   logging: console.log, // Log all SQL queries (disable in production)

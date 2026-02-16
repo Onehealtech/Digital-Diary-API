@@ -1,5 +1,15 @@
 import { Router } from "express";
-import { createPatient, getDoctorPatients } from "../controllers/patient.controller";
+import {
+    createPatient,
+    getDoctorPatients,
+    getPatientById,
+    updatePatient,
+    prescribeTests,
+    updateTestStatus,
+    logCallAttempt,
+    getTestProgress,
+    getPatientsNeedingFollowUp,
+} from "../controllers/patient.controller";
 import {
     requestEditOTP,
     updateProfile,
@@ -10,6 +20,7 @@ import {
     markReminderAsRead,
 } from "../controllers/reminder.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
+import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = Router();
@@ -26,5 +37,55 @@ router.get("/profile", patientAuthCheck, getProfile);
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", patientAuthCheck, getPatientReminders);
 router.patch("/reminders/:id/read", patientAuthCheck, markReminderAsRead);
+
+// Enhanced Patient APIs (Doctor/Assistant access)
+// Get patients needing follow-up (must be before /:id to avoid route conflict)
+router.get(
+    "/follow-up",
+    newAuthCheck([UserRole.DOCTOR]),
+    getPatientsNeedingFollowUp
+);
+
+// Get patient by ID with full details
+router.get(
+    "/:id",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+    getPatientById
+);
+
+// Update patient details
+router.put(
+    "/:id",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    updatePatient
+);
+
+// Prescribe tests to patient
+router.post(
+    "/:id/tests",
+    newAuthCheck([UserRole.DOCTOR]),
+    prescribeTests
+);
+
+// Update test status
+router.put(
+    "/:id/tests/:testName",
+    newAuthCheck([UserRole.DOCTOR]),
+    updateTestStatus
+);
+
+// Log call attempt
+router.post(
+    "/:id/call",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    logCallAttempt
+);
+
+// Get test progress
+router.get(
+    "/:id/test-progress",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    getTestProgress
+);
 
 export default router;

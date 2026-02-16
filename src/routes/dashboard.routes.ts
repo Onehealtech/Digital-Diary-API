@@ -20,4 +20,32 @@ router.get(
     getDashboardReminders
 );
 
+// Super Admin dashboard statistics
+router.get(
+    "/super-admin",
+    authCheck([UserRole.SUPER_ADMIN]),
+    dashboardController.getSuperAdminDashboard
+);
+
+// Vendor dashboard statistics
+router.get(
+    "/vendor",
+    authCheck([UserRole.VENDOR]),
+    dashboardController.getVendorDashboard
+);
+
+// Doctor dashboard statistics
+router.get(
+    "/doctor",
+    authCheck([UserRole.DOCTOR]),
+    dashboardController.getDoctorDashboard
+);
+
+// Assistant dashboard statistics
+router.get(
+    "/assistant",
+    authCheck([UserRole.ASSISTANT]),
+    dashboardController.getAssistantDashboard
+);
+
 export default router;
