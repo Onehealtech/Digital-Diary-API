@@ -24,7 +24,7 @@ export const signupSuperAdmin = async (
 
         // Check if Super Admin already exists
         const existingSuperAdmin = await AppUser.findOne({
-            where: { role: "SUPER_ADMIN" },
+            where: { email: email },
         });
 
         if (existingSuperAdmin) {
