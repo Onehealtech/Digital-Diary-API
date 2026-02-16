@@ -425,6 +425,14 @@ class DashboardService {
       permissions: assistant.permissions || {},
     };
   }
+
+  async getAllSuperAdmins() {
+    const getSuperAdmins = await AppUser.findAll({
+      where: { role: "SUPER_ADMIN" },
+      attributes: ["id", "fullName", "email", "createdAt"],
+    });
+    return getSuperAdmins;
+  }
 }
 
 export const dashboardService = new DashboardService();

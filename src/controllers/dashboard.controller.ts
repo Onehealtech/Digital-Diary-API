@@ -121,6 +121,24 @@ export const getSuperAdminDashboard = async (
         sendError(res, error.message);
     }
 };
+export const getAllSuperAdmins = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const role = req.user?.role;
+
+        if (role !== "SUPER_ADMIN") {
+            sendError(res, "Unauthorized: Only Super Admins can access this dashboard", 403);
+            return;
+        }
+
+        const stats = await dashboardService.getAllSuperAdmins();
+        sendResponse(res, stats, "Super Admins retrieved successfully");
+    } catch (error: any) {
+        sendError(res, error.message);
+    }
+};
 
 /**
  * GET /api/v1/dashboard/vendor

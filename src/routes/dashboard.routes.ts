@@ -26,7 +26,17 @@ router.get(
     authCheck([UserRole.SUPER_ADMIN]),
     dashboardController.getSuperAdminDashboard
 );
+router.get(
+    "/super-admin",
+    authCheck([UserRole.SUPER_ADMIN]),
+    dashboardController.getSuperAdminDashboard
+);
 
+router.get(
+    "/getAllSuperAdmins",
+    authCheck([UserRole.SUPER_ADMIN]),
+    dashboardController.getAllSuperAdmins
+);
 // Vendor dashboard statistics
 router.get(
     "/vendor",
