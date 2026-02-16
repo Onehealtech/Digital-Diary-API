@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { ImageService } from "../service/image.service";
 
-
 export const uploadImage = async (req: Request, res: Response) => {
   try {
     const { id }: any = req.params;
 
-    const image = await ImageService.uploadImage(id, req.file!);
+    if (!req.file) {
+      return res.status(400).json({
+        message: "No file uploaded",
+      });
+    }
+
+    const image = await ImageService.uploadImage(id, req.file as Express.Multer.File);
 
     return res.status(201).json({
       message: "Image uploaded successfully",

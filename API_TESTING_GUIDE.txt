@@ -1,0 +1,1651 @@
+================================================================================
+                    DIGITAL DIARY API - TESTING GUIDE
+                     Complete API Reference with All Fields
+================================================================================
+
+BASE URL: http://localhost:5050/api/v1
+
+AUTHENTICATION HEADER FORMAT:
+Authorization: Bearer <JWT_TOKEN>
+
+COMMON RESPONSE FORMAT:
+{
+  "success": true/false,
+  "message": "Response message",
+  "data": { ... }
+}
+
+USER ROLES:
+- SUPER_ADMIN: Full system access
+- DOCTOR: Manage patients, tasks, assistants
+- ASSISTANT: Execute tasks, assist doctors
+- VENDOR: Manage inventory, sell diaries
+- PATIENT: View diary, profile, reminders
+
+================================================================================
+                        1. AUTHENTICATION APIs
+================================================================================
+
+1.1 STAFF LOGIN (2FA - STEP 1)
+--------------------------------
+Method: POST
+URL: /api/v1/auth/login
+Auth: None (Public)
+Body:
+{
+  "email": "doctor@example.com",          // Required (string)
+  "password": "SecurePassword123"         // Required (string)
+}
+Response Returns: { email } - Use this email for 2FA
+
+
+1.2 STAFF VERIFY 2FA (STEP 2)
+------------------------------
+Method: POST
+URL: /api/v1/auth/verify-2fa
+Auth: None (Public)
+Body:
+{
+  "email": "doctor@example.com",          // Required (string)
+  "otp": "123456"                         // Required (string) - Check email/console for OTP
+}
+Response Returns: { token, refreshToken, user }
+
+
+1.3 PATIENT LOGIN (STEP 1)
+---------------------------
+Method: POST
+URL: /api/v1/patient/login
+Auth: None (Public)
+Body:
+{
+  "diaryId": "DIARY-12345"                // Required (string) - Sticker ID from diary
+}
+Response Returns: { message } - OTP sent confirmation
+
+
+1.4 PATIENT VERIFY OTP (STEP 2)
+--------------------------------
+Method: POST
+URL: /api/v1/patient/verify-otp
+Auth: None (Public)
+Body:
+{
+  "diaryId": "DIARY-12345",               // Required (string)
+  "otp": "1234"                           // Required (string) - MVP uses hardcoded "1234"
+}
+Response Returns: { token, patient }
+
+
+1.5 GET CURRENT USER
+--------------------
+Method: GET
+URL: /api/v1/auth/me
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Body: None
+Response Returns: Current user profile
+
+
+1.6 LOGOUT
+----------
+Method: POST
+URL: /api/v1/auth/logout
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Body: None
+Response Returns: Success message
+
+
+1.7 REFRESH TOKEN
+-----------------
+Method: POST
+URL: /api/v1/auth/refresh
+Auth: None (Public)
+Body:
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  // Required (string)
+}
+Response Returns: { token, refreshToken }
+
+
+1.8 FORGOT PASSWORD
+-------------------
+Method: POST
+URL: /api/v1/auth/forgot-password
+Auth: None (Public)
+Body:
+{
+  "email": "doctor@example.com"           // Required (string)
+}
+Response Returns: Reset token sent to email
+
+
+1.9 RESET PASSWORD
+------------------
+Method: POST
+URL: /api/v1/auth/reset-password
+Auth: None (Public)
+Body:
+{
+  "resetToken": "abc123xyz789",           // Required (string)
+  "newPassword": "NewSecurePass123"       // Required (string, min 6 chars)
+}
+Response Returns: Password updated successfully
+
+
+================================================================================
+                           2. SETUP APIs
+================================================================================
+
+2.1 CREATE SUPER ADMIN (ONE-TIME SETUP)
+----------------------------------------
+Method: POST
+URL: /api/v1/auth/signup-super-admin
+Auth: None (Public - Disable after first use)
+Body:
+{
+  "fullName": "Super Admin",              // Required (string)
+  "email": "admin@hospital.com",          // Required (string)
+  "password": "AdminPass123"              // Required (string)
+}
+Response Returns: Super admin created successfully
+
+
+================================================================================
+                         3. DASHBOARD APIs
+================================================================================
+
+3.1 GET PATIENTS LIST
+---------------------
+Method: GET
+URL: /api/v1/dashboard/patients?page=1&limit=10&status=ACTIVE&search=john
+Auth: DOCTOR | ASSISTANT | VENDOR
+Query Parameters:
+- page (number, optional, default: 1)
+- limit (number, optional, default: 10)
+- status (string, optional: ACTIVE/CRITICAL/COMPLETED)
+- search (string, optional)
+Body: None
+Response Returns: Paginated list of patients
+
+
+3.2 GET DASHBOARD REMINDERS
+----------------------------
+Method: GET
+URL: /api/v1/dashboard/reminders?status=PENDING&patientId=patient-123
+Auth: DOCTOR | ASSISTANT
+Query Parameters:
+- status (string, optional: PENDING/READ/EXPIRED)
+- patientId (string, optional)
+Body: None
+Response Returns: List of reminders
+
+
+3.3 GET SUPER ADMIN DASHBOARD
+------------------------------
+Method: GET
+URL: /api/v1/dashboard/super-admin
+Auth: SUPER_ADMIN
+Body: None
+Response Returns: System statistics, revenue, users, transactions
+
+
+3.4 GET VENDOR DASHBOARD
+------------------------
+Method: GET
+URL: /api/v1/dashboard/vendor
+Auth: VENDOR
+Body: None
+Response Returns: Sales stats, inventory, earnings
+
+
+3.5 GET DOCTOR DASHBOARD
+------------------------
+Method: GET
+URL: /api/v1/dashboard/doctor
+Auth: DOCTOR
+Body: None
+Response Returns: Patient stats, pending tasks, recent activities
+
+
+3.6 GET ASSISTANT DASHBOARD
+---------------------------
+Method: GET
+URL: /api/v1/dashboard/assistant
+Auth: ASSISTANT
+Body: None
+Response Returns: Assigned tasks, patient list, activities
+
+
+================================================================================
+                      4. PATIENT MANAGEMENT APIs
+================================================================================
+
+4.1 CREATE PATIENT (LEGACY)
+----------------------------
+Method: POST
+URL: /api/v1/patient
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "fullName": "John Doe",                 // Required (string)
+  "age": 45,                              // Optional (number)
+  "gender": "Male",                       // Optional (string)
+  "phone": "+1234567890",                 // Optional (string)
+  "diaryId": "DIARY-12345"                // Optional (string)
+}
+Response Returns: Created patient object
+
+
+4.2 GET ALL PATIENTS (LEGACY)
+------------------------------
+Method: GET
+URL: /api/v1/patient/getAllPatients
+Auth: DOCTOR | ASSISTANT
+Body: None
+Response Returns: List of all patients
+
+
+4.3 GET PATIENT BY ID
+---------------------
+Method: GET
+URL: /api/v1/patient/:id
+Auth: DOCTOR | ASSISTANT | VENDOR
+URL Parameters:
+- id: patient-uuid-123
+Body: None
+Response Returns: Full patient details with tests, diary entries
+
+
+4.4 UPDATE PATIENT
+------------------
+Method: PUT
+URL: /api/v1/patient/:id
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: patient-uuid-123
+Body:
+{
+  "fullName": "John Doe Updated",         // Optional (string)
+  "age": 46,                              // Optional (number)
+  "gender": "Male",                       // Optional (string)
+  "phone": "+1234567890",                 // Optional (string)
+  "caseType": "CHEMOTHERAPY",             // Optional (PERI_OPERATIVE/POST_OPERATIVE/FOLLOW_UP/CHEMOTHERAPY/RADIOLOGY)
+  "status": "ACTIVE"                      // Optional (ACTIVE/CRITICAL/COMPLETED)
+}
+Response Returns: Updated patient object
+
+
+4.5 PRESCRIBE TESTS TO PATIENT
+-------------------------------
+Method: POST
+URL: /api/v1/patient/:id/tests
+Auth: DOCTOR
+URL Parameters:
+- id: patient-uuid-123
+Body:
+{
+  "tests": [                              // Required (array of strings)
+    "Blood Test",
+    "X-Ray",
+    "MRI"
+  ]
+}
+Response Returns: Patient with updated prescribed tests
+
+
+4.6 UPDATE TEST STATUS
+----------------------
+Method: PUT
+URL: /api/v1/patient/:id/tests/:testName
+Auth: DOCTOR
+URL Parameters:
+- id: patient-uuid-123
+- testName: Blood%20Test (URL encoded)
+Body:
+{
+  "completed": true,                      // Optional (boolean)
+  "completedDate": "2024-02-15",          // Optional (date ISO format)
+  "reportReceived": true,                 // Optional (boolean)
+  "reportReceivedDate": "2024-02-16",     // Optional (date ISO format)
+  "reportUrl": "https://reports.com/123"  // Optional (string)
+}
+Response Returns: Updated test status
+
+
+4.7 LOG CALL ATTEMPT
+--------------------
+Method: POST
+URL: /api/v1/patient/:id/call
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: patient-uuid-123
+Body:
+{
+  "callDate": "2024-02-16T10:30:00Z",     // Optional (date ISO format)
+  "outcome": "Patient answered, doing well",  // Required (string)
+  "notes": "Patient reported mild side effects",  // Optional (string)
+  "followUpRequired": true,               // Optional (boolean)
+  "followUpDate": "2024-02-20"            // Optional (date)
+}
+Response Returns: Call log created
+
+
+4.8 GET TEST PROGRESS
+---------------------
+Method: GET
+URL: /api/v1/patient/:id/test-progress
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: patient-uuid-123
+Body: None
+Response Returns: Test completion statistics
+
+
+4.9 GET PATIENTS NEEDING FOLLOW-UP
+-----------------------------------
+Method: GET
+URL: /api/v1/patient/follow-up
+Auth: DOCTOR
+Body: None
+Response Returns: List of patients requiring follow-up
+
+
+4.10 REQUEST EDIT OTP (PATIENT PROFILE)
+---------------------------------------
+Method: POST
+URL: /api/v1/patient/request-edit-otp
+Auth: PATIENT (Patient Token)
+Body: None
+Response Returns: OTP sent message
+
+
+4.11 UPDATE PATIENT PROFILE
+---------------------------
+Method: POST
+URL: /api/v1/patient/update-profile
+Auth: PATIENT (Patient Token)
+Body:
+{
+  "otp": "1234",                          // Required (string) - MVP uses "1234"
+  "fullName": "Jane Doe Updated",         // Optional (string)
+  "age": 42,                              // Optional (number)
+  "gender": "Female",                     // Optional (string)
+  "phone": "+1987654321"                  // Optional (string)
+}
+Response Returns: Updated patient profile
+
+
+4.12 GET PATIENT PROFILE
+------------------------
+Method: GET
+URL: /api/v1/patient/profile
+Auth: PATIENT (Patient Token)
+Body: None
+Response Returns: Patient profile details
+
+
+4.13 GET PATIENT REMINDERS
+--------------------------
+Method: GET
+URL: /api/v1/patient/reminders?status=PENDING
+Auth: PATIENT (Patient Token)
+Query Parameters:
+- status (string, optional: PENDING/READ/EXPIRED)
+Body: None
+Response Returns: List of patient reminders
+
+
+4.14 MARK REMINDER AS READ
+--------------------------
+Method: PATCH
+URL: /api/v1/patient/reminders/:id/read
+Auth: PATIENT (Patient Token)
+URL Parameters:
+- id: reminder-uuid-123
+Body: None
+Response Returns: Updated reminder
+
+
+================================================================================
+                      5. DIARY MANAGEMENT APIs
+================================================================================
+
+5.1 GENERATE DIARIES
+--------------------
+Method: POST
+URL: /api/v1/generated-diaries/generate
+Auth: SUPER_ADMIN
+Body:
+{
+  "quantity": 100,                        // Required (number)
+  "diaryType": "STANDARD"                 // Optional (string)
+}
+Response Returns: Generated diary list
+
+
+5.2 GET ALL GENERATED DIARIES
+------------------------------
+Method: GET
+URL: /api/v1/generated-diaries?page=1&limit=20&status=AVAILABLE&vendorId=vendor-123
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- status (string, optional: AVAILABLE/ASSIGNED/SOLD)
+- vendorId (string, optional)
+- search (string, optional)
+Body: None
+Response Returns: Paginated diary list
+
+
+5.3 GET DIARY BY ID
+-------------------
+Method: GET
+URL: /api/v1/generated-diaries/:id
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: diary-uuid-123
+Body: None
+Response Returns: Diary details
+
+
+5.4 ASSIGN DIARY TO VENDOR
+---------------------------
+Method: PUT
+URL: /api/v1/generated-diaries/:id/assign
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: diary-uuid-123
+Body:
+{
+  "vendorId": "vendor-uuid-123"           // Required (string)
+}
+Response Returns: Updated diary with vendor assignment
+
+
+5.5 BULK ASSIGN DIARIES
+------------------------
+Method: PUT
+URL: /api/v1/generated-diaries/bulk-assign
+Auth: SUPER_ADMIN
+Body:
+{
+  "diaryIds": [                           // Required (array of strings)
+    "diary-1",
+    "diary-2",
+    "diary-3"
+  ],
+  "vendorId": "vendor-uuid-123"           // Required (string)
+}
+Response Returns: Bulk assignment result
+
+
+5.6 UNASSIGN DIARY
+------------------
+Method: PUT
+URL: /api/v1/generated-diaries/:id/unassign
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: diary-uuid-123
+Body: None
+Response Returns: Diary unassigned
+
+
+5.7 APPROVE DIARY SALE
+----------------------
+Method: PUT
+URL: /api/v1/diaries/:id/approve
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: diary-uuid-123
+Body: None
+Response Returns: Diary sale approved
+
+
+5.8 REJECT DIARY SALE
+---------------------
+Method: PUT
+URL: /api/v1/diaries/:id/reject
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: diary-uuid-123
+Body:
+{
+  "reason": "Incomplete patient information"  // Required (string)
+}
+Response Returns: Diary sale rejected
+
+
+5.9 GET ALL DIARY REQUESTS
+---------------------------
+Method: GET
+URL: /api/v1/diary-requests?page=1&vendorId=vendor-123&status=PENDING
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- vendorId (string, optional)
+- status (string, optional: PENDING/APPROVED/REJECTED)
+Body: None
+Response Returns: List of diary requests
+
+
+5.10 CREATE DIARY REQUEST
+-------------------------
+Method: POST
+URL: /api/v1/diary-requests
+Auth: VENDOR
+Body:
+{
+  "quantity": 50,                         // Required (number)
+  "message": "Need urgent stock"          // Optional (string)
+}
+Response Returns: Created diary request
+
+
+5.11 APPROVE DIARY REQUEST
+--------------------------
+Method: PUT
+URL: /api/v1/diary-requests/:id/approve
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: request-uuid-123
+Body: None
+Response Returns: Request approved
+
+
+5.12 REJECT DIARY REQUEST
+-------------------------
+Method: PUT
+URL: /api/v1/diary-requests/:id/reject
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: request-uuid-123
+Body:
+{
+  "reason": "Insufficient inventory"      // Required (string)
+}
+Response Returns: Request rejected
+
+
+================================================================================
+                       6. TASK MANAGEMENT APIs
+================================================================================
+
+6.1 GET ALL TASKS
+-----------------
+Method: GET
+URL: /api/v1/tasks?page=1&limit=20&status=PENDING&priority=high
+Auth: DOCTOR | ASSISTANT
+Query Parameters:
+- page (number, optional, default: 1)
+- limit (number, optional, default: 20)
+- status (string, optional: PENDING/IN_PROGRESS/COMPLETED)
+- priority (string, optional: low/medium/high)
+- taskType (string, optional)
+Body: None
+Response Returns: Paginated task list
+Note: Doctor sees created tasks, Assistant sees assigned tasks
+
+
+6.2 GET TASK BY ID
+------------------
+Method: GET
+URL: /api/v1/tasks/:id
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: task-uuid-123
+Body: None
+Response Returns: Task details
+
+
+6.3 CREATE TASK
+---------------
+Method: POST
+URL: /api/v1/tasks
+Auth: DOCTOR
+Body:
+{
+  "assignedTo": "assistant-uuid-123",     // Required (string) - Assistant ID
+  "title": "Follow up with patient",      // Required (string)
+  "description": "Check blood test results",  // Optional (string)
+  "taskType": "FOLLOW_UP",                // Required (string)
+  "priority": "high",                     // Optional (low/medium/high, default: medium)
+  "dueDate": "2024-02-20",                // Optional (date)
+  "relatedPatients": [                    // Optional (array of strings)
+    "patient-uuid-456"
+  ]
+}
+Response Returns: Created task
+
+
+6.4 UPDATE TASK
+---------------
+Method: PUT
+URL: /api/v1/tasks/:id
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: task-uuid-123
+Body:
+{
+  "title": "Updated title",               // Optional (string)
+  "description": "Updated description",   // Optional (string)
+  "status": "IN_PROGRESS",                // Optional (PENDING/IN_PROGRESS/COMPLETED)
+  "priority": "high",                     // Optional (low/medium/high)
+  "dueDate": "2024-02-22",                // Optional (date)
+  "notes": "Started calling patients"     // Optional (string)
+}
+Response Returns: Updated task
+
+
+6.5 COMPLETE TASK
+-----------------
+Method: PUT
+URL: /api/v1/tasks/:id/complete
+Auth: ASSISTANT
+URL Parameters:
+- id: task-uuid-123
+Body:
+{
+  "notes": "All patients contacted successfully"  // Optional (string)
+}
+Response Returns: Task marked as completed
+
+
+6.6 DELETE TASK
+---------------
+Method: DELETE
+URL: /api/v1/tasks/:id
+Auth: DOCTOR
+URL Parameters:
+- id: task-uuid-123
+Body: None
+Response Returns: Task deleted
+
+
+================================================================================
+                        7. NOTIFICATION APIs
+================================================================================
+
+7.1 GET NOTIFICATION STATISTICS
+--------------------------------
+Method: GET
+URL: /api/v1/notifications/stats
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Body: None
+Response Returns: Notification statistics
+
+
+7.2 GET ALL NOTIFICATIONS
+--------------------------
+Method: GET
+URL: /api/v1/notifications?page=1&limit=20&type=REMINDER&read=false
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Query Parameters:
+- page (number, optional, default: 1)
+- limit (number, optional, default: 20)
+- type (string, optional)
+- read (boolean, optional)
+- severity (string, optional: low/medium/high)
+Body: None
+Response Returns: Paginated notification list
+
+
+7.3 GET NOTIFICATION BY ID
+---------------------------
+Method: GET
+URL: /api/v1/notifications/:id
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+URL Parameters:
+- id: notification-uuid-123
+Body: None
+Response Returns: Notification details
+
+
+7.4 CREATE SINGLE NOTIFICATION
+-------------------------------
+Method: POST
+URL: /api/v1/notifications
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "recipientId": "patient-uuid-123",      // Required (string)
+  "recipientType": "patient",             // Optional (default: patient)
+  "type": "APPOINTMENT_REMINDER",         // Required (string)
+  "severity": "medium",                   // Optional (low/medium/high)
+  "title": "Appointment Reminder",        // Required (string)
+  "message": "Your appointment is tomorrow",  // Required (string)
+  "relatedTaskId": "task-uuid-456",       // Optional (string)
+  "relatedTestName": "Blood Test",        // Optional (string)
+  "actionUrl": "/appointments/view/123",  // Optional (string)
+  "deliveryMethod": "push"                // Optional (push/email/sms)
+}
+Response Returns: Created notification
+
+
+7.5 CREATE BULK NOTIFICATIONS
+------------------------------
+Method: POST
+URL: /api/v1/notifications/bulk
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "type": "GENERAL_ANNOUNCEMENT",         // Required (string)
+  "severity": "low",                      // Optional (low/medium/high)
+  "title": "Clinic Closure Notice",       // Required (string)
+  "message": "Clinic closed on Feb 20",   // Required (string)
+  "actionUrl": "/announcements/123",      // Optional (string)
+  "deliveryMethod": "push",               // Optional (push/email/sms)
+  "filters": {                            // Optional (object)
+    "status": "ACTIVE"
+  }
+}
+Response Returns: Bulk notification result
+
+
+7.6 MARK NOTIFICATION AS READ
+------------------------------
+Method: PUT
+URL: /api/v1/notifications/:id/read
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+URL Parameters:
+- id: notification-uuid-123
+Body: None
+Response Returns: Notification marked as read
+
+
+7.7 MARK MULTIPLE NOTIFICATIONS AS READ
+----------------------------------------
+Method: PUT
+URL: /api/v1/notifications/bulk-read
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Body:
+{
+  "notificationIds": [                    // Required (array of strings)
+    "notif-1",
+    "notif-2",
+    "notif-3"
+  ]
+}
+Response Returns: Multiple notifications marked as read
+
+
+7.8 MARK ALL NOTIFICATIONS AS READ
+-----------------------------------
+Method: PUT
+URL: /api/v1/notifications/mark-all-read
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+Body: None
+Response Returns: All notifications marked as read
+
+
+7.9 DELETE NOTIFICATION
+-----------------------
+Method: DELETE
+URL: /api/v1/notifications/:id
+Auth: SUPER_ADMIN | DOCTOR | ASSISTANT | VENDOR
+URL Parameters:
+- id: notification-uuid-123
+Body: None
+Response Returns: Notification deleted
+
+
+================================================================================
+                     8. DIARY ENTRY REVIEW APIs
+================================================================================
+
+8.1 GET DIARY ENTRY STATISTICS
+-------------------------------
+Method: GET
+URL: /api/v1/diary-entries/stats
+Auth: DOCTOR
+Body: None
+Response Returns: Statistics (total, reviewed, pending, flagged)
+
+
+8.2 GET PENDING REVIEWS
+------------------------
+Method: GET
+URL: /api/v1/diary-entries/review/pending
+Auth: DOCTOR
+Body: None
+Response Returns: List of diary entries needing review
+
+
+8.3 GET ALL DIARY ENTRIES
+--------------------------
+Method: GET
+URL: /api/v1/diary-entries?page=1&reviewed=false&patientId=patient-123
+Auth: DOCTOR | ASSISTANT
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- pageType (string, optional)
+- reviewed (boolean, optional)
+- flagged (boolean, optional)
+- patientId (string, optional)
+- startDate (date, optional)
+- endDate (date, optional)
+Body: None
+Response Returns: Paginated diary entry list
+
+
+8.4 GET DIARY ENTRY BY ID
+--------------------------
+Method: GET
+URL: /api/v1/diary-entries/:id
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: entry-uuid-123
+Body: None
+Response Returns: Diary entry details
+
+
+8.5 REVIEW DIARY ENTRY
+----------------------
+Method: PUT
+URL: /api/v1/diary-entries/:id/review
+Auth: DOCTOR
+URL Parameters:
+- id: entry-uuid-123
+Body:
+{
+  "doctorNotes": "Patient showing good progress",  // Optional (string)
+  "flagged": false                        // Optional (boolean)
+}
+Response Returns: Reviewed diary entry
+
+
+8.6 FLAG/UNFLAG DIARY ENTRY
+----------------------------
+Method: PUT
+URL: /api/v1/diary-entries/:id/flag
+Auth: DOCTOR
+URL Parameters:
+- id: entry-uuid-123
+Body:
+{
+  "flagged": true                         // Required (boolean)
+}
+Response Returns: Updated flag status
+
+
+================================================================================
+                         9. FINANCIAL APIs
+================================================================================
+
+9.1 GET FINANCIAL DASHBOARD
+----------------------------
+Method: GET
+URL: /api/v1/financials/dashboard
+Auth: SUPER_ADMIN
+Body: None
+Response Returns: Financial overview, revenue, payouts
+
+
+9.2 GET ALL TRANSACTIONS
+-------------------------
+Method: GET
+URL: /api/v1/financials/transactions?page=1&type=SALE&startDate=2024-01-01
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- type (string, optional: SALE/PAYOUT/REFUND)
+- startDate (date, optional)
+- endDate (date, optional)
+- vendorId (string, optional) - Super Admin only
+Body: None
+Response Returns: Paginated transaction list
+Note: Super Admin sees all, Vendor sees their own
+
+
+9.3 GET TRANSACTION STATISTICS
+-------------------------------
+Method: GET
+URL: /api/v1/financials/stats?vendorId=vendor-123
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- vendorId (string, optional) - Super Admin only
+Body: None
+Response Returns: Transaction statistics
+
+
+9.4 GET FINANCIAL STATEMENT
+----------------------------
+Method: GET
+URL: /api/v1/financials/statement?vendorId=vendor-123&startDate=2024-01-01&endDate=2024-01-31
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- vendorId (string, required for Super Admin, auto-filled for Vendor)
+- startDate (date, optional)
+- endDate (date, optional)
+Body: None
+Response Returns: Financial statement
+
+
+9.5 PROCESS PAYOUT
+------------------
+Method: POST
+URL: /api/v1/financials/payout
+Auth: SUPER_ADMIN
+Body:
+{
+  "vendorId": "vendor-uuid-123",          // Required (string)
+  "amount": 5000.00,                      // Required (number > 0)
+  "paymentMethod": "bank_transfer",       // Required (string)
+  "description": "Monthly payout Jan 2024"  // Optional (string)
+}
+Response Returns: Payout transaction
+
+
+================================================================================
+                      10. REPORT/EXPORT APIs
+================================================================================
+
+10.1 EXPORT PATIENT DATA
+------------------------
+Method: POST
+URL: /api/v1/reports/patient-data
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "patientId": "patient-uuid-123",        // Required (string)
+  "format": "pdf",                        // Optional (pdf/excel/csv, default: pdf)
+  "includeTestHistory": true,             // Optional (boolean)
+  "includeDiaryEntries": true             // Optional (boolean)
+}
+Response Returns: Export job created
+
+
+10.2 EXPORT DIARY PAGES
+-----------------------
+Method: POST
+URL: /api/v1/reports/diary-pages
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "patientId": "patient-uuid-123",        // Required (string)
+  "format": "zip",                        // Optional (pdf/zip, default: pdf)
+  "startDate": "2024-01-01",              // Optional (date)
+  "endDate": "2024-01-31"                 // Optional (date)
+}
+Response Returns: Export job created
+
+
+10.3 EXPORT TEST SUMMARY
+------------------------
+Method: POST
+URL: /api/v1/reports/test-summary
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "patientId": "patient-uuid-123",        // Required (string)
+  "format": "excel"                       // Optional (pdf/excel, default: pdf)
+}
+Response Returns: Export job created
+
+
+10.4 GET USER EXPORTS
+---------------------
+Method: GET
+URL: /api/v1/reports/exports?page=1&limit=20
+Auth: DOCTOR | ASSISTANT | SUPER_ADMIN
+Query Parameters:
+- page (number, optional, default: 1)
+- limit (number, optional, default: 20)
+Body: None
+Response Returns: List of export jobs
+
+
+10.5 DOWNLOAD EXPORT
+--------------------
+Method: GET
+URL: /api/v1/reports/exports/:id/download
+Auth: DOCTOR | ASSISTANT | SUPER_ADMIN
+URL Parameters:
+- id: export-uuid-123
+Body: None
+Response Returns: Download URL or file
+
+
+10.6 DELETE EXPORT
+------------------
+Method: DELETE
+URL: /api/v1/reports/exports/:id
+Auth: DOCTOR | ASSISTANT | SUPER_ADMIN
+URL Parameters:
+- id: export-uuid-123
+Body: None
+Response Returns: Export deleted
+
+
+10.7 GET PATIENT ANALYTICS
+--------------------------
+Method: GET
+URL: /api/v1/reports/analytics/patient/:id
+Auth: DOCTOR | ASSISTANT
+URL Parameters:
+- id: patient-uuid-123
+Body: None
+Response Returns: Patient analytics and trends
+
+
+================================================================================
+                      11. STAFF MANAGEMENT APIs
+================================================================================
+
+11.1 GET ALL DOCTORS
+--------------------
+Method: GET
+URL: /api/v1/doctors?page=1&search=john
+Auth: SUPER_ADMIN
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- search (string, optional)
+Body: None
+Response Returns: List of doctors
+
+
+11.2 GET DOCTOR BY ID
+---------------------
+Method: GET
+URL: /api/v1/doctors/:id
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: doctor-uuid-123
+Body: None
+Response Returns: Doctor details
+
+
+11.3 UPDATE DOCTOR
+------------------
+Method: PUT
+URL: /api/v1/doctors/:id
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: doctor-uuid-123
+Body:
+{
+  "fullName": "Dr. Jane Smith",           // Optional (string)
+  "email": "doctor@example.com",          // Optional (string)
+  "phone": "+1234567890"                  // Optional (string)
+}
+Response Returns: Updated doctor
+
+
+11.4 DELETE DOCTOR
+------------------
+Method: DELETE
+URL: /api/v1/doctors/:id
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: doctor-uuid-123
+Body: None
+Response Returns: Doctor deleted
+
+
+11.5 CREATE ASSISTANT (BY DOCTOR)
+---------------------------------
+Method: POST
+URL: /api/v1/doctor/create-assistant
+Auth: DOCTOR
+Body:
+{
+  "fullName": "Assistant Name",           // Required (string)
+  "email": "assistant@example.com",       // Required (string)
+  "phone": "+1234567890"                  // Optional (string)
+}
+Response Returns: Created assistant
+
+
+11.6 GET ALL ASSISTANTS
+-----------------------
+Method: GET
+URL: /api/v1/assistants?page=1&search=john
+Auth: SUPER_ADMIN | DOCTOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- search (string, optional)
+Body: None
+Response Returns: List of assistants
+Note: Super Admin sees all, Doctor sees their own
+
+
+11.7 GET ASSISTANT BY ID
+------------------------
+Method: GET
+URL: /api/v1/assistants/:id
+Auth: SUPER_ADMIN | DOCTOR
+URL Parameters:
+- id: assistant-uuid-123
+Body: None
+Response Returns: Assistant details
+
+
+11.8 UPDATE ASSISTANT
+---------------------
+Method: PUT
+URL: /api/v1/assistants/:id
+Auth: SUPER_ADMIN | DOCTOR
+URL Parameters:
+- id: assistant-uuid-123
+Body:
+{
+  "fullName": "Updated Name",             // Optional (string)
+  "email": "new@example.com",             // Optional (string)
+  "phone": "+1987654321"                  // Optional (string)
+}
+Response Returns: Updated assistant
+
+
+11.9 DELETE ASSISTANT
+---------------------
+Method: DELETE
+URL: /api/v1/assistants/:id
+Auth: SUPER_ADMIN | DOCTOR
+URL Parameters:
+- id: assistant-uuid-123
+Body: None
+Response Returns: Assistant deleted
+
+
+================================================================================
+                        12. AUDIT LOG APIs
+================================================================================
+
+12.1 GET AUDIT STATISTICS
+-------------------------
+Method: GET
+URL: /api/v1/audit-logs/stats?startDate=2024-01-01&endDate=2024-01-31
+Auth: SUPER_ADMIN
+Query Parameters:
+- startDate (date, optional)
+- endDate (date, optional)
+Body: None
+Response Returns: Audit statistics
+
+
+12.2 SEARCH AUDIT LOGS
+----------------------
+Method: GET
+URL: /api/v1/audit-logs/search?q=login&page=1
+Auth: SUPER_ADMIN
+Query Parameters:
+- q (string, required) - Search query
+- page (number, optional)
+- limit (number, optional)
+Body: None
+Response Returns: Search results
+
+
+12.3 GET USER AUDIT LOGS
+------------------------
+Method: GET
+URL: /api/v1/audit-logs/user/:userId?page=1
+Auth: SUPER_ADMIN
+URL Parameters:
+- userId: user-uuid-123
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+Body: None
+Response Returns: User's audit logs
+
+
+12.4 GET ALL AUDIT LOGS
+-----------------------
+Method: GET
+URL: /api/v1/audit-logs?page=1&userRole=DOCTOR&action=LOGIN
+Auth: SUPER_ADMIN
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- userRole (string, optional)
+- action (string, optional)
+- startDate (date, optional)
+- endDate (date, optional)
+- userId (string, optional)
+Body: None
+Response Returns: Paginated audit log list
+
+
+================================================================================
+                          13. VENDOR APIs
+================================================================================
+
+13.1 GET VENDOR PATIENTS
+------------------------
+Method: GET
+URL: /api/v1/vendors/patients?page=1&status=ACTIVE
+Auth: VENDOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- status (string, optional)
+- search (string, optional)
+Body: None
+Response Returns: Patients associated with vendor
+
+
+13.2 GET ALL VENDORS
+--------------------
+Method: GET
+URL: /api/v1/vendors?page=1&status=ACTIVE&location=NYC
+Auth: SUPER_ADMIN | VENDOR
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- search (string, optional)
+- location (string, optional)
+- status (string, optional)
+Body: None
+Response Returns: List of vendors
+
+
+13.3 GET VENDOR BY ID
+---------------------
+Method: GET
+URL: /api/v1/vendors/:id
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Body: None
+Response Returns: Vendor details
+
+
+13.4 CREATE VENDOR
+------------------
+Method: POST
+URL: /api/v1/vendors
+Auth: SUPER_ADMIN
+Body:
+{
+  "fullName": "Vendor Name",              // Required (string)
+  "email": "vendor@example.com",          // Required (string)
+  "phone": "+1234567890",                 // Optional (string)
+  "password": "SecurePass123",            // Required (string)
+  "businessName": "ABC Medical Supplies", // Required (string)
+  "location": "New York",                 // Required (string)
+  "gst": "GST123456789",                  // Required (string)
+  "bankDetails": {                        // Required (object)
+    "accountNumber": "1234567890",
+    "ifsc": "BANK0001234",
+    "accountName": "ABC Medical Supplies"
+  },
+  "commissionRate": 10                    // Optional (number)
+}
+Response Returns: Created vendor
+
+
+13.5 UPDATE VENDOR
+------------------
+Method: PUT
+URL: /api/v1/vendors/:id
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Body:
+{
+  "fullName": "Updated Name",             // Optional (string)
+  "phone": "+1987654321",                 // Optional (string)
+  "businessName": "New Business Name",    // Optional (string)
+  "location": "Boston",                   // Optional (string)
+  "bankDetails": {                        // Optional (object)
+    "accountNumber": "9876543210",
+    "ifsc": "BANK0005678",
+    "accountName": "New Account Name"
+  }
+}
+Response Returns: Updated vendor
+
+
+13.6 GET VENDOR WALLET
+----------------------
+Method: GET
+URL: /api/v1/vendors/:id/wallet?page=1
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+Body: None
+Response Returns: Wallet balance and transaction history
+
+
+13.7 TRANSFER FUNDS TO VENDOR
+------------------------------
+Method: POST
+URL: /api/v1/vendors/:id/wallet/transfer
+Auth: SUPER_ADMIN
+URL Parameters:
+- id: vendor-uuid-123
+Body:
+{
+  "amount": 10000.00,                     // Required (number > 0)
+  "description": "Monthly commission"     // Optional (string)
+}
+Response Returns: Transfer confirmation
+
+
+13.8 GET VENDOR SALES
+---------------------
+Method: GET
+URL: /api/v1/vendors/:id/sales?startDate=2024-01-01&status=APPROVED
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- startDate (date, optional)
+- endDate (date, optional)
+- status (string, optional)
+Body: None
+Response Returns: Sales history
+
+
+13.9 GET VENDOR INVENTORY
+--------------------------
+Method: GET
+URL: /api/v1/vendors/:id/inventory?status=AVAILABLE
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Query Parameters:
+- page (number, optional)
+- limit (number, optional)
+- status (string, optional)
+Body: None
+Response Returns: Inventory list
+
+
+13.10 SELL DIARY TO PATIENT
+---------------------------
+Method: POST
+URL: /api/v1/vendors/:id/sell-diary
+Auth: VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Body:
+{
+  "diaryId": "DIARY-12345",               // Required (string)
+  "patientName": "John Doe",              // Required (string)
+  "age": 45,                              // Required (number)
+  "gender": "Male",                       // Required (string)
+  "phone": "+1234567890",                 // Required (string)
+  "address": "123 Main St, NYC",          // Required (string)
+  "doctorId": "doctor-uuid-123",          // Required (string)
+  "paymentAmount": 500.00                 // Required (number)
+}
+Response Returns: Sale record
+
+
+13.11 GET VENDOR DASHBOARD
+--------------------------
+Method: GET
+URL: /api/v1/vendors/:id/dashboard
+Auth: SUPER_ADMIN | VENDOR
+URL Parameters:
+- id: vendor-uuid-123
+Body: None
+Response Returns: Vendor dashboard statistics
+
+
+================================================================================
+                           14. ADMIN APIs
+================================================================================
+
+14.1 CREATE STAFF
+-----------------
+Method: POST
+URL: /api/v1/admin/create-staff
+Auth: SUPER_ADMIN
+Body:
+{
+  "fullName": "Dr. John Smith",           // Required (string)
+  "email": "doctor@example.com",          // Required (string)
+  "phone": "+1234567890",                 // Optional (string)
+  "role": "DOCTOR"                        // Required (DOCTOR/VENDOR/SUPER_ADMIN)
+}
+Response Returns: Created staff with auto-generated password
+
+
+================================================================================
+                          15. CLINIC APIs
+================================================================================
+
+15.1 REGISTER PATIENT
+---------------------
+Method: POST
+URL: /api/v1/clinic/register-patient
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "diaryId": "DIARY-12345",               // Required (string)
+  "fullName": "Jane Doe",                 // Required (string)
+  "age": 42,                              // Optional (number)
+  "phone": "+1234567890",                 // Optional (string)
+  "gender": "Female",                     // Optional (string)
+  "caseType": "CHEMOTHERAPY"              // Optional (string)
+}
+Response Returns: Registered patient
+
+
+15.2 CREATE REMINDER
+--------------------
+Method: POST
+URL: /api/v1/clinic/create-reminder
+Auth: DOCTOR | ASSISTANT
+Body:
+{
+  "patientId": "patient-uuid-123",        // Required (string)
+  "message": "Chemotherapy session",      // Required (string)
+  "reminderDate": "2024-02-20T10:00:00Z", // Required (date ISO format)
+  "type": "CHEMOTHERAPY"                  // Required (APPOINTMENT/CHEMOTHERAPY/RADIOLOGY/FOLLOW_UP/OTHER)
+}
+Response Returns: Created reminder
+
+
+================================================================================
+                           16. SCAN APIs
+================================================================================
+
+16.1 SUBMIT SCAN (PATIENT DIARY ENTRY)
+---------------------------------------
+Method: POST
+URL: /api/v1/scan/submit
+Auth: PATIENT (Patient Token)
+Body:
+{
+  "pageId": "2024-02-16",                 // Required (string) - Page/Date identifier
+  "scanData": {                           // Required (object)
+    "symptoms": "Mild nausea, fatigue",
+    "medication": "Took morning dose",
+    "mood": "Good",
+    "painLevel": 3
+  }
+}
+Response Returns: Scan submitted successfully
+
+
+16.2 GET SCAN HISTORY
+---------------------
+Method: GET
+URL: /api/v1/scan/history?page=1&limit=20
+Auth: PATIENT (Patient Token)
+Query Parameters:
+- page (number, optional, default: 1)
+- limit (number, optional, default: 20)
+Body: None
+Response Returns: Paginated scan history
+
+
+================================================================================
+                          TESTING WORKFLOW
+================================================================================
+
+STEP 1: SETUP
+-------------
+1. Create Super Admin:
+   POST /api/v1/auth/signup-super-admin
+   Body: { "fullName": "Admin", "email": "admin@test.com", "password": "Admin123" }
+
+2. Login as Super Admin:
+   POST /api/v1/auth/login
+   Body: { "email": "admin@test.com", "password": "Admin123" }
+
+3. Verify 2FA:
+   POST /api/v1/auth/verify-2fa
+   Body: { "email": "admin@test.com", "otp": "<check console/email>" }
+
+4. Save the JWT token from response
+
+
+STEP 2: CREATE STAFF
+---------------------
+1. Create Doctor (as Super Admin):
+   POST /api/v1/admin/create-staff
+   Headers: Authorization: Bearer <super_admin_token>
+   Body: { "fullName": "Dr. Smith", "email": "doctor@test.com", "role": "DOCTOR" }
+
+2. Create Vendor (as Super Admin):
+   POST /api/v1/admin/create-staff
+   Headers: Authorization: Bearer <super_admin_token>
+   Body: { "fullName": "Vendor Name", "email": "vendor@test.com", "role": "VENDOR" }
+
+
+STEP 3: VENDOR WORKFLOW
+-----------------------
+1. Login as Vendor
+2. Request Diaries:
+   POST /api/v1/diary-requests
+   Body: { "quantity": 50 }
+
+3. Super Admin approves:
+   PUT /api/v1/diary-requests/:id/approve
+
+4. Vendor sells diary:
+   POST /api/v1/vendors/:vendorId/sell-diary
+   Body: { "diaryId": "DIARY-12345", "patientName": "John", ... }
+
+
+STEP 4: DOCTOR WORKFLOW
+-----------------------
+1. Login as Doctor
+2. View Dashboard:
+   GET /api/v1/dashboard/doctor
+
+3. View Patients:
+   GET /api/v1/patient/getAllPatients
+
+4. Prescribe Tests:
+   POST /api/v1/patient/:id/tests
+   Body: { "tests": ["Blood Test", "X-Ray"] }
+
+5. Create Task for Assistant:
+   POST /api/v1/tasks
+   Body: { "assignedTo": "<assistant_id>", "title": "Follow up", ... }
+
+
+STEP 5: PATIENT WORKFLOW
+-------------------------
+1. Patient Login:
+   POST /api/v1/patient/login
+   Body: { "diaryId": "DIARY-12345" }
+
+2. Verify OTP:
+   POST /api/v1/patient/verify-otp
+   Body: { "diaryId": "DIARY-12345", "otp": "1234" }
+
+3. View Profile:
+   GET /api/v1/patient/profile
+
+4. Submit Diary Entry:
+   POST /api/v1/scan/submit
+   Body: { "pageId": "2024-02-16", "scanData": {...} }
+
+
+================================================================================
+                          COMMON ERROR CODES
+================================================================================
+
+200: Success
+201: Created
+400: Bad Request (Invalid data)
+401: Unauthorized (Invalid/Missing token)
+403: Forbidden (Insufficient permissions)
+404: Not Found
+409: Conflict (Duplicate entry)
+500: Internal Server Error
+
+
+================================================================================
+                          DATA TYPE REFERENCE
+================================================================================
+
+string: Text data (e.g., "Hello World")
+number: Numeric data (e.g., 42, 3.14)
+boolean: true or false
+date: ISO 8601 format (e.g., "2024-02-16T10:30:00Z" or "2024-02-16")
+object: JSON object (e.g., { "key": "value" })
+array: JSON array (e.g., ["item1", "item2"])
+
+
+================================================================================
+                          IMPORTANT NOTES
+================================================================================
+
+1. MVP Hardcoded Values:
+   - Patient OTP: Always use "1234"
+   - Super Admin should be created only once
+
+2. Authentication:
+   - All authenticated endpoints require: Authorization: Bearer <JWT_TOKEN>
+   - Tokens expire after configured time (default: 24 hours)
+   - Use refresh token endpoint to get new token
+
+3. Role-Based Access:
+   - Always test with appropriate role tokens
+   - Some endpoints have different behavior based on role
+   - Example: SUPER_ADMIN sees all transactions, VENDOR sees only their own
+
+4. Pagination:
+   - Most list endpoints support pagination
+   - Default: page=1, limit=10 or 20
+   - Response includes: { data: [], total, page, totalPages }
+
+5. Date Formats:
+   - Always use ISO 8601 format for dates
+   - With time: "2024-02-16T10:30:00Z"
+   - Date only: "2024-02-16"
+
+6. Query Parameters:
+   - Use URL encoding for special characters
+   - Example: /patient/:id/tests/Blood%20Test
+
+7. File Uploads:
+   - Use multipart/form-data for file uploads
+   - Check specific endpoint documentation
+
+8. Testing Tools:
+   - Postman: Import as collection
+   - Thunder Client: VSCode extension
+   - curl: Command line testing
+   - Jest + Supertest: Automated testing
+
+
+================================================================================
+                              END OF GUIDE
+================================================================================
+
+For issues or questions:
+- Check server logs for detailed error messages
+- Verify authentication tokens are valid
+- Ensure request body matches required format
+- Check role permissions for the endpoint
+
+Happy Testing! 🚀
