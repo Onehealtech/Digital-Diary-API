@@ -17,6 +17,7 @@ import { Order } from '../models/Order';
 import { SplitConfig } from '../models/SplitConfig';
 import { SplitTransaction } from '../models/SplitTransaction';
 import { WebhookLog } from '../models/WebhookLog';
+import ImageHistory from '../models/ImageHistory.model';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -63,6 +64,7 @@ export const sequelize = new Sequelize({
     SplitConfig,
     SplitTransaction,
     WebhookLog,
+    ImageHistory,
   ],
 
   // Logging configuration

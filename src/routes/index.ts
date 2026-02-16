@@ -16,6 +16,7 @@ import exportRoutes from "./export.routes";
 import doctorManagementRoutes from "./doctor-management.routes";
 import assistantManagementRoutes from "./assistant-management.routes";
 import auditRoutes from "./audit.routes";
+import uploadImageRoutes from "./uploadImage.route";
 
 const router = express.Router();
 
@@ -37,5 +38,6 @@ router.use("/v1/reports", exportRoutes); // Reports & Export routes (Patient dat
 router.use("/v1/doctors", doctorManagementRoutes); // Doctor management routes (Super Admin)
 router.use("/v1/assistants", assistantManagementRoutes); // Assistant management routes (Super Admin & Doctor)
 router.use("/v1/audit-logs", auditRoutes); // Audit log routes (Super Admin only)
+router.use("/v1/upload", uploadImageRoutes); // Upload image routes (Super Admin only)
 
 export default router;
