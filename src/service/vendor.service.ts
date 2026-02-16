@@ -33,14 +33,14 @@ export class VendorService {
 
     const vendors = await AppUser.findAndCountAll({
       where: whereClause,
-      include: [
-        {
-          model: VendorProfile,
-          as: "vendorProfile",
-          where: params.status ? { status: params.status } : undefined,
-          required: false,
-        },
-      ],
+      // include: [
+      //   {
+      //     model: VendorProfile,
+      //     as: "vendorProfile",
+      //     where: params.status ? { status: params.status } : undefined,
+      //     required: false,
+      //   },
+      // ],
       limit,
       offset,
       order: [["createdAt", "DESC"]],
