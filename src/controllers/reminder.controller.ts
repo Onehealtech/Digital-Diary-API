@@ -34,7 +34,7 @@ export const createReminder = async (
         }
 
         // Check if patient exists
-        const patient = await Patient.findByPk(patientId);
+        const patient = await Patient.findOne({ where: { diaryId: patientId } });
         if (!patient) {
             res.status(404).json({
                 success: false,
@@ -61,7 +61,7 @@ export const createReminder = async (
 
         // Create reminder
         const reminder = await Reminder.create({
-            patientId,
+            patientId:patient.id,
             message,
             reminderDate: new Date(reminderDate),
             type,
