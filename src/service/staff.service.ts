@@ -25,7 +25,7 @@ class StaffService {
       whereClause[Op.or] = [
         { fullName: { [Op.iLike]: `%${search}%` } },
         { email: { [Op.iLike]: `%${search}%` } },
-        { phoneNumber: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
@@ -35,7 +35,7 @@ class StaffService {
         "id",
         "fullName",
         "email",
-        "phoneNumber",
+        "phone",
         "createdAt",
         "updatedAt",
       ],
