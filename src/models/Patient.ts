@@ -5,9 +5,11 @@ import {
   DataType,
   ForeignKey,
   BelongsTo,
+  HasOne,
   BeforeCreate,
 } from "sequelize-typescript";
 import { AppUser } from "./Appuser";
+import { Diary } from "./Diary";
 
 @Table({
   tableName: "patients",
@@ -140,4 +142,13 @@ export class Patient extends Model {
 
   @BelongsTo(() => AppUser)
   doctor!: AppUser;
+
+  // 🔗 Association → Diary (One-to-One)
+  // Patient.id is referenced by Diary.patientId
+  @HasOne(() => Diary, {
+    sourceKey: "id",
+    foreignKey: "patientId",
+    as: "diary",
+  })
+  diary?: Diary;
 }

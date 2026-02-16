@@ -275,22 +275,6 @@ Body:
 Response Returns: Updated patient object
 
 
-4.5 PRESCRIBE TESTS TO PATIENT
--------------------------------
-Method: POST
-URL: /api/v1/patient/:id/tests
-Auth: DOCTOR
-URL Parameters:
-- id: patient-uuid-123
-Body:
-{
-  "tests": [                              // Required (array of strings)
-    "Blood Test",
-    "X-Ray",
-    "MRI"
-  ]
-}
-Response Returns: Patient with updated prescribed tests
 
 
 4.6 UPDATE TEST STATUS
@@ -1485,6 +1469,34 @@ Response Returns: Paginated scan history
 
 
 ================================================================================
+                      17. IMAGE UPLOAD APIs
+================================================================================
+
+17.1 UPLOAD IMAGE
+-----------------
+Method: POST
+URL: /api/v1/upload/:id
+Auth: None (Currently commented out - should be SUPER_ADMIN)
+Content-Type: multipart/form-data
+URL Parameters:
+- id: entity-uuid-123 (Patient ID or other entity ID)
+Form Data:
+- image: File (Required) - Image file to upload
+Response Returns: Uploaded image details
+
+
+17.2 GET IMAGE HISTORY
+----------------------
+Method: GET
+URL: /api/v1/upload/image-history/:id
+Auth: None (Currently commented out - should be SUPER_ADMIN)
+URL Parameters:
+- id: entity-uuid-123 (Patient ID or other entity ID)
+Body: None
+Response Returns: List of uploaded images for the entity
+
+
+================================================================================
                           TESTING WORKFLOW
 ================================================================================
 
@@ -1542,11 +1554,7 @@ STEP 4: DOCTOR WORKFLOW
 3. View Patients:
    GET /api/v1/patient/getAllPatients
 
-4. Prescribe Tests:
-   POST /api/v1/patient/:id/tests
-   Body: { "tests": ["Blood Test", "X-Ray"] }
-
-5. Create Task for Assistant:
+4. Create Task for Assistant:
    POST /api/v1/tasks
    Body: { "assignedTo": "<assistant_id>", "title": "Follow up", ... }
 

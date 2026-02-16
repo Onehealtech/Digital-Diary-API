@@ -4,7 +4,6 @@ import {
     getDoctorPatients,
     getPatientById,
     updatePatient,
-    prescribeTests,
     updateTestStatus,
     logCallAttempt,
     getTestProgress,
@@ -60,12 +59,7 @@ router.put(
     updatePatient
 );
 
-// Prescribe tests to patient
-router.post(
-    "/:id/tests",
-    newAuthCheck([UserRole.DOCTOR]),
-    prescribeTests
-);
+
 
 // Update test status
 router.put(
