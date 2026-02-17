@@ -25,6 +25,13 @@ router.get(
   notificationController.getAllNotifications
 );
 
+// Update staff FCM token for push notifications
+router.put(
+  "/fcm-token",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+  notificationController.updateStaffFcmToken
+);
+
 // Get notification by ID
 router.get(
   "/:id",

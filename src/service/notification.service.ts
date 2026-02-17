@@ -2,6 +2,7 @@ import { Notification } from "../models/Notification";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
+import { fcmService } from "./fcm.service";
 
 interface NotificationFilters {
   page?: number;
@@ -37,6 +38,7 @@ interface BulkNotificationData {
     diaryType?: string;
     stage?: string;
     doctorId?: string;
+    status?: string;
     allPatients?: boolean;
   };
 }
@@ -126,20 +128,24 @@ class NotificationService {
 
   /**
    * Create single notification
-   * Used by Doctor/Assistant to send to individual patient
+   * Used by Doctor/Assistant to send to individual patient or staff
    */
   async createNotification(data: CreateNotificationData) {
-    // Verify recipient exists
+    // Verify recipient exists and get FCM token
+    let fcmToken: string | null = null;
+
     if (data.recipientType === "patient") {
       const patient = await Patient.findByPk(data.recipientId);
       if (!patient) {
         throw new Error("Patient not found");
       }
+      fcmToken = patient.fcmToken || null;
     } else {
       const staff = await AppUser.findByPk(data.recipientId);
       if (!staff) {
         throw new Error("Staff member not found");
       }
+      fcmToken = staff.fcmToken || null;
     }
 
     const notification = await Notification.create({
@@ -154,8 +160,17 @@ class NotificationService {
       relatedTestName: data.relatedTestName,
       actionUrl: data.actionUrl,
       deliveryMethod: data.deliveryMethod || "in-app",
-      delivered: true, // For now, mark as delivered (in future, integrate SMS/email services)
+      delivered: true,
     });
+
+    // Send FCM push notification if token exists
+    if (fcmToken) {
+      fcmService.sendPushNotification(fcmToken, data.title, data.message, {
+        notificationId: notification.id,
+        type: data.type,
+        severity: data.severity || "low",
+      }).catch((err) => console.error("FCM push error:", err));
+    }
 
     return notification;
   }
@@ -182,10 +197,14 @@ class NotificationService {
       whereClause.doctorId = filters.doctorId;
     }
 
-    // Get all matching patients
+    if (filters.status) {
+      whereClause.status = filters.status;
+    }
+
+    // Get all matching patients (include fcmToken for push)
     const patients = await Patient.findAll({
       where: whereClause,
-      attributes: ["id", "name"],
+      attributes: ["id", "fullName", "fcmToken"],
     });
 
     if (patients.length === 0) {
@@ -209,6 +228,18 @@ class NotificationService {
         })
       )
     );
+
+    // Send FCM push to all patients with tokens
+    const fcmTokens = patients
+      .map((p) => p.fcmToken)
+      .filter((token): token is string => !!token);
+
+    if (fcmTokens.length > 0) {
+      fcmService.sendMulticastPush(fcmTokens, data.title, data.message, {
+        type: data.type,
+        severity: data.severity || "low",
+      }).catch((err) => console.error("FCM multicast error:", err));
+    }
 
     return {
       message: `Notifications sent to ${notifications.length} patients`,

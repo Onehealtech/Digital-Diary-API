@@ -9,6 +9,11 @@ import {
     logCallAttempt,
     getTestProgress,
     getPatientsNeedingFollowUp,
+    updateFcmToken,
+    getPatientNotifications,
+    getPatientNotificationStats,
+    markPatientNotificationAsRead,
+    markAllPatientNotificationsAsRead,
 } from "../controllers/patient.controller";
 import {
     requestEditOTP,
@@ -37,6 +42,15 @@ router.get("/profile", patientAuthCheck, getProfile);
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", patientAuthCheck, getPatientReminders);
 router.patch("/reminders/:id/read", patientAuthCheck, markReminderAsRead);
+
+// Patient FCM token (Accessed by Patients)
+router.put("/fcm-token", patientAuthCheck, updateFcmToken);
+
+// Patient notifications (Accessed by Patients)
+router.get("/notifications/stats", patientAuthCheck, getPatientNotificationStats);
+router.get("/notifications", patientAuthCheck, getPatientNotifications);
+router.put("/notifications/mark-all-read", patientAuthCheck, markAllPatientNotificationsAsRead);
+router.put("/notifications/:id/read", patientAuthCheck, markPatientNotificationAsRead);
 
 // Enhanced Patient APIs (Doctor/Assistant access)
 // Get patients needing follow-up (must be before /:id to avoid route conflict)

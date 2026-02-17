@@ -86,6 +86,12 @@ export class AppUser extends Model {
   })
   isEmailVerified!: boolean;
 
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  fcmToken?: string;
+
   // 🔗 Doctor → Patients
   @HasMany(() => Patient)
   patients!: Patient[];
