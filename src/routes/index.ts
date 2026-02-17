@@ -30,7 +30,7 @@ router.use("/v1/dashboard", dashboardRoutes); // Dashboard routes
 router.use("/v1/scan", scanRoutes);       // Scan routes (patient symptom logging)
 router.use("/v1/patient", patientRoutes); // Patient routes (profile, reminders)
 router.use("/v1/vendors", vendorRoutes);  // Vendor routes (sales, inventory, wallet)
-router.use("/v1/diary", diaryRoutes);          // Diary routes (inventory, generation, approval)
+router.use("/v1", diaryRoutes);          // Diary routes (inventory, generation, approval)
 router.use("/v1/tasks", taskRoutes);     // Task routes (Doctor → Assistant task management)
 router.use("/v1/notifications", notificationRoutes); // Notification routes (Doctor/Assistant → Patient)
 router.use("/v1/diary-entries", diaryEntryRoutes); // Diary entry routes (Doctor/Assistant review system)
