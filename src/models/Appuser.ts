@@ -53,6 +53,60 @@ export class AppUser extends Model {
   password!: string;
 
   @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  cashfreeVendorId!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  license!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  hospital!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  specialization!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  GST!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  location!: string;
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  commissionType!: string;
+
+  @Column({
+    type: DataType.NUMBER,
+    allowNull: true,
+  })
+  commissionRate!: number;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: true,
+    allowNull: true,
+  })
+  isActive!: boolean;
+
+  @Column({
     type: DataType.ENUM("SUPER_ADMIN", "VENDOR", "DOCTOR", "ASSISTANT"),
     allowNull: false,
   })

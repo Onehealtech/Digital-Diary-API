@@ -12,9 +12,9 @@ export const signupSuperAdmin = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { fullName, email, password } = req.body;
+        const { fullName, email, password,phone } = req.body;
 
-        if (!fullName || !email || !password) {
+        if (!fullName || !email || !password ) {
             res.status(400).json({
                 success: false,
                 message: "Full name, email, and password are required",
@@ -38,6 +38,7 @@ export const signupSuperAdmin = async (
         // Create Super Admin
         const superAdmin = await AppUser.create({
             fullName,
+            phone,
             email: email.toLowerCase(),
             password, // Will be auto-hashed by BeforeCreate hook
             role: "SUPER_ADMIN",
@@ -50,6 +51,7 @@ export const signupSuperAdmin = async (
             data: {
                 id: superAdmin.id,
                 fullName: superAdmin.fullName,
+                phone: superAdmin.phone,
                 email: superAdmin.email,
                 role: superAdmin.role,
             },

@@ -1,6 +1,8 @@
 // src/service/order.service.ts
 
 import crypto from "crypto";
+import { Op } from "sequelize";
+import { Sequelize } from "sequelize";
 import { sequelize } from "../config/Dbconnetion";
 import { Order } from "../models/Order";
 import { SplitConfig } from "../models/SplitConfig";
@@ -8,7 +10,7 @@ import { SplitTransaction } from "../models/SplitTransaction";
 import { WebhookLog } from "../models/WebhookLog";
 import { AppUser } from "../models/Appuser";
 import { Patient } from "../models/Patient";
-import { calculateSplit } from "./split.service";
+import { calculateSplit, validateSplitConfig } from "./split.service";
 import { createCashfreeOrder } from "./cashfree.service";
 
 interface CreateOrderParams {
@@ -23,7 +25,7 @@ interface CreateOrderParams {
 }
 
 /**
- * Generate a unique, deterministic order ID
+ * Generate a unique order ID
  */
 const generateOrderId = (): string => {
     const timestamp = Date.now().toString(36);
@@ -35,58 +37,110 @@ const generateOrderId = (): string => {
  * Create a diary purchase order with split configuration
  *
  * Flow:
- * 1. Validate vendor + doctor exist
+ * 1. Validate patient, vendor, and doctor exist
  * 2. Fetch active split config
- * 3. Calculate split amounts
- * 4. Create Cashfree order with Easy Split vendors
- * 5. Save Order + SplitTransaction in a DB transaction
+ * 3. Validate split config against order amount
+ * 4. Calculate split amounts
+ * 5. Create Cashfree order with Easy Split (using Cashfree vendor IDs)
+ * 6. Save Order + SplitTransaction atomically
+ *
+ * Money flow:
+ *   Patient pays full amount → Cashfree holds it
+ *   → Cashfree splits to vendor (cashfreeVendorId) + doctor (cashfreeVendorId)
+ *   → Platform remainder stays with Super Admin's Cashfree account
  */
 export const createDiaryOrder = async (params: CreateOrderParams) => {
-    const { patientId, doctorId, vendorId, amount, customerPhone, customerName, customerEmail, orderNote } = params;
+    const {
+        patientId,
+        doctorId,
+        vendorId,
+        amount,
+        customerPhone,
+        customerName,
+        customerEmail,
+        orderNote,
+    } = params;
 
-    // 1. Validate vendor exists and has cashfreeVendorId
+    // ── 1. Validate all parties exist ──────────────────────────────────
+
+    const patient = await Patient.findByPk(patientId);
+    if (!patient) {
+        throw new Error("Patient not found");
+    }
+
     const vendor = await AppUser.findByPk(vendorId);
     if (!vendor) {
         throw new Error("Vendor not found");
+    }
+    if (!vendor.cashfreeVendorId) {
+        throw new Error(
+            "Vendor is not registered with Cashfree. Contact SuperAdmin to complete vendor onboarding."
+        );
     }
 
     const doctor = await AppUser.findByPk(doctorId);
     if (!doctor) {
         throw new Error("Doctor not found");
     }
+    if (!doctor.cashfreeVendorId) {
+        throw new Error(
+            "Doctor is not registered with Cashfree. Contact SuperAdmin to complete doctor onboarding."
+        );
+    }
 
-    // 2. Fetch active split config
+    // ── 2. Fetch active split config ───────────────────────────────────
+
     const splitConfig = await SplitConfig.findOne({
         where: { isActive: true },
     });
     if (!splitConfig) {
-        throw new Error("No active split configuration found. Contact SuperAdmin.");
+        throw new Error(
+            "No active split configuration found. Contact SuperAdmin."
+        );
     }
 
-    // 3. Calculate split amounts (uses Decimal.js)
+    // ── 3. Validate split config against the order amount ──────────────
+
+    const validation = validateSplitConfig(
+        {
+            splitType: splitConfig.splitType,
+            vendorValue: splitConfig.vendorValue,
+            doctorValue: splitConfig.doctorValue,
+        },
+        amount
+    );
+
+    if (!validation.isValid) {
+        throw new Error(
+            `Split configuration invalid: ${validation.errors.join("; ")}`
+        );
+    }
+
+    // ── 4. Calculate split amounts (Decimal.js precision) ──────────────
+
     const splitAmounts = calculateSplit(amount, {
         splitType: splitConfig.splitType,
         vendorValue: splitConfig.vendorValue,
         doctorValue: splitConfig.doctorValue,
     });
 
-    // 4. Generate order ID and create Cashfree order
+    // ── 5. Create Cashfree order ───────────────────────────────────────
+
     const orderId = generateOrderId();
     const idempotencyKey = `split-${orderId}`;
 
-    // Build Cashfree Easy Split vendor array
+    // IMPORTANT: Use Cashfree-registered vendor IDs, NOT internal DB IDs
     const cashfreeSplits = [
         {
-            vendor_id: vendorId, // Must match Cashfree vendor ID
-            amount: parseFloat(splitAmounts.vendorAmount),
+            vendor_id: vendor.cashfreeVendorId,
+            amount: Number(splitAmounts.vendorAmount), // Number() is safer than parseFloat for decimal strings
         },
         {
-            vendor_id: doctorId, // Must match Cashfree vendor ID
-            amount: parseFloat(splitAmounts.doctorAmount),
+            vendor_id: doctor.cashfreeVendorId,
+            amount: Number(splitAmounts.doctorAmount),
         },
     ];
 
-    // 5. Create Cashfree order
     const cashfreeResult = await createCashfreeOrder({
         orderId,
         orderAmount: amount,
@@ -97,7 +151,8 @@ export const createDiaryOrder = async (params: CreateOrderParams) => {
         orderNote,
     });
 
-    // 6. Save everything in a DB transaction (atomic)
+    // ── 6. Save to DB atomically ───────────────────────────────────────
+
     const result = await sequelize.transaction(async (t) => {
         const order = await Order.create(
             {
@@ -151,10 +206,9 @@ export const createDiaryOrder = async (params: CreateOrderParams) => {
 /**
  * Process a successful payment webhook
  *
- * - Checks idempotency (skip if already processed)
- * - Updates Order status to PAID
- * - Updates SplitTransaction status to SUCCESS
- * - All within a DB transaction
+ * - Pessimistic lock prevents duplicate processing
+ * - Idempotent: safe to call multiple times for the same order
+ * - Updates Order → PAID, SplitTransaction → SUCCESS
  */
 export const processPaymentSuccess = async (
     orderId: string,
@@ -162,24 +216,23 @@ export const processPaymentSuccess = async (
     webhookPayload: object
 ) => {
     return await sequelize.transaction(async (t) => {
-        // Find the order by our orderId (not Cashfree's cfOrderId)
         const order = await Order.findOne({
             where: { orderId },
             transaction: t,
-            lock: t.LOCK.UPDATE, // Pessimistic lock to prevent race conditions
+            lock: t.LOCK.UPDATE,
         });
 
         if (!order) {
             throw new Error(`Order ${orderId} not found`);
         }
 
-        // Idempotency check — skip if already paid
+        // Idempotency: skip if already processed
         if (order.status === "PAID") {
-            console.log(`⚠️ Order ${orderId} already marked as PAID, skipping`);
+            console.log(`Order ${orderId} already marked as PAID, skipping`);
             return { order, alreadyProcessed: true };
         }
 
-        // Update order status
+        // Update order
         order.status = "PAID";
         order.paymentMethod = paymentMethod;
         order.paidAt = new Date();
@@ -197,6 +250,17 @@ export const processPaymentSuccess = async (
             splitTxn.processedAt = new Date();
             await splitTxn.save({ transaction: t });
         }
+
+        // Log the webhook payload for audit
+        await WebhookLog.create(
+            {
+                orderId: order.id,
+                eventType: "PAYMENT_SUCCESS",
+                payload: webhookPayload,
+                processedAt: new Date(),
+            },
+            { transaction: t }
+        );
 
         return { order, splitTxn, alreadyProcessed: false };
     });
@@ -216,7 +280,6 @@ export const getVendorEarnings = async (
     };
 
     if (startDate && endDate) {
-        const { Op } = require("sequelize");
         whereClause.paidAt = {
             [Op.between]: [startDate, endDate],
         };
@@ -227,19 +290,22 @@ export const getVendorEarnings = async (
         include: [
             {
                 model: SplitTransaction,
-                attributes: ["vendorAmount", "totalAmount", "splitType", "processedAt"],
+                attributes: [
+                    "vendorAmount",
+                    "totalAmount",
+                    "splitType",
+                    "processedAt",
+                ],
             },
         ],
         attributes: ["orderId", "amount", "status", "paidAt", "paymentMethod"],
         order: [["paidAt", "DESC"]],
     });
 
-    // Calculate totals
-    const { Sequelize } = require("sequelize");
     const totals = await SplitTransaction.findOne({
         attributes: [
             [Sequelize.fn("SUM", Sequelize.col("vendorAmount")), "totalEarnings"],
-            [Sequelize.fn("COUNT", Sequelize.col("id")), "totalOrders"],
+            [Sequelize.fn("COUNT", Sequelize.col("SplitTransaction.id")), "totalOrders"],
         ],
         include: [
             {
@@ -268,7 +334,6 @@ export const getDoctorEarnings = async (
     };
 
     if (startDate && endDate) {
-        const { Op } = require("sequelize");
         whereClause.paidAt = {
             [Op.between]: [startDate, endDate],
         };
@@ -279,18 +344,22 @@ export const getDoctorEarnings = async (
         include: [
             {
                 model: SplitTransaction,
-                attributes: ["doctorAmount", "totalAmount", "splitType", "processedAt"],
+                attributes: [
+                    "doctorAmount",
+                    "totalAmount",
+                    "splitType",
+                    "processedAt",
+                ],
             },
         ],
         attributes: ["orderId", "amount", "status", "paidAt", "paymentMethod"],
         order: [["paidAt", "DESC"]],
     });
 
-    const { Sequelize } = require("sequelize");
     const totals = await SplitTransaction.findOne({
         attributes: [
             [Sequelize.fn("SUM", Sequelize.col("doctorAmount")), "totalEarnings"],
-            [Sequelize.fn("COUNT", Sequelize.col("id")), "totalOrders"],
+            [Sequelize.fn("COUNT", Sequelize.col("SplitTransaction.id")), "totalOrders"],
         ],
         include: [
             {

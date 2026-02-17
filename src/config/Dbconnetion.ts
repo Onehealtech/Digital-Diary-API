@@ -68,7 +68,7 @@ export const sequelize = new Sequelize({
   ],
 
   // Logging configuration
-  logging: console.log, // Log all SQL queries (disable in production)
+   logging: false, // Disable SQL query logging for production
 
   // Connection pool settings for better performance
   pool: {

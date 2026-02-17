@@ -18,7 +18,7 @@ import { API_MESSAGES, HTTP_STATUS } from "../utils/constants";
 export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { patientId, vendorId, amount, customerPhone, customerName, customerEmail, orderNote } = req.body;
-
+        
         // Resolve doctorId — if Assistant, use parentId
         const doctorId =
             req.user.role === "ASSISTANT" ? req.user.parentId : req.user.id;
