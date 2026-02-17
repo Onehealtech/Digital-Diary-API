@@ -14,3 +14,7 @@ public/logs
 # Ignore bun lock
 bun.lock
 src/uploads
+
+# Firebase service account (contains private keys)
+*firebase-adminsdk*.json
+firebase-service-account.json
