@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
+import { AppUser } from "../models/Appuser";
 
 class NotificationController {
   /**
@@ -274,6 +275,31 @@ class NotificationController {
       return sendResponse(res, result, "Notification deleted successfully");
     } catch (error: any) {
       return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+  }
+  /**
+   * PUT /api/v1/notifications/fcm-token
+   * Save/update staff FCM token for push notifications
+   */
+  async updateStaffFcmToken(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, "Unauthorized", 401);
+      }
+
+      const { fcmToken } = req.body;
+
+      if (!fcmToken) {
+        return sendError(res, "fcmToken is required", 400);
+      }
+
+      await AppUser.update({ fcmToken }, { where: { id: userId } });
+
+      return sendResponse(res, { success: true }, "FCM token updated successfully");
+    } catch (error: any) {
+      return sendError(res, error.message);
     }
   }
 }

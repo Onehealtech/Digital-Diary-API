@@ -132,6 +132,12 @@ export class Patient extends Model {
     | "CHEMOTHERAPY"
     | "RADIOLOGY";
 
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  fcmToken?: string;
+
   // 🔗 Foreign Key → Doctor
   @ForeignKey(() => AppUser)
   @Column({

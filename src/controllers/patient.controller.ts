@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import { Patient } from "../models/Patient";
-import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { AuthenticatedRequest, CustomRequest } from "../middleware/authMiddleware";
 import { AppUser } from "../models/Appuser";
 import { patientService } from "../service/patient.service";
+import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
@@ -246,6 +247,129 @@ export const getPatientsNeedingFollowUp = async (req: AuthRequest, res: Response
     const patients = await patientService.getPatientsNeedingFollowUp(doctorId);
 
     return sendResponse(res, patients, "Follow-up list fetched successfully");
+  } catch (error: any) {
+    return sendError(res, error.message);
+  }
+};
+
+// =========================================================================
+// PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
+// =========================================================================
+
+/**
+ * PUT /api/v1/patient/fcm-token
+ * Save/update patient's FCM token for push notifications
+ */
+export const updateFcmToken = async (req: CustomRequest, res: Response) => {
+  try {
+    const patientId = req.user?.id;
+
+    if (!patientId) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const { fcmToken } = req.body;
+
+    if (!fcmToken) {
+      return sendError(res, "fcmToken is required", 400);
+    }
+
+    await Patient.update({ fcmToken }, { where: { id: patientId } });
+
+    return sendResponse(res, { success: true }, "FCM token updated successfully");
+  } catch (error: any) {
+    return sendError(res, error.message);
+  }
+};
+
+/**
+ * GET /api/v1/patient/notifications
+ * Get all notifications for the logged-in patient
+ */
+export const getPatientNotifications = async (req: CustomRequest, res: Response) => {
+  try {
+    const patientId = req.user?.id;
+
+    if (!patientId) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const { page = 1, limit = 20, type, read, severity } = req.query;
+
+    const result = await notificationService.getAllNotifications(
+      patientId,
+      "patient",
+      {
+        page: Number(page),
+        limit: Number(limit),
+        type: type as string,
+        read: read === "true" ? true : read === "false" ? false : undefined,
+        severity: severity as string,
+      }
+    );
+
+    return sendResponse(res, result, "Notifications fetched successfully");
+  } catch (error: any) {
+    return sendError(res, error.message);
+  }
+};
+
+/**
+ * GET /api/v1/patient/notifications/stats
+ * Get notification stats for the logged-in patient
+ */
+export const getPatientNotificationStats = async (req: CustomRequest, res: Response) => {
+  try {
+    const patientId = req.user?.id;
+
+    if (!patientId) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const stats = await notificationService.getNotificationStats(patientId, "patient");
+
+    return sendResponse(res, stats, "Notification stats fetched successfully");
+  } catch (error: any) {
+    return sendError(res, error.message);
+  }
+};
+
+/**
+ * PUT /api/v1/patient/notifications/:id/read
+ * Mark a notification as read
+ */
+export const markPatientNotificationAsRead = async (req: CustomRequest, res: Response) => {
+  try {
+    const patientId = req.user?.id;
+    const notificationId = req.params.id as string;
+
+    if (!patientId) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const notification = await notificationService.markAsRead(notificationId, patientId);
+
+    return sendResponse(res, notification, "Notification marked as read");
+  } catch (error: any) {
+    return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+  }
+};
+
+/**
+ * PUT /api/v1/patient/notifications/mark-all-read
+ * Mark all notifications as read for the patient
+ */
+export const markAllPatientNotificationsAsRead = async (req: CustomRequest, res: Response) => {
+  try {
+    const patientId = req.user?.id;
+
+    if (!patientId) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const result = await notificationService.markAllAsRead(patientId, "patient");
+
+    return sendResponse(res, result, "All notifications marked as read");
   } catch (error: any) {
     return sendError(res, error.message);
   }
