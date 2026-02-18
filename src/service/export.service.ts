@@ -183,7 +183,7 @@ class ExportService {
         {
           model: Patient,
           as: "patient",
-          attributes: ["id", "name", "phoneNumber"],
+          attributes: ["id", "fullName", "phone"],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -215,7 +215,7 @@ class ExportService {
         {
           model: Patient,
           as: "patient",
-          attributes: ["id", "name", "phoneNumber"],
+          attributes: ["id", "fullName", "phone"],
         },
       ],
     });
