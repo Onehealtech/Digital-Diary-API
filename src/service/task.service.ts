@@ -3,6 +3,7 @@ import { AppUser } from "../models/Appuser";
 import { Patient } from "../models/Patient";
 import { Notification } from "../models/Notification";
 import { Op } from "sequelize";
+import { fcmService } from "./fcm.service";
 
 export class TaskService {
   /**
@@ -178,7 +179,7 @@ export class TaskService {
     });
 
     // Create notification for assistant
-    await Notification.create({
+    const notification = await Notification.create({
       recipientId: data.assignedTo,
       recipientType: "staff",
       senderId: data.createdBy,
@@ -190,6 +191,23 @@ export class TaskService {
       read: false,
       delivered: true,
     });
+
+    // Send FCM push notification to assistant
+    if (assistant.fcmToken) {
+      fcmService
+        .sendPushNotification(
+          assistant.fcmToken,
+          "New Task Assigned",
+          `You have been assigned a new task: ${data.title}`,
+          {
+            notificationId: notification.id,
+            type: "task-assigned",
+            severity: data.priority === "urgent" ? "high" : "medium",
+            taskId: task.id,
+          }
+        )
+        .catch((err) => console.error("FCM push error (task assigned):", err));
+    }
 
     task.notificationSent = true;
     await task.save();
@@ -275,7 +293,7 @@ export class TaskService {
     await task.save();
 
     // Notify doctor
-    await Notification.create({
+    const notification = await Notification.create({
       recipientId: task.createdBy,
       recipientType: "staff",
       senderId: assistantId,
@@ -287,6 +305,24 @@ export class TaskService {
       read: false,
       delivered: true,
     });
+
+    // Send FCM push notification to doctor
+    const doctor = await AppUser.findByPk(task.createdBy);
+    if (doctor?.fcmToken) {
+      fcmService
+        .sendPushNotification(
+          doctor.fcmToken,
+          "Task Completed",
+          `Task "${task.title}" has been completed by your assistant.`,
+          {
+            notificationId: notification.id,
+            type: "task-completed",
+            severity: "low",
+            taskId: task.id,
+          }
+        )
+        .catch((err) => console.error("FCM push error (task completed):", err));
+    }
 
     return task;
   }

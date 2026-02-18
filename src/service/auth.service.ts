@@ -67,7 +67,7 @@ export class DoctorAuthService {
    */
   static async getCurrentUser(userId: string) {
     const user = await AppUser.findByPk(userId, {
-      attributes: ["id", "fullName", "email", "phoneNumber", "role", "parentId", "permissions", "createdAt"],
+      attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt"],
     });
 
     if (!user) {
