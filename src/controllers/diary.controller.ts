@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { DiaryService } from "../service/diary.service";
 import { sendResponse, sendError } from "../utils/response";
+import { AuthenticatedRequest } from "../middleware/authMiddleware";
 
 const diaryService = new DiaryService();
 
@@ -167,10 +168,10 @@ export class DiaryController {
   /**
    * GET /api/diary-requests - List diary requests
    */
-  async getAllDiaryRequests(req: Request, res: Response) {
+  async getAllDiaryRequests(req: AuthenticatedRequest, res: Response) {
     try {
-      const { page, limit, vendorId, status } = req.query;
-
+      const { page, limit, status } = req.query;
+      const vendorId = req.user?.role === "VENDOR" ? req.user.id : undefined;
       const result = await diaryService.getAllDiaryRequests({
         page: page ? parseInt(page as string) : undefined,
         limit: limit ? parseInt(limit as string) : undefined,

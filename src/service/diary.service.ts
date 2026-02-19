@@ -181,53 +181,53 @@ export class DiaryService {
     return diary;
   }
 
-async getAllSoldDiaries(params: {
-  page?: number;
-  limit?: number;
-  vendorId?: string;
-  search?: string;
-}) {
-  const page = params.page || 1;
-  const limit = params.limit || 50;
-  const offset = (page - 1) * limit;
+  async getAllSoldDiaries(params: {
+    page?: number;
+    limit?: number;
+    vendorId?: string;
+    search?: string;
+  }) {
+    const page = params.page || 1;
+    const limit = params.limit || 50;
+    const offset = (page - 1) * limit;
 
-  const where: any = {};
+    const where: any = {};
 
-  if (params.vendorId) {
-    where.vendorId = params.vendorId;
+    if (params.vendorId) {
+      where.vendorId = params.vendorId;
+    }
+
+    const diaries = await Diary.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+        },
+        {
+          model: AppUser,
+          as: "doctor",
+          attributes: ["id", "fullName", "email"],
+        },
+        {
+          model: AppUser,
+          as: "vendor",
+          attributes: ["id", "fullName", "email"],
+        },
+      ],
+    });
+
+    return {
+      data: diaries.rows,
+      total: diaries.count,
+      page,
+      limit,
+      totalPages: Math.ceil(diaries.count / limit),
+    };
   }
-
-  const diaries = await Diary.findAndCountAll({
-    where,
-    limit,
-    offset,
-    order: [["createdAt", "DESC"]],
-    include: [
-      {
-        model: Patient,
-        as: "patient",
-      },
-      {
-        model: AppUser,
-        as: "doctor",
-        attributes: ["id", "fullName", "email"],
-      },
-      {
-        model: AppUser,
-        as: "vendor",
-        attributes: ["id", "fullName", "email"],
-      },
-    ],
-  });
-
-  return {
-    data: diaries.rows,
-    total: diaries.count,
-    page,
-    limit,
-    totalPages: Math.ceil(diaries.count / limit),
-  };
-}
 
 
   /**
@@ -361,9 +361,7 @@ async getAllSoldDiaries(params: {
 
     const whereClause: any = {};
 
-    if (params.vendorId) {
-      whereClause.vendorId = params.vendorId;
-    }
+    whereClause.vendorId = params.vendorId;
 
     if (params.status) {
       whereClause.status = params.status;
