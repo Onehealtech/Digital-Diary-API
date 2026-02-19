@@ -8,9 +8,10 @@ export class ImageService {
       throw new Error("No file uploaded");
     }
 
+    const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
     const image = await ImageHistory.create({
       diaryId,
-      imagePath: file.path,
+      imagePath: baseUrl ? `${baseUrl}/uploads/${file.filename}` : `/uploads/${file.filename}`,
       fileName: file.filename,
     });
 
