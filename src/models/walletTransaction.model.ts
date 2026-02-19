@@ -73,7 +73,7 @@ export class WalletTransaction extends Model<WalletTransaction> {
   description!: string;
 
   @Index
-  @Column(DataType.ENUM("ORDER", "PAYOUT", "MANUAL", "REFUND"))
+  @Column(DataType.ENUM("ORDER", "PAYOUT", "MANUAL", "REFUND", "ADVANCE"))
   referenceType!: string | null;
 
   @Index

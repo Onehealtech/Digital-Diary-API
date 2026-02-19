@@ -79,11 +79,13 @@ export const createStaff = async (
             GST,
             location,
         });
-
-        const walletType = walletTypeMap[role];
-        if (walletType) {
-            await createWallet(newUser.id, walletType);
+        if (role == UserRole.VENDOR) {
+            const walletType = walletTypeMap[role];
+            if (walletType) {
+                await createWallet(newUser.id, walletType);
+            }
         }
+
         // ── Register on Cashfree if Doctor or Vendor ───────────────────
         let cashfreeVendorId: string | null = null;
         const needsCashfree = [UserRole.DOCTOR, UserRole.VENDOR].includes(role as UserRole);

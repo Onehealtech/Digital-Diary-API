@@ -184,6 +184,20 @@ export class DiaryController {
       return sendError(res, 500, "Failed to retrieve diary requests", error.message);
     }
   }
+  async getAllDiaryRequestsSuperAdmin(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { page, limit, status } = req.query;
+      const result = await diaryService.getALLDiaryRequestSuperAdmin({
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        status: status as string,
+      });
+
+      return sendResponse(res, 200, "Diary requests retrieved successfully", result);
+    } catch (error: any) {
+      return sendError(res, 500, "Failed to retrieve diary requests", error.message);
+    }
+  }
 
   /**
    * POST /api/diary-requests - Create diary request

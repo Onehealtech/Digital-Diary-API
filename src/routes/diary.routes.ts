@@ -79,6 +79,11 @@ router.get(
   authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
   diaryController.getAllDiaryRequests.bind(diaryController)
 );
+router.get(
+  "/sp/diary-requests",
+  authCheck([UserRole.SUPER_ADMIN]),
+  diaryController.getAllDiaryRequestsSuperAdmin.bind(diaryController)
+);
 
 // POST /api/v1/diary-requests - Create diary request
 router.post(

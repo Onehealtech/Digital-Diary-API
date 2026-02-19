@@ -283,6 +283,10 @@ export class VendorService {
           model: AppUser,
           as: "doctor",
         },
+        {
+          model: AppUser,
+          as: "vendor",
+        },
       ],
       limit,
       offset,

@@ -394,6 +394,50 @@ export class DiaryService {
       totalPages: Math.ceil(requests.count / limit),
     };
   }
+  async getALLDiaryRequestSuperAdmin(params: {
+    page?: number;
+    limit?: number;
+    vendorId?: string;
+    status?: string;
+  }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const offset = (page - 1) * limit;
+
+    const whereClause: any = {};
+
+
+    if (params.status) {
+      whereClause.status = params.status;
+    }
+
+    const requests = await DiaryRequest.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: AppUser,
+          as: "vendor",
+          attributes: ["id", "fullName", "email"],
+        },
+      ],
+      limit,
+      offset,
+      order: [["requestDate", "DESC"]],
+    });
+
+    const pendingCount = await DiaryRequest.count({
+      where: { status: "pending" },
+    });
+
+    return {
+      data: requests.rows,
+      total: requests.count,
+      pendingCount,
+      page,
+      limit,
+      totalPages: Math.ceil(requests.count / limit),
+    };
+  }
 
   /**
    * Create diary request

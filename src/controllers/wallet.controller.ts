@@ -10,6 +10,7 @@ import {
   manualAdjustment,
   initiatePayout,
   reconcileWallet,
+  recordAdvancePayment,
 } from "../service/wallet.service";
 import { v4 as uuid } from "uuid";
 import axios from "axios";
@@ -298,5 +299,40 @@ export const createPayoutOrder = async (
 
   } catch (error) {
     res.status(500).json({ success: false, message: "Payment init failed", error: error instanceof Error ? error.message : String(error) });
+  }
+};
+export const recordAdvance = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+        const  vendorId  = req.user.id;
+        const { amount, paymentMethod, paymentReference, notes } = req.body;
+
+    if (!amount || amount <= 0) {
+      res.status(400).json({ success: false, message: "A positive amount is required" });
+      return;
+    }
+    if (!paymentMethod) {
+      res.status(400).json({ success: false, message: "paymentMethod is required (BANK_TRANSFER, UPI, CASH, CHEQUE)" });
+      return;
+    }
+
+    const result = await recordAdvancePayment({
+      vendorId,
+      amount,
+      paymentMethod,
+      paymentReference,
+      performedBy: req.user!.id,
+      notes,
+    });
+
+    res.json({
+      success: true,
+      message: `₹${amount} advance recorded`,
+      data: {
+        balance: result.wallet.balance,
+        transactionId: result.transaction.id,
+      },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
   }
 };

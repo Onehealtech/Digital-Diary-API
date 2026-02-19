@@ -19,12 +19,10 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const vendorId = req.user.id; // Vendor ID is derived from the authenticated user (Doctor or Assistant's parentId if Assistant)
 
-        const { patientId, amount, customerPhone, customerName, customerEmail, orderNote , generatedDiaryId} = req.body;
+        const { patientId,doctorId, amount, customerPhone, customerName, customerEmail, orderNote , generatedDiaryId} = req.body;
         
         // Resolve doctorId — if Assistant, use parentId
-        const doctorId =
-            req.user.role === "ASSISTANT" ? req.user.parentId : req.user.id;
-
+        
         if (!doctorId) {
             return responseMiddleware(
                 res,

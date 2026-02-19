@@ -11,6 +11,7 @@ import {
   requestPayout,
   reconcile,
   createPayoutOrder,
+  recordAdvance,
 } from "../controllers/wallet.controller";
 import { authCheck } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
@@ -28,6 +29,7 @@ router.post("/:userId/adjust", authCheck([UserRole.SUPER_ADMIN]), adjustWallet);
 router.post("/:userId/payout", authCheck([UserRole.VENDOR]), requestPayout);
 router.post("/:userId/reconcile", authCheck([UserRole.SUPER_ADMIN]), reconcile);
 router.post("/create-payout-order", authCheck([UserRole.VENDOR]), createPayoutOrder);
+router.post("/record-advance", authCheck([UserRole.VENDOR]), recordAdvance);
 
 export default router;
 
