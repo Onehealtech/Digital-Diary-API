@@ -38,6 +38,9 @@ export class DiaryRequest extends Model {
 
   @Column(DataType.TEXT)
   message?: string;
+  
+  @Column(DataType.STRING)
+  dairyType?: string;
 
   @Column({
     type: DataType.ENUM("pending", "fulfilled", "rejected"),

@@ -17,7 +17,9 @@ import { API_MESSAGES, HTTP_STATUS } from "../utils/constants";
  */
 export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { patientId, vendorId, amount, customerPhone, customerName, customerEmail, orderNote } = req.body;
+        const vendorId = req.user.id; // Vendor ID is derived from the authenticated user (Doctor or Assistant's parentId if Assistant)
+
+        const { patientId, amount, customerPhone, customerName, customerEmail, orderNote , generatedDiaryId} = req.body;
         
         // Resolve doctorId — if Assistant, use parentId
         const doctorId =
@@ -51,6 +53,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             patientId,
             doctorId,
             vendorId,
+            generatedDiaryId, // Will be generated in service
             amount,
             customerPhone: customerPhone || "9999999999",
             customerName: customerName || "Patient",

@@ -18,6 +18,9 @@ import { SplitConfig } from '../models/SplitConfig';
 import { SplitTransaction } from '../models/SplitTransaction';
 import { WebhookLog } from '../models/WebhookLog';
 import ImageHistory from '../models/ImageHistory.model';
+import { Wallet } from '../models/Wallet';
+import { Payout } from '../models/payout.model';
+import { WalletTransaction } from '../models/walletTransaction.model';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -65,6 +68,9 @@ export const sequelize = new Sequelize({
     SplitTransaction,
     WebhookLog,
     ImageHistory,
+    Wallet,
+    Payout,
+    WalletTransaction,
   ],
 
   // Logging configuration
@@ -89,7 +95,7 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
 
-    await sequelize.sync({ alter: false }); // Add new columns to existing tables
+    await sequelize.sync({ alter: true }); // Add new columns to existing tables
     console.log('✅ Database models synchronized');
 
   } catch (error) {

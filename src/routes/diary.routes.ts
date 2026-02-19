@@ -33,7 +33,7 @@ router.get(
 );
 
 // PUT /api/v1/generated-diaries/:id/assign - Assign diary to vendor
-router.put(
+router.post(
   "/generated-diaries/:id/assign",
   authCheck([UserRole.SUPER_ADMIN]),
   diaryController.assignDiary.bind(diaryController)
@@ -53,6 +53,12 @@ router.put(
   diaryController.unassignDiary.bind(diaryController)
 );
 
+// PUT /api/v1/diaries/sold - Sold Diaries (SUPER_ADMIN only)
+router.get(
+  "/diaries/sold",
+  authCheck([UserRole.SUPER_ADMIN]),
+  diaryController.getAllSoldDiaries.bind(diaryController)
+);
 // PUT /api/v1/diaries/:id/approve - Approve diary sale
 router.put(
   "/diaries/:id/approve",

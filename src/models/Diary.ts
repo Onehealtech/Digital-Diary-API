@@ -14,12 +14,14 @@ import { AppUser } from "./Appuser";
   timestamps: true,
 })
 export class Diary extends Model {
+
   @Column({
     type: DataType.STRING,
     primaryKey: true,
   })
-  id!: string; // Same as GeneratedDiary ID
+  id!: string;
 
+  // ================== PATIENT ==================
   @ForeignKey(() => Patient)
   @Column({
     type: DataType.UUID,
@@ -27,9 +29,13 @@ export class Diary extends Model {
   })
   patientId!: string;
 
-  @BelongsTo(() => Patient)
+  @BelongsTo(() => Patient, {
+    foreignKey: "patientId",
+    as: "patient",
+  })
   patient!: Patient;
 
+  // ================== DOCTOR ==================
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
@@ -37,17 +43,35 @@ export class Diary extends Model {
   })
   doctorId!: string;
 
-  @BelongsTo(() => AppUser, "doctorId")
+  @BelongsTo(() => AppUser, {
+    foreignKey: "doctorId",
+    as: "doctor",
+  })
   doctor!: AppUser;
 
+  // ================== VENDOR ==================
+  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
     allowNull: false,
   })
   vendorId!: string;
 
+  @BelongsTo(() => AppUser, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  })
+  vendor!: AppUser;
+
+  // ================== STATUS ==================
   @Column({
-    type: DataType.ENUM("pending", "active", "inactive", "rejected", "completed"),
+    type: DataType.ENUM(
+      "pending",
+      "active",
+      "inactive",
+      "rejected",
+      "completed"
+    ),
     defaultValue: "pending",
   })
   status!: "pending" | "active" | "inactive" | "rejected" | "completed";
@@ -59,7 +83,7 @@ export class Diary extends Model {
     type: DataType.UUID,
     allowNull: true,
   })
-  approvedBy?: string; // Super Admin ID
+  approvedBy?: string;
 
   @Column(DataType.DATE)
   approvedAt?: Date;
@@ -85,3 +109,4 @@ export class Diary extends Model {
   })
   commissionPaid!: boolean;
 }
+

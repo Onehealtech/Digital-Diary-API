@@ -94,7 +94,7 @@ export class AppUser extends Model {
   commissionType!: string;
 
   @Column({
-    type: DataType.NUMBER,
+    type: DataType.FLOAT,
     allowNull: true,
   })
   commissionRate!: number;

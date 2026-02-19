@@ -10,17 +10,14 @@ import { UserRole } from "../utils/constants";
 
 export const createPatient = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    let doctorId = req.user.id; // from auth middleware
+    let vendorId = req.user.id; // from auth middleware
     const role = req.user.role;
+    const { fullName, age, gender, phone, diaryId , doctorId } = req.body;
 
-    if (role !== UserRole.DOCTOR && role !== UserRole.ASSISTANT) {
-      return res.status(403).json({ message: "Only doctors and assistants can create patients" });
+    if (role !== UserRole.VENDOR) {
+      return res.status(403).json({ message: "Only vendors can create patients" });
     }
-    const userData = await AppUser.findByPk(req.user.id);
-    if (userData?.role == UserRole.ASSISTANT) {
-      doctorId = userData.parentId;
-    }
-    const { fullName, age, gender, phone, diaryId } = req.body;
+   
 
     const patient = await Patient.create({
       fullName,
@@ -29,6 +26,7 @@ export const createPatient = async (req: AuthenticatedRequest, res: Response) =>
       phone,
       doctorId,
       diaryId,
+      vendorId,
     });
 
     return res.status(201).json({

@@ -31,6 +31,31 @@ class StaffController {
       return sendError(res, error.message);
     }
   }
+async getVendorDoctors(req: AuthRequest, res: Response) {
+  try {
+    const role = req.user?.role;
+    const vendorId = req.user?.id;
+
+    if (role !== "VENDOR") {
+      return sendError(res, "Only Vendors can view their doctors", 403);
+    }
+
+    const { page, limit, search } = req.query;
+
+    const result = await staffService.getVendorDoctors(
+      vendorId as string,
+      {
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        search: search as string,
+      }
+    );
+
+    return sendResponse(res, result, "Vendor doctors fetched successfully");
+  } catch (error: any) {
+    return sendError(res, error.message);
+  }
+}
 
   /**
    * GET /api/v1/doctors/:id

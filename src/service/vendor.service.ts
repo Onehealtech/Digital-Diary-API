@@ -279,6 +279,10 @@ export class VendorService {
           model: Patient,
           as: "patient",
         },
+        {
+          model: AppUser,
+          as: "doctor",
+        },
       ],
       limit,
       offset,
@@ -286,8 +290,8 @@ export class VendorService {
     });
 
     // Calculate stats
-    const vendorProfile = await VendorProfile.findOne({
-      where: { vendorId },
+    const vendorProfile = await AppUser.findOne({
+      where: { id: vendorId, role: "VENDOR" },
     });
 
     const thisMonth = new Date();
@@ -308,9 +312,9 @@ export class VendorService {
       limit,
       totalPages: Math.ceil(sales.count / limit),
       stats: {
-        totalSales: vendorProfile?.diariesSold || 0,
+        totalSales: vendorProfile || 0,
         thisMonthSales,
-        commission: vendorProfile?.walletBalance || 0,
+        commission: vendorProfile || 0,
       },
     };
   }

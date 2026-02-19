@@ -12,12 +12,16 @@ import { AppUser } from "../models/Appuser";
 import { Patient } from "../models/Patient";
 import { calculateSplit, validateSplitConfig } from "./split.service";
 import { createCashfreeOrder } from "./cashfree.service";
+import { creditWallet, creditWalletsOnSale } from "./wallet.service";
+import { Diary } from "../models/Diary";
+import { GeneratedDiary } from "../models/GeneratedDiary";
 
 interface CreateOrderParams {
     patientId: string;
     doctorId: string;
     vendorId: string;
     amount: number;
+    generatedDiaryId: string;
     customerPhone: string;
     customerName: string;
     customerEmail?: string;
@@ -49,157 +53,278 @@ const generateOrderId = (): string => {
  *   → Cashfree splits to vendor (cashfreeVendorId) + doctor (cashfreeVendorId)
  *   → Platform remainder stays with Super Admin's Cashfree account
  */
+// export const createDiaryOrder = async (params: CreateOrderParams) => {
+//     const {
+//         patientId,
+//         doctorId,
+//         vendorId,
+//         amount,
+//         customerPhone,
+//         customerName,
+//         customerEmail,
+//         orderNote,
+//     } = params;
+
+//     // ── 1. Validate all parties exist ──────────────────────────────────
+
+//     const patient = await Patient.findByPk(patientId);
+//     if (!patient) {
+//         throw new Error("Patient not found");
+//     }
+
+//     const vendor = await AppUser.findByPk(vendorId);
+//     if (!vendor) {
+//         throw new Error("Vendor not found");
+//     }
+//     if (!vendor.cashfreeVendorId) {
+//         throw new Error(
+//             "Vendor is not registered with Cashfree. Contact SuperAdmin to complete vendor onboarding."
+//         );
+//     }
+
+//     const doctor = await AppUser.findByPk(doctorId);
+//     if (!doctor) {
+//         throw new Error("Doctor not found");
+//     }
+//     if (!doctor.cashfreeVendorId) {
+//         throw new Error(
+//             "Doctor is not registered with Cashfree. Contact SuperAdmin to complete doctor onboarding."
+//         );
+//     }
+
+//     // ── 2. Fetch active split config ───────────────────────────────────
+
+//     const splitConfig = await SplitConfig.findOne({
+//         where: { isActive: true },
+//     });
+//     if (!splitConfig) {
+//         throw new Error(
+//             "No active split configuration found. Contact SuperAdmin."
+//         );
+//     }
+
+//     // ── 3. Validate split config against the order amount ──────────────
+
+//     const validation = validateSplitConfig(
+//         {
+//             splitType: splitConfig.splitType,
+//             vendorValue: splitConfig.vendorValue,
+//             doctorValue: splitConfig.doctorValue,
+//         },
+//         amount
+//     );
+
+//     if (!validation.isValid) {
+//         throw new Error(
+//             `Split configuration invalid: ${validation.errors.join("; ")}`
+//         );
+//     }
+
+//     // ── 4. Calculate split amounts (Decimal.js precision) ──────────────
+
+//     const splitAmounts = calculateSplit(amount, {
+//         splitType: splitConfig.splitType,
+//         vendorValue: splitConfig.vendorValue,
+//         doctorValue: splitConfig.doctorValue,
+//     });
+
+//     // ── 5. Create Cashfree order ───────────────────────────────────────
+
+//     const orderId = generateOrderId();
+//     const idempotencyKey = `split-${orderId}`;
+
+//     // IMPORTANT: Use Cashfree-registered vendor IDs, NOT internal DB IDs
+//     const cashfreeSplits = [
+//         {
+//             vendor_id: vendor.cashfreeVendorId,
+//             amount: Number(splitAmounts.vendorAmount), // Number() is safer than parseFloat for decimal strings
+//         },
+//         {
+//             vendor_id: doctor.cashfreeVendorId,
+//             amount: Number(splitAmounts.doctorAmount),
+//         },
+//     ];
+
+//     const cashfreeResult = await createCashfreeOrder({
+//         orderId,
+//         orderAmount: amount,
+//         customerPhone,
+//         customerName,
+//         customerEmail,
+//         splits: cashfreeSplits,
+//         orderNote,
+//     });
+
+//     // ── 6. Save to DB atomically ───────────────────────────────────────
+
+//     const result = await sequelize.transaction(async (t) => {
+//         const order = await Order.create(
+//             {
+//                 orderId,
+//                 cfOrderId: cashfreeResult.cfOrderId,
+//                 patientId,
+//                 doctorId,
+//                 vendorId,
+//                 amount,
+//                 currency: "INR",
+//                 status: "PENDING",
+//                 paymentSessionId: cashfreeResult.paymentSessionId,
+//                 orderNote,
+//             },
+//             { transaction: t }
+//         );
+
+//         const splitTxn = await SplitTransaction.create(
+//             {
+//                 orderId: order.id,
+//                 totalAmount: amount,
+//                 vendorAmount: splitAmounts.vendorAmount,
+//                 doctorAmount: splitAmounts.doctorAmount,
+//                 platformAmount: splitAmounts.platformAmount,
+//                 splitType: splitConfig.splitType,
+//                 transferStatus: "PENDING",
+//                 idempotencyKey,
+//             },
+//             { transaction: t }
+//         );
+//         if (splitTxn) {
+//             splitTxn.transferStatus = "SUCCESS";
+//             splitTxn.processedAt = new Date();
+//             await splitTxn.save({ transaction: t });
+
+//             // ─── Credit all 3 wallets ────────────────────────────────────
+//             // Find the platform SuperAdmin (parent or first SUPER_ADMIN)
+//             const platformAdmin = await AppUser.findOne({
+//                 where: { role: "SUPER_ADMIN" },
+//                 transaction: t,
+//             });
+
+//             if (platformAdmin) {
+//                 await creditWalletsOnSale({
+//                     orderId: order.orderId,
+//                     vendorId: order.vendorId,
+//                     doctorId: order.doctorId,
+//                     platformUserId: platformAdmin.id,
+//                     vendorAmount: splitTxn.vendorAmount,
+//                     doctorAmount: splitTxn.doctorAmount,
+//                     platformAmount: splitTxn.platformAmount,
+//                     transaction: t,
+//                 });
+//             }
+//         }
+//         return { order, splitTxn };
+//     });
+
+//     return {
+//         orderId: result.order.orderId,
+//         cfOrderId: result.order.cfOrderId,
+//         paymentSessionId: result.order.paymentSessionId,
+//         amount,
+//         currency: "INR",
+//         status: result.order.status,
+//         split: {
+//             vendorAmount: splitAmounts.vendorAmount,
+//             doctorAmount: splitAmounts.doctorAmount,
+//             platformAmount: splitAmounts.platformAmount,
+//             splitType: splitConfig.splitType,
+//         },
+//     };
+// };
 export const createDiaryOrder = async (params: CreateOrderParams) => {
     const {
         patientId,
         doctorId,
         vendorId,
         amount,
+        generatedDiaryId,
         customerPhone,
         customerName,
         customerEmail,
         orderNote,
     } = params;
 
-    // ── 1. Validate all parties exist ──────────────────────────────────
-
+    // 1️⃣ Validate entities
     const patient = await Patient.findByPk(patientId);
-    if (!patient) {
-        throw new Error("Patient not found");
-    }
+    if (!patient) throw new Error("Patient not found");
 
     const vendor = await AppUser.findByPk(vendorId);
-    if (!vendor) {
-        throw new Error("Vendor not found");
-    }
-    if (!vendor.cashfreeVendorId) {
-        throw new Error(
-            "Vendor is not registered with Cashfree. Contact SuperAdmin to complete vendor onboarding."
-        );
-    }
+    if (!vendor) throw new Error("Vendor not found");
 
     const doctor = await AppUser.findByPk(doctorId);
-    if (!doctor) {
-        throw new Error("Doctor not found");
-    }
-    if (!doctor.cashfreeVendorId) {
-        throw new Error(
-            "Doctor is not registered with Cashfree. Contact SuperAdmin to complete doctor onboarding."
-        );
-    }
+    if (!doctor) throw new Error("Doctor not found");
 
-    // ── 2. Fetch active split config ───────────────────────────────────
-
-    const splitConfig = await SplitConfig.findOne({
-        where: { isActive: true },
-    });
-    if (!splitConfig) {
-        throw new Error(
-            "No active split configuration found. Contact SuperAdmin."
-        );
-    }
-
-    // ── 3. Validate split config against the order amount ──────────────
-
-    const validation = validateSplitConfig(
-        {
-            splitType: splitConfig.splitType,
-            vendorValue: splitConfig.vendorValue,
-            doctorValue: splitConfig.doctorValue,
-        },
-        amount
-    );
-
-    if (!validation.isValid) {
-        throw new Error(
-            `Split configuration invalid: ${validation.errors.join("; ")}`
-        );
-    }
-
-    // ── 4. Calculate split amounts (Decimal.js precision) ──────────────
-
-    const splitAmounts = calculateSplit(amount, {
-        splitType: splitConfig.splitType,
-        vendorValue: splitConfig.vendorValue,
-        doctorValue: splitConfig.doctorValue,
-    });
-
-    // ── 5. Create Cashfree order ───────────────────────────────────────
-
+    // 2️⃣ Generate Order ID
     const orderId = generateOrderId();
-    const idempotencyKey = `split-${orderId}`;
 
-    // IMPORTANT: Use Cashfree-registered vendor IDs, NOT internal DB IDs
-    const cashfreeSplits = [
-        {
-            vendor_id: vendor.cashfreeVendorId,
-            amount: Number(splitAmounts.vendorAmount), // Number() is safer than parseFloat for decimal strings
-        },
-        {
-            vendor_id: doctor.cashfreeVendorId,
-            amount: Number(splitAmounts.doctorAmount),
-        },
-    ];
+    // 3️⃣ Create Cashfree order WITHOUT split
+    //   const cashfreeResult = await createCashfreeOrder({
+    //     orderId,
+    //     orderAmount: amount,
+    //     customerPhone,
+    //     customerName,
+    //     customerEmail,
+    //     splits: [], // ✅ SPLIT DISABLED
+    //     orderNote,
+    //   });
 
-    const cashfreeResult = await createCashfreeOrder({
-        orderId,
-        orderAmount: amount,
-        customerPhone,
-        customerName,
-        customerEmail,
-        splits: cashfreeSplits,
-        orderNote,
-    });
-
-    // ── 6. Save to DB atomically ───────────────────────────────────────
-
+    // 4️⃣ Save Order + Credit Vendor Wallet
     const result = await sequelize.transaction(async (t) => {
         const order = await Order.create(
             {
                 orderId,
-                cfOrderId: cashfreeResult.cfOrderId,
+                cfOrderId: "",
                 patientId,
                 doctorId,
                 vendorId,
                 amount,
                 currency: "INR",
-                status: "PENDING",
-                paymentSessionId: cashfreeResult.paymentSessionId,
-                orderNote,
+                status: "PAID", // Directly mark as PAID (or use webhook)
+                paymentSessionId: "",
+                paidAt: new Date(),
             },
             { transaction: t }
         );
-
-        const splitTxn = await SplitTransaction.create(
-            {
-                orderId: order.id,
-                totalAmount: amount,
-                vendorAmount: splitAmounts.vendorAmount,
-                doctorAmount: splitAmounts.doctorAmount,
-                platformAmount: splitAmounts.platformAmount,
-                splitType: splitConfig.splitType,
-                transferStatus: "PENDING",
-                idempotencyKey,
+         await Diary.create(
+            {   id:generatedDiaryId,
+                patientId,
+                doctorId,
+                vendorId,
+                status: "pending",
+                activationDate: null,
+                approvedBy: null,
+                approvedAt: null,
+                saleAmount: amount,
+                commissionAmount: 0,
             },
             { transaction: t }
         );
+        const generateDiaryId = await GeneratedDiary.findOne({
+            where: { id: generatedDiaryId },
+            transaction: t,
+        });
+        if (generateDiaryId) {
+            generateDiaryId.status = "sold";
+            await generateDiaryId.save({ transaction: t });
+        }
+        // ✅ CREDIT FULL AMOUNT TO VENDOR WALLET
+        await creditWallet({
+            userId: vendorId,
+            amount: amount,
+            category: "DIARY_SALE",
+            description: `Diary sale - Order ${orderId}`,
+            referenceType: "ORDER",
+            referenceId: orderId,
+            transaction: t,
+        });
 
-        return { order, splitTxn };
+        return order;
     });
 
     return {
-        orderId: result.order.orderId,
-        cfOrderId: result.order.cfOrderId,
-        paymentSessionId: result.order.paymentSessionId,
+        orderId: result.orderId,
         amount,
-        currency: "INR",
-        status: result.order.status,
-        split: {
-            vendorAmount: splitAmounts.vendorAmount,
-            doctorAmount: splitAmounts.doctorAmount,
-            platformAmount: splitAmounts.platformAmount,
-            splitType: splitConfig.splitType,
-        },
+        status: "PAID",
+        message: "Order created and vendor wallet credited",
     };
 };
 
@@ -222,13 +347,10 @@ export const processPaymentSuccess = async (
             lock: t.LOCK.UPDATE,
         });
 
-        if (!order) {
-            throw new Error(`Order ${orderId} not found`);
-        }
+        if (!order) throw new Error(`Order ${orderId} not found`);
 
-        // Idempotency: skip if already processed
+        // Idempotency
         if (order.status === "PAID") {
-            console.log(`Order ${orderId} already marked as PAID, skipping`);
             return { order, alreadyProcessed: true };
         }
 
@@ -249,9 +371,28 @@ export const processPaymentSuccess = async (
             splitTxn.transferStatus = "SUCCESS";
             splitTxn.processedAt = new Date();
             await splitTxn.save({ transaction: t });
+
+            // Credit wallets — all 3 parties
+            const platformAdmin = await AppUser.findOne({
+                where: { role: "SUPER_ADMIN" },
+                transaction: t,
+            });
+
+            if (platformAdmin) {
+                await creditWalletsOnSale({
+                    orderId: order.orderId,
+                    vendorId: order.vendorId,
+                    doctorId: order.doctorId,
+                    platformUserId: platformAdmin.id,
+                    vendorAmount: splitTxn.vendorAmount,
+                    doctorAmount: splitTxn.doctorAmount,
+                    platformAmount: splitTxn.platformAmount,
+                    transaction: t,
+                });
+            }
         }
 
-        // Log the webhook payload for audit
+        // Log webhook
         await WebhookLog.create(
             {
                 orderId: order.id,

@@ -17,7 +17,7 @@ export class GeneratedDiary extends Model {
   id!: string; // Format: DRY-2026-BC-001
 
   @Column({
-    type: DataType.STRING,
+    type: DataType.STRING(255),
     defaultValue: "breast-cancer-treatment",
   })
   diaryType!: string;
@@ -43,7 +43,7 @@ export class GeneratedDiary extends Model {
   @Column(DataType.DATE)
   assignedDate?: Date;
 
-  @Column(DataType.STRING)
+  @Column(DataType.TEXT)
   qrCodeUrl?: string;
 
   @Column({

@@ -8,7 +8,7 @@ const router = express.Router();
 // Super Admin only routes
 router.post(
     "/create",
-    authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
+    authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
     createOrder
 );
 router.get(

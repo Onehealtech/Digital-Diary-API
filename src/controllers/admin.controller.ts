@@ -9,6 +9,12 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "../service/emailService";
+import { createWallet } from "../service/wallet.service";
+const walletTypeMap: Record<string, "VENDOR" | "DOCTOR" | "PLATFORM"> = {
+    VENDOR: "VENDOR",
+    DOCTOR: "DOCTOR",
+    SUPER_ADMIN: "PLATFORM",
+};
 
 export const createStaff = async (
     req: AuthenticatedRequest,
@@ -18,7 +24,7 @@ export const createStaff = async (
         const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, location, commissionType, commissionRate } = req.body;
 
         // ── Validate required fields ───────────────────────────────────
-        if (!fullName || !email || !role ) {
+        if (!fullName || !email || !role) {
             res.status(400).json({
                 success: false,
                 message: "Full name, email, and role are required",
@@ -74,6 +80,10 @@ export const createStaff = async (
             location,
         });
 
+        const walletType = walletTypeMap[role];
+        if (walletType) {
+            await createWallet(newUser.id, walletType);
+        }
         // ── Register on Cashfree if Doctor or Vendor ───────────────────
         let cashfreeVendorId: string | null = null;
         const needsCashfree = [UserRole.DOCTOR, UserRole.VENDOR].includes(role as UserRole);
@@ -159,7 +169,7 @@ export const retryCashfreeOnboarding = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { userId } :any= req.params;
+        const { userId }: any = req.params;
         const { bank, upi } = req.body;
 
         const user = await AppUser.findByPk(userId);

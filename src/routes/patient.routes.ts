@@ -30,7 +30,7 @@ import { UserRole } from "../utils/constants";
 const router = Router();
 
 // Legacy routes (Accessed by Doctors)
-router.post("/", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), createPatient);
+router.post("/", authCheck([UserRole.VENDOR]), createPatient);
 router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), getDoctorPatients);
 
 // Patient profile management (Accessed by Patients)

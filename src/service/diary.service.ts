@@ -181,6 +181,55 @@ export class DiaryService {
     return diary;
   }
 
+async getAllSoldDiaries(params: {
+  page?: number;
+  limit?: number;
+  vendorId?: string;
+  search?: string;
+}) {
+  const page = params.page || 1;
+  const limit = params.limit || 50;
+  const offset = (page - 1) * limit;
+
+  const where: any = {};
+
+  if (params.vendorId) {
+    where.vendorId = params.vendorId;
+  }
+
+  const diaries = await Diary.findAndCountAll({
+    where,
+    limit,
+    offset,
+    order: [["createdAt", "DESC"]],
+    include: [
+      {
+        model: Patient,
+        as: "patient",
+      },
+      {
+        model: AppUser,
+        as: "doctor",
+        attributes: ["id", "fullName", "email"],
+      },
+      {
+        model: AppUser,
+        as: "vendor",
+        attributes: ["id", "fullName", "email"],
+      },
+    ],
+  });
+
+  return {
+    data: diaries.rows,
+    total: diaries.count,
+    page,
+    limit,
+    totalPages: Math.ceil(diaries.count / limit),
+  };
+}
+
+
   /**
    * Approve diary sale
    */
@@ -209,36 +258,36 @@ export class DiaryService {
     );
 
     // Credit vendor commission
-    const vendorProfile = await VendorProfile.findOne({
-      where: { vendorId: diary.vendorId },
-    });
+    // const vendorProfile = await VendorProfile.findOne({
+    //   where: { vendorId: diary.vendorId },
+    // });
 
-    if (vendorProfile) {
-      const balanceBefore = parseFloat(vendorProfile.walletBalance.toString());
-      const balanceAfter = balanceBefore + parseFloat(diary.commissionAmount.toString());
+    // if (vendorProfile) {
+    //   const balanceBefore = parseFloat(vendorProfile.walletBalance.toString());
+    //   const balanceAfter = balanceBefore + parseFloat(diary.commissionAmount.toString());
 
-      // Create transaction
-      await Transaction.create({
-        vendorId: diary.vendorId,
-        type: "commission",
-        amount: diary.commissionAmount,
-        balanceBefore,
-        balanceAfter,
-        diaryId: diary.id,
-        description: "Commission for diary sale",
-        processedBy: superAdminId,
-        timestamp: new Date(),
-      });
+    //   // Create transaction
+    //   await Transaction.create({
+    //     vendorId: diary.vendorId,
+    //     type: "commission",
+    //     amount: diary.commissionAmount,
+    //     balanceBefore,
+    //     balanceAfter,
+    //     diaryId: diary.id,
+    //     description: "Commission for diary sale",
+    //     processedBy: superAdminId,
+    //     timestamp: new Date(),
+    //   });
 
-      // Update wallet
-      vendorProfile.walletBalance = balanceAfter;
-      vendorProfile.diariesSold += 1;
-      await vendorProfile.save();
+    //   // Update wallet
+    //   vendorProfile.walletBalance = balanceAfter;
+    //   vendorProfile.diariesSold += 1;
+    //   await vendorProfile.save();
 
-      // Mark commission as paid
-      diary.commissionPaid = true;
-      await diary.save();
-    }
+    //   // Mark commission as paid
+    //   diary.commissionPaid = true;
+    //   await diary.save();
+    // }
 
     // Create notification for vendor
     await Notification.create({
@@ -326,12 +375,7 @@ export class DiaryService {
         {
           model: AppUser,
           as: "vendor",
-          include: [
-            {
-              model: VendorProfile,
-              as: "vendorProfile",
-            },
-          ],
+          attributes: ["id", "fullName", "email"],
         },
       ],
       limit,
@@ -356,7 +400,7 @@ export class DiaryService {
   /**
    * Create diary request
    */
-  async createDiaryRequest(vendorId: string, quantity: number, message?: string) {
+  async createDiaryRequest(vendorId: string, quantity: number, message?: string, dairyType?: string) {
     if (quantity < 1 || quantity > 500) {
       throw new Error("Quantity must be between 1 and 500");
     }
@@ -365,6 +409,7 @@ export class DiaryService {
       vendorId,
       quantity,
       message,
+      dairyType,
       status: "pending",
       requestDate: new Date(),
     });
@@ -382,7 +427,7 @@ export class DiaryService {
         type: "info",
         severity: "medium",
         title: "New Diary Request",
-        message: `Vendor has requested ${quantity} diaries.`,
+        message: `Vendor has requested ${quantity} diaries of type ${dairyType}.`,
         read: false,
         delivered: true,
       });

@@ -114,6 +114,19 @@ export class DiaryController {
     }
   }
 
+  async getAllSoldDiaries(req: Request, res: Response) {
+    try {
+      const { page, limit } = req.query;
+      const result = await diaryService.getAllSoldDiaries({
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      return sendResponse(res, 200, "Sold diaries retrieved successfully", result);
+    } catch (error: any) {
+      return sendError(res, 500, "Failed to retrieve sold diaries", error.message);
+    }
+  }
+
   /**
    * PUT /api/diaries/:id/approve - Approve diary sale
    */
@@ -176,14 +189,14 @@ export class DiaryController {
    */
   async createDiaryRequest(req: Request, res: Response) {
     try {
-      const { quantity, message } = req.body;
+      const { quantity, message , dairyType } = req.body;
       const vendorId = (req as any).user.id;
 
       if (!quantity) {
         return sendError(res, 400, "Quantity is required");
       }
 
-      const request = await diaryService.createDiaryRequest(vendorId, quantity, message);
+      const request = await diaryService.createDiaryRequest(vendorId, quantity, message, dairyType);
 
       return sendResponse(res, 201, "Diary request created successfully", request);
     } catch (error: any) {

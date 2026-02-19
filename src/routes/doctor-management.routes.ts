@@ -16,6 +16,11 @@ router.get(
   authCheck([UserRole.SUPER_ADMIN]),
   staffController.getAllDoctors
 );
+router.get(
+  "/getDoctorsByVendor",
+  authCheck([UserRole.VENDOR]),
+  staffController.getVendorDoctors
+);
 
 // Get doctor by ID
 router.get(

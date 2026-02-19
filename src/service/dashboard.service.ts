@@ -103,13 +103,13 @@ class DashboardService {
    */
   async getVendorDashboard(vendorId: string) {
     // Get vendor profile
-    const vendor = await VendorProfile.findOne({
-      where: { userId: vendorId },
-    });
+    // const vendor = await VendorProfile.findOne({
+    //   where: { vendorId: vendorId },
+    // });
 
-    if (!vendor) {
-      throw new Error("Vendor profile not found");
-    }
+    // if (!vendor) {
+    //   throw new Error("Vendor profile not found");
+    // }
 
     // Total sales (all diaries sold by this vendor)
     const totalSales = await Diary.count({
@@ -153,27 +153,32 @@ class DashboardService {
     });
 
     // Total commission earned
-    const totalCommissionEarned = await Transaction.sum("amount", {
-      where: {
-        vendorId,
-        type: "commission",
-      },
-    });
+    // const totalCommissionEarned = await Transaction.sum("amount", {
+    //   where: {
+    //     vendorId,
+    //     type: "commission",
+    //   },
+    // });
 
-    // Total payouts received
-    const totalPayouts = await Transaction.sum("amount", {
-      where: {
-        vendorId,
-        type: "payout",
-      },
-    });
+    // // Total payouts received
+    // const totalPayouts = await Transaction.sum("amount", {
+    //   where: {
+    //     vendorId,
+    //     type: "payout",
+    //   },
+    // });
 
-    // Recent transactions
-    const recentTransactions = await Transaction.findAll({
-      where: { vendorId },
-      order: [["createdAt", "DESC"]],
-      limit: 5,
-    });
+    // // Recent transactions
+    // const recentTransactions = await Transaction.findAll({
+    //   where: { vendorId },
+    //   order: [["createdAt", "DESC"]],
+    //   limit: 5,
+    // });
+    // const recentTransactions = await Transaction.findAll({
+    //   where: { vendorId },
+    //   order: [["createdAt", "DESC"]],
+    //   limit: 5,
+    // });
 
     return {
       sales: {
@@ -185,13 +190,13 @@ class DashboardService {
       inventory: {
         available: availableDiaries,
       },
-      financials: {
-        walletBalance: Number(vendor.walletBalance),
-        totalCommissionEarned: Number(totalCommissionEarned || 0),
-        totalPayouts: Number(totalPayouts || 0),
-        pendingCommission: pendingSales * 50, // ₹50 per pending sale
-      },
-      recentTransactions,
+      // financials: {
+        // walletBalance: Number(vendor.walletBalance),
+        // totalCommissionEarned: Number(totalCommissionEarned || 0),
+        // totalPayouts: Number(totalPayouts || 0),
+        // pendingCommission: pendingSales, // ₹50 per pending sale
+      // },
+      // recentTransactions,
     };
   }
 

@@ -82,6 +82,80 @@ class StaffService {
       },
     };
   }
+async getVendorDoctors(
+  vendorId: string,
+  filters: StaffFilters = {}
+) {
+  const { page = 1, limit = 20, search } = filters;
+  const offset = (page - 1) * limit;
+
+  const whereClause: any = {
+    role: "DOCTOR",
+    parentId: vendorId, // ✅ IMPORTANT
+  };
+
+  if (search) {
+    whereClause[Op.or] = [
+      { fullName: { [Op.iLike]: `%${search}%` } },
+      { email: { [Op.iLike]: `%${search}%` } },
+      { phone: { [Op.iLike]: `%${search}%` } },
+    ];
+  }
+
+  const { rows: doctors, count: total } =
+    await AppUser.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "id",
+        "fullName",
+        "email",
+        "phone",
+        "specialization",
+        "hospital",
+        "license",
+        "isActive",
+        "createdAt",
+        "updatedAt",
+      ],
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+    });
+
+  const doctorsWithStats = await Promise.all(
+    doctors.map(async (doctor) => {
+      const patientCount = await Patient.count({
+        where: { doctorId: doctor.id },
+      });
+
+      const assistantCount = await AppUser.count({
+        where: {
+          role: "ASSISTANT",
+          parentId: doctor.id,
+        },
+      });
+
+      return {
+        ...doctor.toJSON(),
+        stats: {
+          totalPatients: patientCount,
+          totalAssistants: assistantCount,
+        },
+      };
+    })
+  );
+
+  return {
+    doctors: doctorsWithStats,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
 
   /**
    * Get doctor by ID with details
