@@ -3,6 +3,7 @@ import { ScanLog } from "../models/ScanLog";
 import { Patient } from "../models/Patient";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { scanService } from "../service/scan.service";
+import { ocrService } from "../service/ocr.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 
@@ -322,5 +323,118 @@ export const getDiaryEntryStats = async (
         sendResponse(res, stats, "Diary stats fetched successfully");
     } catch (error: any) {
         sendError(res, error.message);
+    }
+};
+
+/**
+ * POST /api/v1/scan/upload-and-process
+ * Patient uploads a diary page image, OCR processes it, and stores structured data
+ */
+export const uploadAndProcessScan = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const { pageId, pageType } = req.body;
+
+        if (!pageId) {
+            res.status(400).json({
+                success: false,
+                message: "pageId is required",
+            });
+            return;
+        }
+
+        if (!req.file) {
+            res.status(400).json({
+                success: false,
+                message: "Image file is required",
+            });
+            return;
+        }
+
+        const validPageTypes = ["test-status", "treatment-update", "symptoms", "notes"];
+        if (pageType && !validPageTypes.includes(pageType)) {
+            res.status(400).json({
+                success: false,
+                message: `pageType must be one of: ${validPageTypes.join(", ")}`,
+            });
+            return;
+        }
+
+        // Run OCR processing via Python child process
+        const ocrResult = await ocrService.processImage(req.file.path, pageType);
+
+        const scanData = {
+            ...ocrResult.structured,
+            rawText: ocrResult.rawText,
+            confidence: ocrResult.confidence,
+            ocrMetadata: ocrResult.metadata,
+        };
+
+        // Auto-flag low confidence results for doctor review
+        const shouldFlag = ocrResult.confidence < 50;
+
+        // Upsert: find existing by patientId + pageId, create or update
+        const existingScan = await ScanLog.findOne({
+            where: { patientId, pageId },
+        });
+
+        let scanLog;
+
+        if (existingScan) {
+            existingScan.scanData = scanData;
+            existingScan.imageUrl = `/uploads/${req.file.filename}`;
+            existingScan.isUpdated = true;
+            existingScan.updatedCount = existingScan.updatedCount + 1;
+            existingScan.scannedAt = new Date();
+            existingScan.flagged = shouldFlag;
+            if (pageType) existingScan.pageType = pageType as any;
+            await existingScan.save();
+            scanLog = existingScan;
+        } else {
+            scanLog = await ScanLog.create({
+                patientId,
+                pageId,
+                pageType: pageType || null,
+                imageUrl: `/uploads/${req.file.filename}`,
+                scanData,
+                scannedAt: new Date(),
+                isUpdated: false,
+                updatedCount: 0,
+                flagged: shouldFlag,
+            });
+        }
+
+        // Update patient's lastActive timestamp
+        await Patient.update(
+            { updatedAt: new Date() },
+            { where: { id: patientId } }
+        );
+
+        res.status(existingScan ? 200 : 201).json({
+            success: true,
+            message: existingScan
+                ? "Scan updated with OCR data"
+                : "Image processed and scan created",
+            data: {
+                id: scanLog.id,
+                pageId: scanLog.pageId,
+                pageType: scanLog.pageType,
+                imageUrl: scanLog.imageUrl,
+                confidence: ocrResult.confidence,
+                scannedAt: scanLog.scannedAt,
+                isUpdated: scanLog.isUpdated,
+                updatedCount: scanLog.updatedCount,
+                flagged: scanLog.flagged,
+            },
+        });
+    } catch (error: any) {
+        console.error("Upload and process scan error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to process diary page image",
+        });
     }
 };
