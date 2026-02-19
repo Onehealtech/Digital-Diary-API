@@ -56,17 +56,12 @@ class PatientService {
         {
           model: AppUser,
           as: "doctor",
-          attributes: ["id", "fullName", "email", "phoneNumber"],
-        },
-        {
-          model: AppUser,
-          as: "vendor",
-          attributes: ["id", "fullName", "phoneNumber"],
+          attributes: ["id", "fullName", "email", "phone"],
         },
         {
           model: Diary,
           as: "diary",
-          attributes: ["id", "status", "saleAmount", "activatedAt"],
+          attributes: ["id", "status", "saleAmount", "activationDate"],
         },
       ],
     });

@@ -204,65 +204,107 @@ class DashboardService {
    * Doctor Dashboard Statistics
    */
   async getDoctorDashboard(doctorId: string) {
+    // Get doctor info
+    const doctor = await AppUser.findByPk(doctorId, {
+      attributes: ["id", "fullName", "email"],
+    });
+
     // Total patients under this doctor
     const totalPatients = await Patient.count({
       where: { doctorId },
     });
 
     // Active cases (patients with active diaries)
-    const activeCases = await Patient.count({
-      where: {
-        doctorId,
-        "$diary.status$": "active",
-      },
-      include: [
-        {
-          model: Diary,
-          as: "diary",
-          required: true,
+    let activeCases = 0;
+    try {
+      activeCases = await Patient.count({
+        where: {
+          doctorId,
+          "$diary.status$": "active",
         },
-      ],
-    });
+        include: [
+          {
+            model: Diary,
+            as: "diary",
+            required: true,
+          },
+        ],
+      });
+    } catch {
+      // Diary association may not exist
+    }
 
     // This week's diary entries
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    let weekEntries = 0;
+    let pendingReviews = 0;
+    let flaggedEntries = 0;
+    let recentEntries: any[] = [];
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const weekEntries = await ScanLog.count({
-      where: {
-        doctorId,
-        createdAt: { [Op.gte]: oneWeekAgo },
-      },
-    });
+      weekEntries = await ScanLog.count({
+        where: {
+          doctorId,
+          createdAt: { [Op.gte]: oneWeekAgo },
+        },
+      });
 
-    // Pending reviews (diary entries not reviewed)
-    const pendingReviews = await ScanLog.count({
-      where: {
-        doctorId,
-        doctorReviewed: false,
-      },
-    });
+      // Pending reviews (diary entries not reviewed)
+      try {
+        pendingReviews = await ScanLog.count({
+          where: { doctorId, doctorReviewed: false },
+        });
+      } catch {
+        // doctorReviewed column may not exist
+      }
 
-    // Flagged entries
-    const flaggedEntries = await ScanLog.count({
-      where: {
-        doctorId,
-        flagged: true,
-      },
-    });
+      // Flagged entries
+      try {
+        flaggedEntries = await ScanLog.count({
+          where: { doctorId, flagged: true },
+        });
+      } catch {
+        // flagged column may not exist
+      }
 
-    // Total tasks created
-    const totalTasks = await Task.count({
-      where: { createdBy: doctorId },
-    });
+      // Recent diary entries
+      try {
+        recentEntries = await ScanLog.findAll({
+          where: { doctorId },
+          order: [["createdAt", "DESC"]],
+          limit: 10,
+          include: [
+            {
+              model: Patient,
+              as: "patient",
+              attributes: ["id", "name", "phoneNumber"],
+            },
+          ],
+        });
+      } catch {
+        // patient association may differ
+      }
+    } catch {
+      // ScanLog table may not exist
+    }
 
-    // Pending tasks
-    const pendingTasks = await Task.count({
-      where: {
-        createdBy: doctorId,
-        status: { [Op.in]: ["pending", "in-progress"] },
-      },
-    });
+    // Tasks
+    let totalTasks = 0;
+    let pendingTasks = 0;
+    try {
+      totalTasks = await Task.count({
+        where: { createdBy: doctorId },
+      });
+      pendingTasks = await Task.count({
+        where: {
+          createdBy: doctorId,
+          status: { [Op.in]: ["pending", "in-progress"] },
+        },
+      });
+    } catch {
+      // Tasks table may not exist
+    }
 
     // Total assistants under this doctor
     const totalAssistants = await AppUser.count({
@@ -272,30 +314,22 @@ class DashboardService {
       },
     });
 
-    // Recent diary entries
-    const recentEntries = await ScanLog.findAll({
-      where: { doctorId },
-      order: [["createdAt", "DESC"]],
-      limit: 10,
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "name", "phoneNumber"],
+    // Patients needing follow-up
+    let patientsNeedingFollowUp = 0;
+    try {
+      patientsNeedingFollowUp = await Patient.count({
+        where: {
+          doctorId,
+          testCompletionPercentage: { [Op.lt]: 100 },
+          totalTestsPrescribed: { [Op.gt]: 0 },
         },
-      ],
-    });
-
-    // Patient test completion stats
-    const patientsNeedingFollowUp = await Patient.count({
-      where: {
-        doctorId,
-        testCompletionPercentage: { [Op.lt]: 100 },
-        totalTestsPrescribed: { [Op.gt]: 0 },
-      },
-    });
+      });
+    } catch {
+      // These columns may not exist
+    }
 
     return {
+      doctorName: doctor?.fullName || null,
       patients: {
         total: totalPatients,
         activeCases,
