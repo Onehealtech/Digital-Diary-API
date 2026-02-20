@@ -14,35 +14,26 @@ class FCMService {
   initialize() {
     if (this.initialized) return;
 
-    const envPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-    const serviceAccountPath = envPath
-      ? path.resolve(envPath)
-      : path.join(__dirname, "../../firebase-service-account.json");
-
-    if (!fs.existsSync(serviceAccountPath)) {
-      console.warn(
-        "⚠️ Firebase service account file not found at:",
-        serviceAccountPath
-      );
-      console.warn(
-        "⚠️ FCM push notifications will be disabled. Download the service account JSON from Firebase Console."
-      );
-      return;
-    }
-
     try {
-      const serviceAccount = JSON.parse(
-        fs.readFileSync(serviceAccountPath, "utf8")
-      );
+      if (!process.env.FIREBASE_PROJECT_ID ||
+          !process.env.FIREBASE_CLIENT_EMAIL ||
+          !process.env.FIREBASE_PRIVATE_KEY) {
+        console.warn("⚠️ Firebase env variables missing. FCM disabled.");
+        return;
+      }
 
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        }),
       });
 
       this.initialized = true;
-      console.log("✅ Firebase Admin SDK initialized for FCM");
+      console.log("✅ Firebase Admin SDK initialized");
     } catch (error) {
-      console.error("❌ Failed to initialize Firebase Admin SDK:", error);
+      console.error("❌ Firebase initialization failed:", error);
     }
   }
 
