@@ -144,4 +144,28 @@ export class DoctorAuthController {
       return sendError(res, error.message, 400);
     }
   }
+  static async changePassword(req: any, res: any) {
+  try {
+    const userId = req.user.id; // from JWT middleware
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        message: "Old password and new password are required",
+      });
+    }
+
+    const result = await DoctorAuthService.changePassword(
+      userId,
+      oldPassword,
+      newPassword
+    );
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    return res.status(400).json({
+      message: error.message,
+    });
+  }
+}
 }

@@ -203,5 +203,43 @@ export class DoctorAuthService {
       throw error;
     }
   }
+  static async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string
+  ) {
+    // 1️⃣ Find user
+    const user = await AppUser.findByPk(userId);
 
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // 2️⃣ Verify old password
+    const isMatch = await bcrypt.compare(oldPassword.trim(), user.password);
+
+    if (!isMatch) {
+      throw new Error("Old password is incorrect");
+    }
+
+    // 3️⃣ Prevent same password reuse
+    const isSamePassword = await bcrypt.compare(
+      newPassword.trim(),
+      user.password
+    );
+
+    if (isSamePassword) {
+      throw new Error("New password cannot be same as old password");
+    }
+
+    // 4️⃣ Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword.trim(), 10);
+
+    // 5️⃣ Update password
+    await user.update({ password: hashedPassword });
+
+    return {
+      message: "Password changed successfully",
+    };
+  }
 }
