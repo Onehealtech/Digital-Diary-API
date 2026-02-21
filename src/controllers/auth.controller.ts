@@ -107,17 +107,17 @@ export class DoctorAuthController {
    */
   static async forgotPassword(req: Request, res: Response) {
     try {
-      const { email } = req.body;
+      const { email, currentPassword } = req.body;
 
       if (!email) {
         return sendError(res, "Email is required", 400);
       }
 
-      const result = await DoctorAuthService.forgotPassword(email);
+      const result = await DoctorAuthService.forgotPassword(email, currentPassword);
 
-      return sendResponse(res, result, "Password reset instructions sent");
+      return sendResponse(res, result, "Identity verified");
     } catch (error: any) {
-      return sendError(res, error.message);
+      return sendError(res, error.message, 400);
     }
   }
 
@@ -144,28 +144,34 @@ export class DoctorAuthController {
       return sendError(res, error.message, 400);
     }
   }
-  static async changePassword(req: any, res: any) {
-  try {
-    const userId = req.user.id; // from JWT middleware
-    const { oldPassword, newPassword } = req.body;
 
-    if (!oldPassword || !newPassword) {
-      return res.status(400).json({
-        message: "Old password and new password are required",
-      });
+  /**
+   * PUT /api/v1/auth/change-password
+   * Change password for authenticated users (requires current password verification)
+   */
+  static async changePassword(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, "Unauthorized", 401);
+      }
+
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return sendError(res, "currentPassword and newPassword are required", 400);
+      }
+
+      if (newPassword.length < 6) {
+        return sendError(res, "Password must be at least 6 characters", 400);
+      }
+
+      const result = await DoctorAuthService.changePassword(userId, currentPassword, newPassword);
+
+      return sendResponse(res, result, "Password changed successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, 400);
     }
-
-    const result = await DoctorAuthService.changePassword(
-      userId,
-      oldPassword,
-      newPassword
-    );
-
-    return res.status(200).json(result);
-  } catch (error: any) {
-    return res.status(400).json({
-      message: error.message,
-    });
   }
-}
 }
