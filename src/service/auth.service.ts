@@ -132,16 +132,21 @@ export class DoctorAuthService {
   /**
    * Forgot password - Generate reset token
    */
-  static async forgotPassword(email: string) {
+  static async forgotPassword(email: string, currentPassword?: string) {
     const user = await AppUser.findOne({
       where: { email: email.toLowerCase() },
     });
 
     if (!user) {
-      // Don't reveal if user exists or not for security
-      return {
-        message: "If the email exists, a password reset link will be sent",
-      };
+      throw new Error("Invalid email or current password");
+    }
+
+    // Verify current password if provided
+    if (currentPassword) {
+      const isMatch = await bcrypt.compare(currentPassword.trim(), user.password);
+      if (!isMatch) {
+        throw new Error("Invalid email or current password");
+      }
     }
 
     // Generate password reset token
@@ -151,17 +156,12 @@ export class DoctorAuthService {
         type: "password-reset",
       },
       process.env.JWT_SECRET!,
-      { expiresIn: "1h" } // Reset token expires in 1 hour
+      { expiresIn: "1h" }
     );
 
-    // In production, you would:
-    // 1. Save reset token to database with expiry
-    // 2. Send email with reset link containing the token
-    // For now, return the token (in production, never return it via API)
     return {
-      message: "If the email exists, a password reset link will be sent",
-      // TODO: Send email instead of returning token
-      resetToken, // Remove this in production
+      message: "Identity verified. You can now reset your password.",
+      resetToken,
     };
   }
 
@@ -184,11 +184,8 @@ export class DoctorAuthService {
         throw new Error("User not found");
       }
 
-      // Hash new password
-      const hashedPassword = await bcrypt.hash(newPassword.trim(), 10);
-
-      // Update password
-      await user.update({ password: hashedPassword });
+      // Update password — the @BeforeUpdate hook in AppUser hashes it automatically
+      await user.update({ password: newPassword.trim() });
 
       return {
         message: "Password reset successfully",
@@ -232,11 +229,8 @@ export class DoctorAuthService {
       throw new Error("New password cannot be same as old password");
     }
 
-    // 4️⃣ Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword.trim(), 10);
-
-    // 5️⃣ Update password
-    await user.update({ password: hashedPassword });
+    // 4️⃣ Update password — @BeforeUpdate hook in AppUser hashes it automatically
+    await user.update({ password: newPassword.trim() });
 
     return {
       message: "Password changed successfully",

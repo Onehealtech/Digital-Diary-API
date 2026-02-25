@@ -690,18 +690,30 @@ export const getAllWalletsSummary = async () => {
       },
       {
         model: WalletTransaction,
-        attributes: ["id", "type", "amount", "category", "createdAt", "referenceType", "referenceId", "balanceAfter"],
-        order: [["createdAt", "DESC"]],
+        separate: true, // ✅ REQUIRED
+        limit: 20, // optional (remove if want all)
+        order: [["createdAt", "DESC"]], // ✅ Latest first
+        attributes: [
+          "id",
+          "type",
+          "amount",
+          "category",
+          "createdAt",
+          "referenceType",
+          "referenceId",
+          "balanceAfter",
+        ],
       },
       {
         model: Payout,
-        attributes: ["id", "amount", "status", "createdAt"],
+        separate: true, // ✅ REQUIRED
         order: [["createdAt", "DESC"]],
+        attributes: ["id", "amount", "status", "createdAt"],
       },
     ],
+    order: [["updatedAt", "DESC"]], // Optional: wallets with latest activity first
   });
 
-  // Add computed fields to each wallet
   return wallets.map((w) => {
     const bal = Number(w.balance);
     return {
