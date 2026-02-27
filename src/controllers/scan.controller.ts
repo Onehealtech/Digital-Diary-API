@@ -26,14 +26,33 @@ export const submitScan = async (
             return;
         }
 
-        // Validate that scanData is an object
-        if (typeof scanData !== "object") {
+        // Parse scanData if it came as a JSON string (multipart form submissions)
+        let parsedScanData = scanData;
+        if (typeof scanData === "string") {
+            try {
+                parsedScanData = JSON.parse(scanData);
+            } catch {
+                res.status(400).json({
+                    success: false,
+                    message: "Scan data must be a valid JSON object or JSON string",
+                });
+                return;
+            }
+        }
+
+        // Validate that parsedScanData is an object
+        if (typeof parsedScanData !== "object") {
             res.status(400).json({
                 success: false,
                 message: "Scan data must be a valid JSON object",
             });
             return;
         }
+
+        // Build imageUrl if a file was uploaded (stored in /uploads directory, served as static)
+        const imageUrl = req.file
+            ? `/uploads/${req.file.filename}`
+            : undefined;
 
         // Get patient ID from authenticated user
         const patientId = req.user!.id;
@@ -47,10 +66,14 @@ export const submitScan = async (
 
         if (existingScan) {
             // Update existing scan
-            existingScan.scanData = scanData;
+            existingScan.scanData = parsedScanData;
             existingScan.isUpdated = true;
             existingScan.updatedCount = existingScan.updatedCount + 1;
             existingScan.scannedAt = new Date();
+            // Update imageUrl only if a new image was provided
+            if (imageUrl) {
+                existingScan.imageUrl = imageUrl;
+            }
             await existingScan.save();
             scanLog = existingScan;
         } else {
@@ -58,10 +81,11 @@ export const submitScan = async (
             scanLog = await ScanLog.create({
                 patientId,
                 pageId,
-                scanData,
+                scanData: parsedScanData,
                 scannedAt: new Date(),
                 isUpdated: false,
                 updatedCount: 0,
+                imageUrl: imageUrl || null,
             });
         }
 
@@ -82,6 +106,7 @@ export const submitScan = async (
                 scannedAt: scanLog.scannedAt,
                 isUpdated: scanLog.isUpdated,
                 updatedCount: scanLog.updatedCount,
+                imageUrl: scanLog.imageUrl || null,
             },
         });
     } catch (error: any) {

@@ -57,8 +57,7 @@ class ScanService {
       throw new Error("Only doctors and assistants can view diary entries");
     }
 
-    whereClause.doctorId = doctorId;
-
+    // NOTE: ScanLog has no doctorId column — filter via Patient.doctorId join
     if (pageType) {
       whereClause.pageType = pageType;
     }
@@ -91,7 +90,9 @@ class ScanService {
         {
           model: Patient,
           as: "patient",
-          attributes: ["id", "name", "phoneNumber", "age", "gender", "stage"],
+          attributes: ["id", "fullName", "phone", "age", "gender", "stage"],
+          where: { doctorId },   // ← Filter by doctor through Patient join
+          required: true,
         },
       ],
       order: [["scannedAt", "DESC"]],
@@ -99,18 +100,21 @@ class ScanService {
       offset,
     });
 
-    // Get summary stats
+    // Get summary stats — filter through Patient join
+    const unreviewedPatients = await Patient.findAll({ where: { doctorId }, attributes: ["id"], raw: true });
+    const patientIds = unreviewedPatients.map((p: any) => p.id);
+
     const unreviewed = await ScanLog.count({
       where: {
-        doctorId,
         doctorReviewed: false,
+        patientId: { [Op.in]: patientIds },
       },
     });
 
     const flaggedCount = await ScanLog.count({
       where: {
-        doctorId,
         flagged: true,
+        patientId: { [Op.in]: patientIds },
       },
     });
 
@@ -143,15 +147,14 @@ class ScanService {
     }
 
     const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+      where: { id: entryId },
       include: [
         {
           model: Patient,
           as: "patient",
           attributes: ["id", "name", "phoneNumber", "age", "gender", "stage", "diaryType"],
+          where: { doctorId },   // ← Scope to this doctor's patients
+          required: true,
         },
       ],
     });
@@ -171,26 +174,25 @@ class ScanService {
     doctorId: string,
     reviewData: ReviewData
   ) {
-    const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+    // Verify the entry belongs to this doctor's patient
+    const entryToReview = await ScanLog.findOne({
+      where: { id: entryId },
+      include: [{ model: Patient, as: "patient", where: { doctorId }, required: true, attributes: ["id"] }],
     });
 
-    if (!entry) {
+    if (!entryToReview) {
       throw new Error("Diary entry not found or access denied");
     }
 
-    await entry.update({
+    await entryToReview.update({
       doctorReviewed: true,
       reviewedBy: doctorId,
       reviewedAt: new Date(),
       doctorNotes: reviewData.doctorNotes,
-      flagged: reviewData.flagged !== undefined ? reviewData.flagged : entry.flagged,
+      flagged: reviewData.flagged !== undefined ? reviewData.flagged : entryToReview.flagged,
     });
 
-    return entry;
+    return entryToReview;
   }
 
   /**
@@ -198,10 +200,8 @@ class ScanService {
    */
   async toggleFlag(entryId: string, doctorId: string, flagged: boolean) {
     const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+      where: { id: entryId },
+      include: [{ model: Patient, as: "patient", where: { doctorId }, required: true, attributes: ["id"] }],
     });
 
     if (!entry) {
@@ -218,15 +218,14 @@ class ScanService {
    */
   async getEntriesNeedingReview(doctorId: string) {
     const unreviewedEntries = await ScanLog.findAll({
-      where: {
-        doctorId,
-        doctorReviewed: false,
-      },
+      where: { doctorReviewed: false },
       include: [
         {
           model: Patient,
           as: "patient",
           attributes: ["id", "name", "phoneNumber"],
+          where: { doctorId },
+          required: true,
         },
       ],
       order: [["scannedAt", "ASC"]], // Oldest first
@@ -234,15 +233,14 @@ class ScanService {
     });
 
     const flaggedEntries = await ScanLog.findAll({
-      where: {
-        doctorId,
-        flagged: true,
-      },
+      where: { flagged: true },
       include: [
         {
           model: Patient,
           as: "patient",
           attributes: ["id", "name", "phoneNumber"],
+          where: { doctorId },
+          required: true,
         },
       ],
       order: [["scannedAt", "DESC"]],
@@ -259,40 +257,29 @@ class ScanService {
    * Get diary entry statistics for a doctor
    */
   async getDiaryEntryStats(doctorId: string) {
-    const total = await ScanLog.count({
-      where: { doctorId },
-    });
+    // Get all patient IDs for this doctor
+    const doctorPatients = await Patient.findAll({ where: { doctorId }, attributes: ["id"], raw: true });
+    const patientIds = doctorPatients.map((p: any) => p.id);
 
-    const reviewed = await ScanLog.count({
-      where: {
-        doctorId,
-        doctorReviewed: true,
-      },
-    });
+    if (patientIds.length === 0) {
+      return { total: 0, reviewed: 0, unreviewed: 0, flagged: 0, thisWeek: 0, byPageType: [] };
+    }
 
+    const patientFilter = { patientId: { [Op.in]: patientIds } };
+
+    const total = await ScanLog.count({ where: patientFilter });
+    const reviewed = await ScanLog.count({ where: { ...patientFilter, doctorReviewed: true } });
     const unreviewed = total - reviewed;
-
-    const flagged = await ScanLog.count({
-      where: {
-        doctorId,
-        flagged: true,
-      },
-    });
+    const flagged = await ScanLog.count({ where: { ...patientFilter, flagged: true } });
 
     // This week's entries
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    const thisWeek = await ScanLog.count({
-      where: {
-        doctorId,
-        scannedAt: { [Op.gte]: oneWeekAgo },
-      },
-    });
+    const thisWeek = await ScanLog.count({ where: { ...patientFilter, scannedAt: { [Op.gte]: oneWeekAgo } } });
 
     // Entries by page type
     const byPageType = await ScanLog.findAll({
-      where: { doctorId },
+      where: patientFilter,
       attributes: [
         "pageType",
         [ScanLog.sequelize!.fn("COUNT", "*"), "count"],
