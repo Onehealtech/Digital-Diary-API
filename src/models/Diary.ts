@@ -8,6 +8,7 @@ import {
 } from "sequelize-typescript";
 import { Patient } from "./Patient";
 import { AppUser } from "./Appuser";
+import { DiaryTemplate } from "./DiaryTemplate";
 
 @Table({
   tableName: "diaries",
@@ -49,6 +50,13 @@ export class Diary extends Model {
   })
   doctor!: AppUser;
 
+  @ForeignKey(() => DiaryTemplate)
+  @Column({ type: DataType.UUID, allowNull: true })
+  templateId!: string;
+
+  @BelongsTo(() => DiaryTemplate)
+  template!: DiaryTemplate;
+
   // ================== VENDOR ==================
   @ForeignKey(() => AppUser)
   @Column({
@@ -78,6 +86,9 @@ export class Diary extends Model {
 
   @Column(DataType.DATE)
   activationDate?: Date;
+  
+  @Column(DataType.STRING(255))
+  diaryType?: string;
 
   @Column({
     type: DataType.UUID,

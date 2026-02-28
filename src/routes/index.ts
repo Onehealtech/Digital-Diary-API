@@ -19,6 +19,7 @@ import auditRoutes from "./audit.routes";
 import uploadImageRoutes from "./uploadImage.route";
 import orderRoutes from "./order.routes";
 import walletRoutes from "./wallet.routes";
+import diaryTemplateRoutes from "./diary-template.routes";
 
 const router = express.Router();
 
@@ -43,5 +44,6 @@ router.use("/v1/audit-logs", auditRoutes); // Audit log routes (Super Admin only
 router.use("/v1/upload", uploadImageRoutes); // Upload image routes (Super Admin only)
 router.use("/v1/order", orderRoutes); // Order routes (Super Admin only)
 router.use("/v1/wallets", walletRoutes); // Wallet routes (Super Admin only)
+router.use("/v1/templates", diaryTemplateRoutes); // Template routes (Super Admin only)
 
 export default router;

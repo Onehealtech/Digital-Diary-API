@@ -21,6 +21,7 @@ import ImageHistory from '../models/ImageHistory.model';
 import { Wallet } from '../models/Wallet';
 import { Payout } from '../models/payout.model';
 import { WalletTransaction } from '../models/walletTransaction.model';
+import { DiaryTemplate } from '../models/DiaryTemplate';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -71,6 +72,7 @@ export const sequelize = new Sequelize({
     Wallet,
     Payout,
     WalletTransaction,
+    DiaryTemplate,
   ],
 
   // Logging configuration

@@ -6,6 +6,7 @@ import { Transaction } from "../models/Transaction";
 import { GeneratedDiary } from "../models/GeneratedDiary";
 import { Op } from "sequelize";
 import bcrypt from "bcrypt";
+import { DiaryTemplate } from "../models/DiaryTemplate";
 
 export class VendorService {
   /**
@@ -419,13 +420,19 @@ export class VendorService {
       status: "ACTIVE",
       registeredDate: new Date(),
     });
-
+    let diaryTypeTemplate: string = ""; 
+    if (generatedDiary.diaryType == "peri-operative") {
+      diaryTypeTemplate = "PERI-OPERATIVE";
+    }
+    const generatedTemplate = await DiaryTemplate.findOne({ where: { code: diaryTypeTemplate } });
     // Create diary record (pending approval)
     const diary = await Diary.create({
       id: data.diaryId,
+      templateId: generatedTemplate ? generatedTemplate.id : null,
       patientId: patient.id,
       doctorId: data.doctorId,
       vendorId: data.vendorId,
+      diaryType: generatedDiary.diaryType,
       status: "pending",
       saleAmount: data.paymentAmount,
       commissionAmount: 50, // ₹50 commission
