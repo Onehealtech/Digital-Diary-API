@@ -1,0 +1,268 @@
+import { Response } from "express";
+import {
+    AuthenticatedRequest,
+    AuthRequest,
+} from "../middleware/authMiddleware";
+import { bubbleScanService } from "../service/bubbleScan.service";
+import { sendResponse, sendError } from "../utils/response";
+
+/**
+ * POST /api/v1/bubble-scan/manual
+ * Patient submits diary answers manually (for non-scan mode)
+ */
+export const manualSubmitBubbleScan = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const { pageNumber, answers, diaryType } = req.body;
+
+        if (!pageNumber || typeof pageNumber !== "number") {
+            sendError(res, 400, "pageNumber (number) is required");
+            return;
+        }
+        if (!answers || typeof answers !== "object") {
+            sendError(res, 400, "answers (object) is required");
+            return;
+        }
+
+        const result = await bubbleScanService.manualSubmit(
+            patientId,
+            pageNumber,
+            answers,
+            diaryType
+        );
+
+        sendResponse(res, 201, "Manual submission saved successfully", result);
+    } catch (error: any) {
+        console.error("Manual submit error:", error);
+        const status = error.message.includes("not found") ? 404 : 500;
+        sendError(res, status, error.message || "Failed to save manual submission");
+    }
+};
+
+/**
+ * POST /api/v1/bubble-scan/upload
+ * Patient uploads a diary page photo for OMR bubble scanning
+ */
+export const uploadBubbleScan = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const { pageId, templateName, pageType } = req.body;
+        const patientId = req.user!.id;
+
+        if (!pageId) {
+            sendError(res, 400, "pageId is required");
+            return;
+        }
+
+        if (!req.file) {
+            sendError(res, 400, "Image file is required");
+            return;
+        }
+
+        // templateName is optional — defaults to "auto" (OCR auto-detection)
+        const imagePath = req.file.path;
+        const result = await bubbleScanService.processBubbleScan(
+            patientId,
+            pageId,
+            templateName || "auto",
+            imagePath,
+            pageType
+        );
+
+        const statusCode =
+            result.processingStatus === "completed" ? 201 : 200;
+        sendResponse(
+            res,
+            statusCode,
+            result.processingStatus === "completed"
+                ? "Bubble scan processed successfully"
+                : "Bubble scan processing failed - check errorMessage",
+            result
+        );
+    } catch (error: any) {
+        console.error("Bubble scan upload error:", error);
+        sendError(res, 500, error.message || "Failed to process bubble scan");
+    }
+};
+
+/**
+ * GET /api/v1/bubble-scan/history
+ * Patient gets their bubble scan history
+ */
+export const getBubbleScanHistory = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const { page = 1, limit = 20 } = req.query;
+        const result = await bubbleScanService.getPatientScanHistory(
+            patientId,
+            Number(page),
+            Number(limit)
+        );
+        sendResponse(
+            res,
+            200,
+            "Bubble scan history retrieved successfully",
+            result
+        );
+    } catch (error: any) {
+        console.error("Bubble scan history error:", error);
+        sendError(res, 500, error.message || "Failed to get scan history");
+    }
+};
+
+/**
+ * GET /api/v1/bubble-scan/templates
+ * Get list of available scan templates
+ */
+export const getAvailableTemplates = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const templates = bubbleScanService.getAvailableTemplates();
+        sendResponse(res, 200, "Available templates retrieved", templates);
+    } catch (error: any) {
+        console.error("Get templates error:", error);
+        sendError(res, 500, error.message || "Failed to get templates");
+    }
+};
+
+/**
+ * GET /api/v1/bubble-scan/:id
+ * Get single bubble scan result
+ */
+export const getBubbleScanById = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const result = await bubbleScanService.getScanById(req.params.id as string);
+        sendResponse(res, 200, "Bubble scan result retrieved", result);
+    } catch (error: any) {
+        const status = error.message.includes("not found") ? 404 : 500;
+        sendError(res, status, error.message);
+    }
+};
+
+/**
+ * POST /api/v1/bubble-scan/:id/retry
+ * Retry a failed scan
+ */
+export const retryBubbleScan = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const result = await bubbleScanService.retryScan(req.params.id as string);
+        const statusCode =
+            result.processingStatus === "completed" ? 200 : 200;
+        sendResponse(
+            res,
+            statusCode,
+            result.processingStatus === "completed"
+                ? "Bubble scan retry completed successfully"
+                : "Bubble scan retry failed - check errorMessage",
+            result
+        );
+    } catch (error: any) {
+        console.error("Bubble scan retry error:", error);
+        sendError(res, 500, error.message || "Failed to retry scan");
+    }
+};
+
+/**
+ * PUT /api/v1/bubble-scan/:id/review
+ * Doctor reviews and optionally overrides bubble scan results
+ */
+export const reviewBubbleScan = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const doctorId = req.user?.id;
+        if (!doctorId) {
+            sendError(res, 401, "Authentication required");
+            return;
+        }
+
+        const { doctorNotes, flagged, overrides } = req.body;
+        const result = await bubbleScanService.reviewBubbleScan(
+            req.params.id as string,
+            doctorId,
+            { doctorNotes, flagged, overrides }
+        );
+        sendResponse(res, 200, "Bubble scan reviewed successfully", result);
+    } catch (error: any) {
+        const status = error.message.includes("not found") ? 404 : 500;
+        sendError(res, status, error.message);
+    }
+};
+
+/**
+ * GET /api/v1/bubble-scan/doctor/all
+ * Doctor/Assistant gets all bubble scans for their patients
+ */
+export const getAllBubbleScans = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const userId = req.user?.id;
+        const role = req.user?.role;
+        if (!userId || !role) {
+            sendError(res, 401, "Authentication required");
+            return;
+        }
+
+        const {
+            page,
+            limit,
+            templateName,
+            processingStatus,
+            patientId,
+            startDate,
+            endDate,
+            reviewed,
+            flagged,
+        } = req.query;
+
+        const result = await bubbleScanService.getAllBubbleScans(
+            userId,
+            role,
+            {
+                page: page ? Number(page) : undefined,
+                limit: limit ? Number(limit) : undefined,
+                templateName: templateName as string,
+                processingStatus: processingStatus as string,
+                patientId: patientId as string,
+                startDate: startDate
+                    ? new Date(startDate as string)
+                    : undefined,
+                endDate: endDate ? new Date(endDate as string) : undefined,
+                reviewed:
+                    reviewed !== undefined
+                        ? reviewed === "true"
+                        : undefined,
+                flagged:
+                    flagged !== undefined ? flagged === "true" : undefined,
+            }
+        );
+        sendResponse(
+            res,
+            200,
+            "Bubble scans retrieved successfully",
+            result
+        );
+    } catch (error: any) {
+        console.error("Get all bubble scans error:", error);
+        sendError(res, 500, error.message || "Failed to get bubble scans");
+    }
+};

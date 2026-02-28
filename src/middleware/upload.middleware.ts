@@ -21,3 +21,33 @@ const storage = multer.diskStorage({
 });
 
 export const upload = multer({ storage });
+
+// Bubble scan specific upload (image-only, 10MB limit)
+const bubbleScanPath = path.join(__dirname, "../../uploads/bubble_scans");
+if (!fs.existsSync(bubbleScanPath)) {
+  fs.mkdirSync(bubbleScanPath, { recursive: true });
+}
+
+const bubbleScanStorage = multer.diskStorage({
+  destination: function (req: any, file: any, cb: any) {
+    cb(null, bubbleScanPath);
+  },
+  filename: function (req: any, file: any, cb: any) {
+    const uniqueName =
+      Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueName + path.extname(file.originalname));
+  },
+});
+
+export const bubbleScanUpload = multer({
+  storage: bubbleScanStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req: any, file: any, cb: any) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG and PNG images are allowed"));
+    }
+  },
+});
