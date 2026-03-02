@@ -1,69 +1,37 @@
 {
   "pageNumber": 6,
   "layoutType": "investigation_summary",
-  "imageExpectedWidth": 2480,
-  "imageExpectedHeight": 3508,
-  "NOTE": "Bubble coordinates are PLACEHOLDERS. Calibrate from actual diary page scans.",
+  "imageExpectedWidth": 1600,
+  "imageExpectedHeight": 1126,
+  "NOTE": "Calibrated from actual diary page scan (Scan_20260302_162757_page_1). Reference image: 1600x1126px.",
   "bubbleCoordinates": {
     "q1": {
-      "yes": {
-        "x": 1800,
-        "y": 500,
-        "r": 18
-      },
-      "no": {
-        "x": 1920,
-        "y": 500,
-        "r": 18
-      }
+      "yes": { "x": 1101, "y": 331, "r": 19 },
+      "no": { "x": 1375, "y": 331, "r": 19 }
     },
     "q2": {
-      "yes": {
-        "x": 1800,
-        "y": 580,
-        "r": 18
-      },
-      "no": {
-        "x": 1920,
-        "y": 580,
-        "r": 18
-      }
+      "yes": { "x": 1101, "y": 437, "r": 19 },
+      "no": { "x": 1375, "y": 437, "r": 19 }
     },
     "q3": {
-      "yes": {
-        "x": 1800,
-        "y": 660,
-        "r": 18
-      },
-      "no": {
-        "x": 1920,
-        "y": 660,
-        "r": 18
-      }
+      "yes": { "x": 1100, "y": 541, "r": 19 },
+      "no": { "x": 1375, "y": 543, "r": 19 }
     },
     "q4": {
-      "yes": {
-        "x": 1800,
-        "y": 740,
-        "r": 18
-      },
-      "no": {
-        "x": 1920,
-        "y": 740,
-        "r": 18
-      }
+      "yes": { "x": 1101, "y": 646, "r": 19 },
+      "no": { "x": 1377, "y": 648, "r": 19 }
     },
     "q5": {
-      "yes": {
-        "x": 1800,
-        "y": 820,
-        "r": 18
-      },
-      "no": {
-        "x": 1920,
-        "y": 820,
-        "r": 18
-      }
+      "yes": { "x": 1102, "y": 753, "r": 19 },
+      "no": { "x": 1378, "y": 750, "r": 19 }
+    },
+    "q6": {
+      "yes": { "x": 1103, "y": 857, "r": 19 },
+      "no": { "x": 1380, "y": 856, "r": 19 }
+    },
+    "q7": {
+      "yes": { "x": 1104, "y": 961, "r": 19 },
+      "no": { "x": 1383, "y": 964, "r": 19 }
     }
   },
   "confidenceThreshold": 0.15,
