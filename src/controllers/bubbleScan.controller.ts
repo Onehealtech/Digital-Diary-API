@@ -5,6 +5,7 @@ import {
 } from "../middleware/authMiddleware";
 import { bubbleScanService } from "../service/bubbleScan.service";
 import { sendResponse, sendError } from "../utils/response";
+import { getDiaryTypeForCaseType } from "../utils/constants";
 
 /**
  * POST /api/v1/bubble-scan/manual
@@ -16,7 +17,8 @@ export const manualSubmitBubbleScan = async (
 ): Promise<void> => {
     try {
         const patientId = req.user!.id;
-        const { pageNumber, answers, diaryType } = req.body;
+        const { pageNumber, answers } = req.body;
+        const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
 
         if (!pageNumber || typeof pageNumber !== "number") {
             sendError(res, 400, "pageNumber (number) is required");
@@ -53,6 +55,7 @@ export const uploadBubbleScan = async (
     try {
         const { pageId, templateName, pageType } = req.body;
         const patientId = req.user!.id;
+        const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
 
         if (!pageId) {
             sendError(res, 400, "pageId is required");
@@ -71,7 +74,8 @@ export const uploadBubbleScan = async (
             pageId,
             templateName || "auto",
             imagePath,
-            pageType
+            pageType,
+            diaryType
         );
 
         const statusCode =

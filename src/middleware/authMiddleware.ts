@@ -120,6 +120,7 @@ export const patientAuthCheck = async (
       id: decoded.id,
       diaryId: decoded.diaryId,
       fullName: decoded.fullName,
+      caseType: decoded.caseType,
       type: decoded.type,
     } as any;
 

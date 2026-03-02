@@ -50,6 +50,7 @@ export const verifyPatientOTP = async (
             id: patient.id,
             diaryId: patient.diaryId,
             fullName: patient.fullName,
+            caseType: patient.caseType,
             type: "PATIENT",
         },
         process.env.JWT_SECRET!,

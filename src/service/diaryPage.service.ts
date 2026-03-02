@@ -3,11 +3,16 @@ import { seedDiaryPages } from "../seeders/diaryPages.seed";
 
 class DiaryPageService {
     /**
-     * Get all active diary pages for a diary type, ordered by page number
+     * Get all active diary pages for a diary type, ordered by page number.
+     * If diaryType is omitted, returns pages for all diary types.
      */
-    async getAllPages(diaryType: string = "CANTrac-Breast") {
+    async getAllPages(diaryType?: string) {
+        const where: any = { isActive: true };
+        if (diaryType) {
+            where.diaryType = diaryType;
+        }
         return DiaryPage.findAll({
-            where: { diaryType, isActive: true },
+            where,
             order: [["pageNumber", "ASC"]],
         });
     }
@@ -15,7 +20,7 @@ class DiaryPageService {
     /**
      * Get a single diary page by page number and diary type
      */
-    async getPageByNumber(pageNumber: number, diaryType: string = "CANTrac-Breast") {
+    async getPageByNumber(pageNumber: number, diaryType: string) {
         const page = await DiaryPage.findOne({
             where: { pageNumber, diaryType, isActive: true },
         });

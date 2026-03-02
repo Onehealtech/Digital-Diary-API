@@ -8,6 +8,9 @@ const router = express.Router();
 // Get all diary pages with questions (patient app uses this for manual entry)
 router.get("/", patientAuthCheck, diaryPageController.getAllDiaryPages);
 
+// Get all diary pages (doctor/assistant access for viewing patient submissions)
+router.get("/staff/all", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), diaryPageController.getAllDiaryPagesStaff);
+
 // Get a single diary page by page number
 router.get("/:pageNumber", patientAuthCheck, diaryPageController.getDiaryPageByNumber);
 

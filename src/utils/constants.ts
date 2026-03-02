@@ -53,3 +53,44 @@ export const HTTP_STATUS = {
  */
 export const GCP_BUCKET_NAME = 'oneheal-document-uploads';
 export const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID || 'your-gcp-project-id';
+
+/**
+ * Patient Case Types
+ * Each case type maps to a specific diary type with its own questions/pages
+ */
+export enum CaseType {
+  PERI_OPERATIVE = "PERI_OPERATIVE",
+  POST_OPERATIVE = "POST_OPERATIVE",
+  FOLLOW_UP = "FOLLOW_UP",
+  CHEMOTHERAPY = "CHEMOTHERAPY",
+  RADIOLOGY = "RADIOLOGY",
+}
+
+/**
+ * CaseType → DiaryType mapping
+ * Each caseType maps to a diaryType string that matches the `diaryType` column in diary_pages table.
+ * Update the values here when new diary types are seeded.
+ */
+export const CASE_TYPE_TO_DIARY_TYPE: Record<CaseType, string> = {
+  [CaseType.PERI_OPERATIVE]: "CANTrac-Breast",
+  [CaseType.POST_OPERATIVE]: "CANTrac-PostOp",
+  [CaseType.FOLLOW_UP]: "CANTrac-FollowUp",
+  [CaseType.CHEMOTHERAPY]: "CANTrac-Chemo",
+  [CaseType.RADIOLOGY]: "CANTrac-Radiology",
+};
+
+/**
+ * Default diary type for backward compatibility (patients without caseType)
+ */
+export const DEFAULT_DIARY_TYPE = "CANTrac-Breast";
+
+/**
+ * Resolve a patient's caseType to its corresponding diaryType.
+ * Falls back to DEFAULT_DIARY_TYPE when caseType is null/undefined.
+ */
+export function getDiaryTypeForCaseType(caseType?: string | null): string {
+  if (caseType && caseType in CASE_TYPE_TO_DIARY_TYPE) {
+    return CASE_TYPE_TO_DIARY_TYPE[caseType as CaseType];
+  }
+  return DEFAULT_DIARY_TYPE;
+}

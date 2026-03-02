@@ -6,6 +6,7 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { DiaryPage } from "../models/DiaryPage";
 import { Op } from "sequelize";
+import { getDiaryTypeForCaseType } from "../utils/constants";
 
 interface PythonOMROutput {
     success: boolean;
@@ -89,7 +90,7 @@ class BubbleScanService {
         patientId: string,
         pageNumber: number,
         answers: Record<string, "yes" | "no">,
-        diaryType: string = "CANTrac-Breast"
+        diaryType: string
     ): Promise<BubbleScanResult> {
         // Fetch the diary page from DB
         const diaryPage = await DiaryPage.findOne({
@@ -138,7 +139,8 @@ class BubbleScanService {
         pageId: string,
         templateName: string = "auto",
         imagePath: string,
-        pageType?: string
+        pageType?: string,
+        diaryType?: string
     ): Promise<BubbleScanResult> {
         // Validate template exists (skip validation for "auto" mode — Python handles detection)
         if (templateName !== "auto" && !this.validateTemplate(templateName)) {
@@ -186,10 +188,11 @@ class BubbleScanService {
             let diaryPageId: string | undefined;
 
             if (pythonResult.results && detectedPageNumber) {
+                const resolvedDiaryType = diaryType || getDiaryTypeForCaseType(undefined);
                 const diaryPage = await DiaryPage.findOne({
                     where: {
                         pageNumber: detectedPageNumber,
-                        diaryType: "CANTrac-Breast",
+                        diaryType: resolvedDiaryType,
                         isActive: true,
                     },
                 });
@@ -389,6 +392,12 @@ class BubbleScanService {
             throw new Error("Can only retry failed scans");
         }
 
+        // Look up patient to resolve diary type from caseType
+        const patient = await Patient.findByPk(existing.patientId, {
+            attributes: ["caseType"],
+        });
+        const diaryType = getDiaryTypeForCaseType(patient?.caseType);
+
         // Delete the failed record and reprocess
         const { patientId, pageId, templateName, imageUrl, pageType } =
             existing;
@@ -399,7 +408,8 @@ class BubbleScanService {
             pageId,
             templateName,
             imageUrl!,
-            pageType
+            pageType,
+            diaryType
         );
     }
 
