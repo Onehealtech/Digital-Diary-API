@@ -57,6 +57,12 @@ export class Diary extends Model {
   @BelongsTo(() => DiaryTemplate)
   template!: DiaryTemplate;
 
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  diaryData!: any;
+
   // ================== VENDOR ==================
   @ForeignKey(() => AppUser)
   @Column({
@@ -86,7 +92,7 @@ export class Diary extends Model {
 
   @Column(DataType.DATE)
   activationDate?: Date;
-  
+
   @Column(DataType.STRING(255))
   diaryType?: string;
 

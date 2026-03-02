@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { VendorService } from "../service/vendor.service";
 import { sendResponse, sendError } from "../utils/response";
+import { TemplateField, TemplateJson, TemplatePage } from "../models/DiaryTemplate";
 
 const vendorService = new VendorService();
 

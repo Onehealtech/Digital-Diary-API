@@ -6,9 +6,78 @@ import { Transaction } from "../models/Transaction";
 import { GeneratedDiary } from "../models/GeneratedDiary";
 import { Op } from "sequelize";
 import bcrypt from "bcrypt";
-import { DiaryTemplate } from "../models/DiaryTemplate";
+import { DiaryTemplate, TemplateField, TemplateJson, TemplatePage } from "../models/DiaryTemplate";
+import { getVendorDashboard } from "../controllers/dashboard.controller";
 
+ const SKIP_PAGES = new Set(["01"]);           // TOC — no question_no/answer
+  const NO_INPUT_TYPES = new Set([              // purely informational pages
+    "informational", "notice",
+  ]);
+  function shouldSkipPage(page: TemplatePage): boolean {
+    return SKIP_PAGES.has(page.page_no) || NO_INPUT_TYPES.has(page.page_type ?? "");
+  }
+  
+  function stampField(field: TemplateField, sectionNo: number, qNo: number): TemplateField {
+    return {
+      ...field,
+      question_no: `Q${qNo}`,
+      answer: null,
+    };
+  }
+  
+  function stampPage(page: TemplatePage): TemplatePage {
+    if (shouldSkipPage(page)) return page;
+  
+    // ── Pages with sections ──────────────────────────────────────────────────
+    if (page.sections && page.sections.length > 0) {
+      let sectionNo = 0;
+      const stampedSections = page.sections.map((sec) => {
+        sectionNo++;
+        let qNo = 0;
+  
+        // Named section with nested fields
+        if (sec.fields && sec.fields.length > 0) {
+          const stampedFields = sec.fields.map((f) => stampField(f, sectionNo, ++qNo));
+          // Bare field sitting at section level (e.g. "Next Appointment Required")
+          const bare = (sec as any).field_name
+            ? { ...(sec as any), question_no: `${++qNo}`, answer: null }
+            : sec;
+          return { ...bare, fields: stampedFields };
+        }
+  
+        // Section IS a bare field (no nested fields array)
+        if ((sec as any).field_name) {
+          return { ...sec, question_no: `${++qNo}`, answer: null };
+        }
+  
+        return sec;
+      });
+  
+      return { ...page, sections: stampedSections };
+    }
+  
+    // ── Pages with only flat fields (one implicit section = S1) ─────────────
+    if (page.fields && page.fields.length > 0) {
+      let qNo = 0;
+      const stampedFields = page.fields.map((f) => stampField(f, 1, ++qNo));
+      return { ...page, fields: stampedFields };
+    }
+  
+    return page;
+  }
+  
+  /**
+   * Takes the master template JSON and returns a deep-cloned copy
+   * with question_no + answer:null injected on every input field (pages 02–37).
+   */
+  export function buildDiaryInstance(template: TemplateJson): TemplateJson {
+    return {
+      ...template,
+      pages: template.pages.map(stampPage),
+    };
+  }
 export class VendorService {
+ 
   /**
    * Get all vendors with pagination and filters
    */
@@ -424,7 +493,8 @@ export class VendorService {
     if (generatedDiary.diaryType == "peri-operative") {
       diaryTypeTemplate = "PERI-OPERATIVE";
     }
-    const generatedTemplate = await DiaryTemplate.findOne({ where: { code: diaryTypeTemplate } });
+    const generatedTemplate:any = await DiaryTemplate.findOne({ where: { code: diaryTypeTemplate } });
+     const diaryInstance = buildDiaryInstance(generatedTemplate.templateData)
     // Create diary record (pending approval)
     const diary = await Diary.create({
       id: data.diaryId,
@@ -435,6 +505,7 @@ export class VendorService {
       diaryType: generatedDiary.diaryType,
       status: "pending",
       saleAmount: data.paymentAmount,
+      diaryData:diaryInstance,
       commissionAmount: 50, // ₹50 commission
       commissionPaid: false,
     });
