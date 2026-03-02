@@ -21,6 +21,22 @@ interface ReviewData {
 
 class ScanService {
   /**
+   * Resolve doctorId from requester based on role
+   */
+  private async resolveDoctorId(requesterId: string, role: string): Promise<string> {
+    if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      return assistant.parentId;
+    } else if (role !== "DOCTOR") {
+      throw new Error("Only doctors and assistants can view diary entries");
+    }
+    return requesterId;
+  }
+
+  /**
    * Get all diary entries for doctor/assistant
    * With filtering and pagination
    */
@@ -42,20 +58,7 @@ class ScanService {
 
     const offset = (page - 1) * limit;
 
-    // Build where clause for ScanLog
-    const whereClause: any = {};
-
-    // Get doctor ID based on role
-    let doctorId = requesterId;
-    if (role === "ASSISTANT") {
-      const assistant = await AppUser.findByPk(requesterId);
-      if (!assistant || !assistant.parentId) {
-        throw new Error("Assistant not linked to a doctor");
-      }
-      doctorId = assistant.parentId;
-    } else if (role !== "DOCTOR") {
-      throw new Error("Only doctors and assistants can view diary entries");
-    }
+    const doctorId = await this.resolveDoctorId(requesterId, role);
 
     // NOTE: ScanLog has no doctorId column — filter via Patient.doctorId join
     if (pageType) {
@@ -137,14 +140,7 @@ class ScanService {
    * Get single diary entry by ID
    */
   async getDiaryEntryById(entryId: string, requesterId: string, role: string) {
-    let doctorId = requesterId;
-    if (role === "ASSISTANT") {
-      const assistant = await AppUser.findByPk(requesterId);
-      if (!assistant || !assistant.parentId) {
-        throw new Error("Assistant not linked to a doctor");
-      }
-      doctorId = assistant.parentId;
-    }
+    const doctorId = await this.resolveDoctorId(requesterId, role);
 
     const entry = await ScanLog.findOne({
       where: { id: entryId },
@@ -217,6 +213,14 @@ class ScanService {
    * Get diary entries that need review (unreviewed + flagged)
    */
   async getEntriesNeedingReview(doctorId: string) {
+    const patientInclude = {
+      model: Patient,
+      as: "patient",
+      where: { doctorId },
+      required: true as const,
+      attributes: ["id", "fullName", "phone", "diaryId"],
+    };
+
     const unreviewedEntries = await ScanLog.findAll({
       where: { doctorReviewed: false },
       include: [
