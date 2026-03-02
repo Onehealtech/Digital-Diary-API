@@ -8,6 +8,8 @@ import { AppUser } from "../models/Appuser";
 import { DiaryPage } from "../models/DiaryPage";
 import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
+const pythonPath = path.join(__dirname, "../../python/venv/bin/python3");
+
 
 interface PythonOMROutput {
     success: boolean;
@@ -320,7 +322,7 @@ class BubbleScanService {
         templateName: string
     ): Promise<PythonOMROutput> {
         return new Promise((resolve, reject) => {
-            const proc = spawn("python3", [
+            const proc = spawn(pythonPath, [
                 this.pythonScriptPath,
                 imagePath,
                 templateName,
