@@ -20,15 +20,18 @@ import sys
 import os
 import json
 import time
-import numpy as np
 
 try:
+    import numpy as np
     import cv2
-except ImportError:
+except ImportError as _import_err:
     result = {
         "success": False,
         "error": "DEPENDENCY_MISSING",
-        "message": "opencv-python-headless is not installed. Run: pip3 install opencv-python-headless numpy"
+        "message": (
+            f"Required Python package missing: {_import_err}. "
+            "Run on the server: pip3 install -r python/requirements.txt"
+        )
     }
     print(json.dumps(result))
     sys.exit(1)
