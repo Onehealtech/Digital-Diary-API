@@ -17,6 +17,11 @@ export class DiaryController {
         return sendError(res, 400, "Quantity is required");
       }
 
+      const ENABLED_DIARY_TYPES = ["peri-operative"];
+      if (diaryType && !ENABLED_DIARY_TYPES.includes(diaryType)) {
+        return sendError(res, 400, `Diary type "${diaryType}" is coming soon and not yet available. Only Peri-Operative diaries can be generated at this time.`);
+      }
+
       const result = await diaryService.generateDiaries(quantity, diaryType);
 
       return sendResponse(res, 201, "Diaries generated successfully", result);

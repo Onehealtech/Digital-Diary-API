@@ -186,7 +186,8 @@ class NotificationService {
     const whereClause: any = {};
 
     if (filters.diaryType) {
-      whereClause.diaryType = filters.diaryType;
+      // Map frontend format (e.g. "peri-operative") → DB enum (e.g. "PERI_OPERATIVE")
+      whereClause.caseType = filters.diaryType.toUpperCase().replace(/-/g, "_");
     }
 
     if (filters.stage) {

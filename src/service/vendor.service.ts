@@ -293,6 +293,21 @@ export class VendorService {
       order: [["createdAt", "DESC"]],
     });
 
+    // Enrich each sale with diaryType from GeneratedDiary (Diary.id === GeneratedDiary.id)
+    const diaryIds = sales.rows.map((s) => s.id);
+    const generatedDiaries = await GeneratedDiary.findAll({
+      where: { id: diaryIds },
+      attributes: ["id", "diaryType"],
+    });
+    const diaryTypeMap: Record<string, string> = {};
+    generatedDiaries.forEach((gd) => {
+      diaryTypeMap[gd.id] = gd.diaryType;
+    });
+    const salesWithType = sales.rows.map((s) => ({
+      ...s.toJSON(),
+      diaryType: diaryTypeMap[s.id] || null,
+    }));
+
     // Calculate stats
     const vendorProfile = await AppUser.findOne({
       where: { id: vendorId, role: "VENDOR" },
@@ -310,7 +325,7 @@ export class VendorService {
     });
 
     return {
-      sales: sales.rows,
+      sales: salesWithType,
       total: sales.count,
       page,
       limit,
@@ -416,6 +431,7 @@ export class VendorService {
       diaryId: data.diaryId,
       vendorId: data.vendorId,
       doctorId: data.doctorId,
+      caseType:"PERI_OPERATIVE",
       status: "ACTIVE",
       registeredDate: new Date(),
     });

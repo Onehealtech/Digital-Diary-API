@@ -37,6 +37,17 @@ router.post("/auth/refresh", DoctorAuthController.refreshToken);
 router.post("/auth/forgot-password", DoctorAuthController.forgotPassword);
 
 router.post("/auth/reset-password", DoctorAuthController.resetPassword);
-router.post("/auth/change-password",authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]), DoctorAuthController.changePassword);
+
+router.put(
+  "/auth/change-password",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+  DoctorAuthController.changePassword
+);
+
+router.put(
+  "/user/profile",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+  DoctorAuthController.updateProfile
+);
 
 export default router;
