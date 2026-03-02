@@ -21,6 +21,22 @@ interface ReviewData {
 
 class ScanService {
   /**
+   * Resolve doctorId from requester based on role
+   */
+  private async resolveDoctorId(requesterId: string, role: string): Promise<string> {
+    if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      return assistant.parentId;
+    } else if (role !== "DOCTOR") {
+      throw new Error("Only doctors and assistants can view diary entries");
+    }
+    return requesterId;
+  }
+
+  /**
    * Get all diary entries for doctor/assistant
    * With filtering and pagination
    */
@@ -42,22 +58,10 @@ class ScanService {
 
     const offset = (page - 1) * limit;
 
-    // Build where clause for ScanLog
+    const doctorId = await this.resolveDoctorId(requesterId, role);
+
+    // Build where clause for ScanLog (no doctorId here — it's on Patient)
     const whereClause: any = {};
-
-    // Get doctor ID based on role
-    let doctorId = requesterId;
-    if (role === "ASSISTANT") {
-      const assistant = await AppUser.findByPk(requesterId);
-      if (!assistant || !assistant.parentId) {
-        throw new Error("Assistant not linked to a doctor");
-      }
-      doctorId = assistant.parentId;
-    } else if (role !== "DOCTOR") {
-      throw new Error("Only doctors and assistants can view diary entries");
-    }
-
-    whereClause.doctorId = doctorId;
 
     if (pageType) {
       whereClause.pageType = pageType;
@@ -91,7 +95,9 @@ class ScanService {
         {
           model: Patient,
           as: "patient",
-          attributes: ["id", "name", "phoneNumber", "age", "gender", "stage"],
+          where: { doctorId },
+          required: true,
+          attributes: ["id", "fullName", "phone", "age", "gender", "stage", "diaryId"],
         },
       ],
       order: [["scannedAt", "DESC"]],
@@ -99,19 +105,31 @@ class ScanService {
       offset,
     });
 
-    // Get summary stats
+    // Get summary stats (filter through Patient join)
     const unreviewed = await ScanLog.count({
-      where: {
-        doctorId,
-        doctorReviewed: false,
-      },
+      where: { doctorReviewed: false },
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          where: { doctorId },
+          required: true,
+          attributes: [],
+        },
+      ],
     });
 
     const flaggedCount = await ScanLog.count({
-      where: {
-        doctorId,
-        flagged: true,
-      },
+      where: { flagged: true },
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          where: { doctorId },
+          required: true,
+          attributes: [],
+        },
+      ],
     });
 
     return {
@@ -133,25 +151,17 @@ class ScanService {
    * Get single diary entry by ID
    */
   async getDiaryEntryById(entryId: string, requesterId: string, role: string) {
-    let doctorId = requesterId;
-    if (role === "ASSISTANT") {
-      const assistant = await AppUser.findByPk(requesterId);
-      if (!assistant || !assistant.parentId) {
-        throw new Error("Assistant not linked to a doctor");
-      }
-      doctorId = assistant.parentId;
-    }
+    const doctorId = await this.resolveDoctorId(requesterId, role);
 
     const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+      where: { id: entryId },
       include: [
         {
           model: Patient,
           as: "patient",
-          attributes: ["id", "name", "phoneNumber", "age", "gender", "stage", "diaryType"],
+          where: { doctorId },
+          required: true,
+          attributes: ["id", "fullName", "phone", "age", "gender", "stage", "diaryId", "caseType"],
         },
       ],
     });
@@ -172,10 +182,16 @@ class ScanService {
     reviewData: ReviewData
   ) {
     const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+      where: { id: entryId },
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          where: { doctorId },
+          required: true,
+          attributes: [],
+        },
+      ],
     });
 
     if (!entry) {
@@ -198,10 +214,16 @@ class ScanService {
    */
   async toggleFlag(entryId: string, doctorId: string, flagged: boolean) {
     const entry = await ScanLog.findOne({
-      where: {
-        id: entryId,
-        doctorId,
-      },
+      where: { id: entryId },
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          where: { doctorId },
+          required: true,
+          attributes: [],
+        },
+      ],
     });
 
     if (!entry) {
@@ -217,34 +239,24 @@ class ScanService {
    * Get diary entries that need review (unreviewed + flagged)
    */
   async getEntriesNeedingReview(doctorId: string) {
+    const patientInclude = {
+      model: Patient,
+      as: "patient",
+      where: { doctorId },
+      required: true as const,
+      attributes: ["id", "fullName", "phone", "diaryId"],
+    };
+
     const unreviewedEntries = await ScanLog.findAll({
-      where: {
-        doctorId,
-        doctorReviewed: false,
-      },
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "name", "phoneNumber"],
-        },
-      ],
+      where: { doctorReviewed: false },
+      include: [patientInclude],
       order: [["scannedAt", "ASC"]], // Oldest first
       limit: 50,
     });
 
     const flaggedEntries = await ScanLog.findAll({
-      where: {
-        doctorId,
-        flagged: true,
-      },
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "name", "phoneNumber"],
-        },
-      ],
+      where: { flagged: true },
+      include: [patientInclude],
       order: [["scannedAt", "DESC"]],
       limit: 20,
     });
@@ -259,24 +271,28 @@ class ScanService {
    * Get diary entry statistics for a doctor
    */
   async getDiaryEntryStats(doctorId: string) {
-    const total = await ScanLog.count({
+    const patientInclude = {
+      model: Patient,
+      as: "patient",
       where: { doctorId },
+      required: true as const,
+      attributes: [] as string[],
+    };
+
+    const total = await ScanLog.count({
+      include: [patientInclude],
     });
 
     const reviewed = await ScanLog.count({
-      where: {
-        doctorId,
-        doctorReviewed: true,
-      },
+      where: { doctorReviewed: true },
+      include: [patientInclude],
     });
 
     const unreviewed = total - reviewed;
 
     const flagged = await ScanLog.count({
-      where: {
-        doctorId,
-        flagged: true,
-      },
+      where: { flagged: true },
+      include: [patientInclude],
     });
 
     // This week's entries
@@ -285,14 +301,21 @@ class ScanService {
 
     const thisWeek = await ScanLog.count({
       where: {
-        doctorId,
         scannedAt: { [Op.gte]: oneWeekAgo },
       },
+      include: [patientInclude],
     });
 
-    // Entries by page type
-    const byPageType = await ScanLog.findAll({
+    // Entries by page type — get patient IDs first to avoid GROUP BY join issues
+    const doctorPatients = await Patient.findAll({
       where: { doctorId },
+      attributes: ["id"],
+      raw: true,
+    });
+    const doctorPatientIds = doctorPatients.map((p: any) => p.id);
+
+    const byPageType = await ScanLog.findAll({
+      where: { patientId: { [Op.in]: doctorPatientIds } },
       attributes: [
         "pageType",
         [ScanLog.sequelize!.fn("COUNT", "*"), "count"],
