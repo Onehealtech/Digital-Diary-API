@@ -146,6 +146,32 @@ export class DoctorAuthController {
   }
 
   /**
+   * PUT /api/v1/user/profile
+   * Update fullName and phone for the authenticated user
+   */
+  static async updateProfile(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, "Unauthorized", 401);
+      }
+
+      const { fullName, phone } = req.body;
+
+      if (!fullName?.trim()) {
+        return sendError(res, "Full name is required", 400);
+      }
+
+      const result = await DoctorAuthService.updateProfile(userId, fullName, phone);
+
+      return sendResponse(res, result, "Profile updated successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, 400);
+    }
+  }
+
+  /**
    * PUT /api/v1/auth/change-password
    * Change password for authenticated users (requires current password verification)
    */

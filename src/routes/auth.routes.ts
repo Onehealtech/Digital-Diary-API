@@ -44,4 +44,10 @@ router.put(
   DoctorAuthController.changePassword
 );
 
+router.put(
+  "/user/profile",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+  DoctorAuthController.updateProfile
+);
+
 export default router;

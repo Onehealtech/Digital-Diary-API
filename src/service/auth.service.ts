@@ -200,6 +200,34 @@ export class DoctorAuthService {
       throw error;
     }
   }
+  /**
+   * Update profile (fullName and/or phone) for the authenticated user
+   */
+  static async updateProfile(userId: string, fullName?: string, phone?: string) {
+    const user = await AppUser.findByPk(userId);
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (!fullName?.trim()) {
+      throw new Error("Full name is required");
+    }
+
+    await user.update({
+      fullName: fullName.trim(),
+      ...(phone !== undefined && { phone: phone.trim() || null }),
+    });
+
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+    };
+  }
+
   static async changePassword(
     userId: string,
     oldPassword: string,
