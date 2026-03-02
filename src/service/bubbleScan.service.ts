@@ -283,10 +283,9 @@ class BubbleScanService {
         templateName: string
     ): Promise<PythonOMROutput> {
         return new Promise((resolve, reject) => {
-            const proc = spawn("python3", [
-                this.pythonScriptPath,
-                imagePath,
-                templateName,
+            const proc = spawn("/home/ubuntu/Digital-Diary-API/python/venv/bin/python", [
+                "python/omr_scanner.py",
+                imagePath,templateName
             ]);
 
             let stdout = "";
