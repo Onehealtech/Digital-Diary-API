@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import { BubbleScanResult } from "../models/BubbleScanResult";
+import { ScanLog } from "../models/ScanLog";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { DiaryPage } from "../models/DiaryPage";
@@ -264,6 +265,42 @@ class BubbleScanService {
                     autoDetected: pythonResult.autoDetected || false,
                 },
             });
+
+            // Also sync to ScanLog so doctor diary entries screen can see it
+            if (detectedPageNumber && Object.keys(enrichedResults).length > 0) {
+                const scanLogPageId = `backend_page_${detectedPageNumber}`;
+                // Convert enriched results to flat scanData format
+                const scanData: Record<string, any> = {};
+                for (const [qId, qResult] of Object.entries(enrichedResults)) {
+                    const r = qResult as any;
+                    scanData[qId] = r.answer;
+                    if (r.questionText) {
+                        scanData[`${qId}_text`] = r.questionText;
+                    }
+                }
+
+                const existingScanLog = await ScanLog.findOne({
+                    where: { patientId, pageId: scanLogPageId },
+                });
+
+                if (existingScanLog) {
+                    await existingScanLog.update({
+                        scanData,
+                        scannedAt: new Date(),
+                        isUpdated: true,
+                        updatedCount: existingScanLog.updatedCount + 1,
+                    });
+                } else {
+                    await ScanLog.create({
+                        patientId,
+                        pageId: scanLogPageId,
+                        scanData,
+                        scannedAt: new Date(),
+                        isUpdated: false,
+                        updatedCount: 0,
+                    });
+                }
+            }
 
             return scanRecord;
         } catch (error: any) {
