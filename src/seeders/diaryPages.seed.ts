@@ -12,6 +12,7 @@ interface Question {
     type: QuestionType;
     category: string;
     options?: string[];
+    linkedPageNumber?: number;
 }
 
 interface PageDef {
@@ -57,10 +58,74 @@ function doneReportQuestions(
     return qs;
 }
 
+// ── Helper: index entries for Table of Content page ──
+function indexEntries(): Question[] {
+    return [
+        { id: "idx_01", text: "Table Of Content", textHi: "पृष्ठ की तालिका", type: "info", category: "index", linkedPageNumber: 1 },
+        { id: "idx_02", text: "पृष्ठ की तालिका", textHi: "पृष्ठ की तालिका", type: "info", category: "index", linkedPageNumber: 2 },
+        { id: "idx_03", text: "Breast Cancer Care Journey", textHi: "स्तन कैंसर देखभाल यात्रा", type: "info", category: "index", linkedPageNumber: 3 },
+        { id: "idx_04", text: "Care Diary for Breast Cancer", textHi: "स्तन कैंसर के लिए देखभाल डायरी", type: "info", category: "index", linkedPageNumber: 4 },
+        { id: "idx_05", text: "Investigations Summary 1", textHi: "जाँच सारांश 1", type: "info", category: "index", linkedPageNumber: 5 },
+        { id: "idx_06", text: "Investigations Summary 2", textHi: "जाँच सारांश 2", type: "info", category: "index", linkedPageNumber: 6 },
+        { id: "idx_07", text: "Mammogram Schedule", textHi: "मैमोग्राम अनुसूची", type: "info", category: "index", linkedPageNumber: 7 },
+        { id: "idx_08", text: "Mammogram Done & Report Collected", textHi: "मैमोग्राम किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 8 },
+        { id: "idx_09", text: "Ultrasound USG Breast Schedule", textHi: "यूएसजी ब्रेस्ट अनुसूची", type: "info", category: "index", linkedPageNumber: 9 },
+        { id: "idx_10", text: "Ultrasound USG Breast Done & Report Collected", textHi: "यूएसजी ब्रेस्ट किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 10 },
+        { id: "idx_11", text: "Biopsy Breast Lump Schedule", textHi: "स्तन गांठ की बायोप्सी अनुसूची", type: "info", category: "index", linkedPageNumber: 11 },
+        { id: "idx_12", text: "Biopsy Done & Report Collected", textHi: "बायोप्सी किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 12 },
+        { id: "idx_13", text: "FNAC Axillary Node Schedule", textHi: "एफएनएसी अक्षीय नोड अनुसूची", type: "info", category: "index", linkedPageNumber: 13 },
+        { id: "idx_14", text: "FNAC Done & Report Collected", textHi: "एफएनएसी किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 14 },
+        { id: "idx_15", text: "PET CT Scan Schedule", textHi: "पीईटी सीटी स्कैन अनुसूची", type: "info", category: "index", linkedPageNumber: 15 },
+        { id: "idx_16", text: "Pet CT Scan Done & Report Collected", textHi: "पीईटी सीटी स्कैन किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 16 },
+        { id: "idx_17", text: "MRI Breasts Schedule", textHi: "एमआरआई स्तन अनुसूची", type: "info", category: "index", linkedPageNumber: 17 },
+        { id: "idx_18", text: "MRI Breasts Done & Report Collected", textHi: "एमआरआई स्तन की गई और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 18 },
+        { id: "idx_19", text: "Genetic Testing", textHi: "आनुवंशिक परीक्षण", type: "info", category: "index", linkedPageNumber: 19 },
+        { id: "idx_20", text: "Genetic Testing Done & Report Collected", textHi: "आनुवंशिक परीक्षण किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 20 },
+        { id: "idx_21", text: "MUGA Scan Schedule", textHi: "म्यूगा स्कैन अनुसूची", type: "info", category: "index", linkedPageNumber: 21 },
+        { id: "idx_22", text: "MUGA Scan Done & Report Collected", textHi: "म्यूगा स्कैन किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 22 },
+        { id: "idx_23", text: "Echocardiography Schedule", textHi: "इकोकार्डियोग्राफी अनुसूची", type: "info", category: "index", linkedPageNumber: 23 },
+        { id: "idx_24", text: "Echocardiography Done & Report Collected", textHi: "इकोकार्डियोग्राफी की गई और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 24 },
+        { id: "idx_25", text: "Bone Dexa Scan & Report Collected", textHi: "बोन डेक्सा स्कैन किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 25 },
+        { id: "idx_26", text: "ECG Done & Report Collected", textHi: "ईसीजी किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 26 },
+        { id: "idx_27", text: "Chest Xray Done & Report Collected", textHi: "छाती का एक्सरे किया गया और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 27 },
+        { id: "idx_28", text: "Blood Tests Done & Report Collected", textHi: "ब्लड टेस्ट किए गए और रिपोर्ट ली गई", type: "info", category: "index", linkedPageNumber: 28 },
+        { id: "idx_29", text: "Treatment Planned In Breast DMG/MDT", textHi: "ब्रेस्ट DMG/MDT में ट्रीटमेंट प्लान किया जा रहा है", type: "info", category: "index", linkedPageNumber: 29 },
+        { id: "idx_30", text: "Next Steps If Planned For NACT BCS", textHi: "NACT BCS के लिए अगले कदम", type: "info", category: "index", linkedPageNumber: 30 },
+        { id: "idx_31", text: "Appointment Date For Clip Placement", textHi: "क्लिप लगाने की तारीख", type: "info", category: "index", linkedPageNumber: 31 },
+        { id: "idx_32", text: "Next Steps", textHi: "अगला चरण", type: "info", category: "index", linkedPageNumber: 32 },
+        { id: "idx_33", text: "A Query", textHi: "पूछताछ", type: "info", category: "index", linkedPageNumber: 33 },
+        { id: "idx_34", text: "Your NACT Start Date", textHi: "आपकी NACT शुरू होने की तारीख", type: "info", category: "index", linkedPageNumber: 34 },
+        { id: "idx_35", text: "How Are You Going Through Your Chemotherapy?", textHi: "आपकी कीमोथेरेपी कैसी चल रही है?", type: "info", category: "index", linkedPageNumber: 35 },
+        { id: "idx_36", text: "Your NACT Completed", textHi: "आपका NACT पूरा हो गया", type: "info", category: "index", linkedPageNumber: 36 },
+        { id: "idx_37", text: "Radiation Therapy Date Booked Before start of Surgery?", textHi: "क्या सर्जरी शुरू होने से पहले रेडिएशन थेरेपी की तारीख बुक की गई है?", type: "info", category: "index", linkedPageNumber: 37 },
+        { id: "idx_38", text: "Surgery Admission Date Provided", textHi: "सर्जरी के लिए भर्ती की तारीख दी गई", type: "info", category: "index", linkedPageNumber: 38 },
+        { id: "idx_39", text: "End of CANTrac-Breast Tracker", textHi: "कैंट्रैक-ब्रेस्ट ट्रैकर का अंत", type: "info", category: "index", linkedPageNumber: 39 },
+        { id: "idx_40", text: "Start CANTrac Surgery Tracker", textHi: "कैंट्रैक सर्जरी ट्रैकर शुरू करें", type: "info", category: "index", linkedPageNumber: 40 },
+    ];
+}
+
 const PAGES: PageDef[] = [
-    // ─── Page 01: New Case (Patient Form) ───
+    // ─── Page 01: Table of Content (English) ───
     {
         pageNumber: 1,
+        title: "Table Of Content",
+        titleHi: "विषय सूची",
+        layoutType: "index",
+        questions: indexEntries(),
+    },
+
+    // ─── Page 02: Table of Content (Hindi) ───
+    {
+        pageNumber: 2,
+        title: "पृष्ठ की तालिका",
+        titleHi: "पृष्ठ की तालिका",
+        layoutType: "index",
+        questions: indexEntries(),
+    },
+
+    // ─── Page 03: Breast Cancer Care Journey (Patient Form) ───
+    {
+        pageNumber: 3,
         title: "Breast Cancer Care Journey",
         titleHi: "स्तन कैंसर देखभाल यात्रा",
         layoutType: "patient_form",
@@ -75,9 +140,20 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 02: Investigations Summary 1 ───
+    // ─── Page 04: Care Diary for Breast Cancer (Instructions) ───
     {
-        pageNumber: 2,
+        pageNumber: 4,
+        title: "Care Diary for Breast Cancer",
+        titleHi: "स्तन कैंसर के लिए देखभाल डायरी",
+        layoutType: "info",
+        questions: [
+            { id: "q1", text: "Instructions & Information about using this diary", textHi: "इस डायरी के उपयोग के बारे में निर्देश और जानकारी", type: "info", category: "instructions" },
+        ],
+    },
+
+    // ─── Page 05: Investigations Summary 1 ───
+    {
+        pageNumber: 5,
         title: "Investigations Summary 1",
         titleHi: "जाँच सारांश 1",
         layoutType: "investigation_summary",
@@ -92,9 +168,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 03: Investigations Summary 2 ───
+    // ─── Page 06: Investigations Summary 2 ───
     {
-        pageNumber: 3,
+        pageNumber: 6,
         title: "Investigations Summary 2",
         titleHi: "जाँच सारांश 2",
         layoutType: "investigation_summary",
@@ -109,39 +185,39 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 04: Mammogram Schedule ───
+    // ─── Page 07: Mammogram Schedule ───
     {
-        pageNumber: 4, title: "Mammogram Schedule", titleHi: "मैमोग्राम अनुसूची",
+        pageNumber: 7, title: "Mammogram Schedule", titleHi: "मैमोग्राम अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 05: Mammogram Done & Report Collected ───
+    // ─── Page 08: Mammogram Done & Report Collected ───
     {
-        pageNumber: 5, title: "Mammogram Done & Report Collected", titleHi: "मैमोग्राम किया गया और रिपोर्ट ली गई",
+        pageNumber: 8, title: "Mammogram Done & Report Collected", titleHi: "मैमोग्राम किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Mammogram", "मैमोग्राम"),
     },
 
-    // ─── Page 06: USG Breast Schedule ───
+    // ─── Page 09: USG Breast Schedule ───
     {
-        pageNumber: 6, title: "USG Breast Schedule", titleHi: "यूएसजी ब्रेस्ट अनुसूची",
+        pageNumber: 9, title: "Ultrasound USG Breast Schedule", titleHi: "यूएसजी ब्रेस्ट अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 07: USG Breast Done & Report Collected ───
+    // ─── Page 10: USG Breast Done & Report Collected ───
     {
-        pageNumber: 7, title: "USG Breast Done & Report Collected", titleHi: "यूएसजी ब्रेस्ट किया गया और रिपोर्ट ली गई",
+        pageNumber: 10, title: "Ultrasound USG Breast Done & Report Collected", titleHi: "यूएसजी ब्रेस्ट किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("USG Breast(s)", "यूएसजी ब्रेस्ट"),
     },
 
-    // ─── Page 08: Biopsy Breast Lump Schedule ───
+    // ─── Page 11: Biopsy Breast Lump Schedule ───
     {
-        pageNumber: 8, title: "Biopsy Breast Lump Schedule", titleHi: "स्तन गांठ की बायोप्सी अनुसूची",
+        pageNumber: 11, title: "Biopsy Breast Lump Schedule", titleHi: "स्तन गांठ की बायोप्सी अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 09: Biopsy Done & Report Collected ───
+    // ─── Page 12: Biopsy Done & Report Collected ───
     {
-        pageNumber: 9, title: "Biopsy Done & Report Collected", titleHi: "बायोप्सी किया गया और रिपोर्ट ली गई",
+        pageNumber: 12, title: "Biopsy Done & Report Collected", titleHi: "बायोप्सी किया गया और रिपोर्ट ली गई",
         layoutType: "done_report",
         questions: doneReportQuestions("Biopsy", "बायोप्सी", [
             { id: "q1", text: "Biopsy Of Right Breast Lump Done", textHi: "दाहिने स्तन गांठ की बायोप्सी किया गया", type: "yes_no", category: "completion" },
@@ -149,15 +225,15 @@ const PAGES: PageDef[] = [
         ]),
     },
 
-    // ─── Page 10: FNAC Axillary Node Schedule ───
+    // ─── Page 13: FNAC Axillary Node Schedule ───
     {
-        pageNumber: 10, title: "FNAC Axillary Node Schedule", titleHi: "एफएनएसी अक्षीय नोड अनुसूची",
+        pageNumber: 13, title: "FNAC Axillary Node Schedule", titleHi: "एफएनएसी अक्षीय नोड अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 11: FNAC Done & Report Collected ───
+    // ─── Page 14: FNAC Done & Report Collected ───
     {
-        pageNumber: 11, title: "FNAC Done & Report Collected", titleHi: "एफएनएसी किया गया और रिपोर्ट ली गई",
+        pageNumber: 14, title: "FNAC Done & Report Collected", titleHi: "एफएनएसी किया गया और रिपोर्ट ली गई",
         layoutType: "done_report",
         questions: doneReportQuestions("FNAC", "एफएनएसी", [
             { id: "q1", text: "FNAC Of Right Axillary Node Done", textHi: "दाहिने बगल की ओर का एफएनएसी किया गया", type: "yes_no", category: "completion" },
@@ -165,96 +241,96 @@ const PAGES: PageDef[] = [
         ]),
     },
 
-    // ─── Page 12: PET CT Scan Schedule ───
+    // ─── Page 15: PET CT Scan Schedule ───
     {
-        pageNumber: 12, title: "PET CT Scan Schedule", titleHi: "पीईटी सीटी स्कैन अनुसूची",
+        pageNumber: 15, title: "PET CT Scan Schedule", titleHi: "पीईटी सीटी स्कैन अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 13: Pet CT Scan Done & Report Collected ───
+    // ─── Page 16: Pet CT Scan Done & Report Collected ───
     {
-        pageNumber: 13, title: "Pet CT Scan Done & Report Collected", titleHi: "पीईटी सीटी स्कैन किया गया और रिपोर्ट ली गई",
+        pageNumber: 16, title: "Pet CT Scan Done & Report Collected", titleHi: "पीईटी सीटी स्कैन किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("PET CT Scan", "पीईटी सीटी स्कैन"),
     },
 
-    // ─── Page 14: MRI Breasts Schedule ───
+    // ─── Page 17: MRI Breasts Schedule ───
     {
-        pageNumber: 14, title: "MRI Breasts Schedule", titleHi: "एमआरआई स्तन अनुसूची",
+        pageNumber: 17, title: "MRI Breasts Schedule", titleHi: "एमआरआई स्तन अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 15: MRI Breasts Done & Report Collected ───
+    // ─── Page 18: MRI Breasts Done & Report Collected ───
     {
-        pageNumber: 15, title: "MRI Breasts Done & Report Collected", titleHi: "एमआरआई स्तन की गई और रिपोर्ट ली गई",
+        pageNumber: 18, title: "MRI Breasts Done & Report Collected", titleHi: "एमआरआई स्तन की गई और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("MRI Breasts", "एमआरआई स्तन"),
     },
 
-    // ─── Page 16: Genetic Testing Schedule ───
+    // ─── Page 19: Genetic Testing Schedule ───
     {
-        pageNumber: 16, title: "Genetic Testing", titleHi: "आनुवंशिक परीक्षण",
+        pageNumber: 19, title: "Genetic Testing", titleHi: "आनुवंशिक परीक्षण",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 17: Genetic Testing Done & Report Collected ───
+    // ─── Page 20: Genetic Testing Done & Report Collected ───
     {
-        pageNumber: 17, title: "Genetic Testing Done & Report Collected", titleHi: "आनुवंशिक परीक्षण किया गया और रिपोर्ट ली गई",
+        pageNumber: 20, title: "Genetic Testing Done & Report Collected", titleHi: "आनुवंशिक परीक्षण किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Genetic Testing", "आनुवंशिक परीक्षण"),
     },
 
-    // ─── Page 18: MUGA Scan Schedule ───
+    // ─── Page 21: MUGA Scan Schedule ───
     {
-        pageNumber: 18, title: "MUGA Scan Schedule", titleHi: "म्यूगा स्कैन अनुसूची",
+        pageNumber: 21, title: "MUGA Scan Schedule", titleHi: "म्यूगा स्कैन अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 19: MUGA Scan Done & Report Collected ───
+    // ─── Page 22: MUGA Scan Done & Report Collected ───
     {
-        pageNumber: 19, title: "MUGA Scan Done & Report Collected", titleHi: "म्यूगा स्कैन किया गया और रिपोर्ट ली गई",
+        pageNumber: 22, title: "MUGA Scan Done & Report Collected", titleHi: "म्यूगा स्कैन किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("MUGA Scan", "म्यूगा स्कैन"),
     },
 
-    // ─── Page 20: Echocardiography Schedule ───
+    // ─── Page 23: Echocardiography Schedule ───
     {
-        pageNumber: 20, title: "Echocardiography Schedule", titleHi: "इकोकार्डियोग्राफी अनुसूची",
+        pageNumber: 23, title: "Echocardiography Schedule", titleHi: "इकोकार्डियोग्राफी अनुसूची",
         layoutType: "schedule", questions: scheduleQuestions(),
     },
 
-    // ─── Page 21: Echocardiography Done & Report Collected ───
+    // ─── Page 24: Echocardiography Done & Report Collected ───
     {
-        pageNumber: 21, title: "Echocardiography Done & Report Collected", titleHi: "इकोकार्डियोग्राफी की गई और रिपोर्ट ली गई",
+        pageNumber: 24, title: "Echocardiography Done & Report Collected", titleHi: "इकोकार्डियोग्राफी की गई और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Echocardiography", "इकोकार्डियोग्राफी"),
     },
 
-    // ─── Page 22: Bone Dexa Scan Done & Report Collected ───
+    // ─── Page 25: Bone Dexa Scan Done & Report Collected ───
     {
-        pageNumber: 22, title: "Bone Dexa Scan Done & Report Collected", titleHi: "बोन डेक्सा स्कैन किया गया और रिपोर्ट ली गई",
+        pageNumber: 25, title: "Bone Dexa Scan & Report Collected", titleHi: "बोन डेक्सा स्कैन किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Bone Dexa Scan", "बोन डेक्सा स्कैन"),
     },
 
-    // ─── Page 23: ECG Done & Report Collected ───
+    // ─── Page 26: ECG Done & Report Collected ───
     {
-        pageNumber: 23, title: "ECG Done & Report Collected", titleHi: "ईसीजी किया गया और रिपोर्ट ली गई",
+        pageNumber: 26, title: "ECG Done & Report Collected", titleHi: "ईसीजी किया गया और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("ECG", "ईसीजी"),
     },
 
-    // ─── Page 24: Chest Xray Done & Report Collected ───
+    // ─── Page 27: Chest Xray Done & Report Collected ───
     {
-        pageNumber: 24, title: "Chest Xray Done & Report Collected", titleHi: "छाती का एक्सरे किया गया और रिपोर्ट ली गई",
+        pageNumber: 27, title: "Chest Xray Done & Report Collected", titleHi: "छाती का एक्सरे किया गया और रिपोर्ट ली गई",
         layoutType: "done_report",
         questions: doneReportQuestions("Chest Xray", "छाती का एक्सरे", [
             { id: "q1", text: "Chest Xray PA View Done", textHi: "छाती का एक्स-रे पीए व्यू किया गया", type: "yes_no", category: "completion" },
         ]),
     },
 
-    // ─── Page 25: Blood Tests Done & Report Collected ───
+    // ─── Page 28: Blood Tests Done & Report Collected ───
     {
-        pageNumber: 25, title: "Blood Tests Done & Report Collected", titleHi: "ब्लड टेस्ट किए गए और रिपोर्ट ली गई",
+        pageNumber: 28, title: "Blood Tests Done & Report Collected", titleHi: "ब्लड टेस्ट किए गए और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Blood Tests", "खून की जांच"),
     },
 
-    // ─── Page 26: Treatment Planned In Breast DMG/MDT ───
+    // ─── Page 29: Treatment Planned In Breast DMG/MDT ───
     {
-        pageNumber: 26,
+        pageNumber: 29,
         title: "Your Treatment Is Being Planned In Breast DMG/MDT",
         titleHi: "आपका ट्रीटमेंट ब्रेस्ट DMG/MDT में प्लान किया जा रहा है",
         layoutType: "treatment",
@@ -264,9 +340,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 27: Next Steps If Planned For NACT BCS ───
+    // ─── Page 30: Next Steps If Planned For NACT BCS ───
     {
-        pageNumber: 27,
+        pageNumber: 30,
         title: "Next Steps If Planned For NACT BCS",
         titleHi: "NACT BCS के लिए योजना बनाए जाने पर अगले कदम",
         layoutType: "next_steps",
@@ -276,9 +352,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 28: Appointment Date For Clip Placement ───
+    // ─── Page 31: Appointment Date For Clip Placement ───
     {
-        pageNumber: 28,
+        pageNumber: 31,
         title: "Appointment Date For Clip Placement",
         titleHi: "क्लिप लगाने की तारीख",
         layoutType: "schedule",
@@ -291,9 +367,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 29: Next Steps ───
+    // ─── Page 32: Next Steps ───
     {
-        pageNumber: 29,
+        pageNumber: 32,
         title: "Next Steps",
         titleHi: "अगला चरण",
         layoutType: "next_steps",
@@ -302,9 +378,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 30: A Query ───
+    // ─── Page 33: A Query ───
     {
-        pageNumber: 30,
+        pageNumber: 33,
         title: "A Query",
         titleHi: "पूछताछ",
         layoutType: "query",
@@ -318,9 +394,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 31: Your NACT Start Date ───
+    // ─── Page 34: Your NACT Start Date ───
     {
-        pageNumber: 31,
+        pageNumber: 34,
         title: "Your NACT (Chemotherapy/Systemic Therapy) Start Date",
         titleHi: "आपकी NACT (कीमोथेरेपी/सिस्टमिक थेरेपी) शुरू होने की तारीख",
         layoutType: "chemotherapy_schedule",
@@ -331,9 +407,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 32: How Are You Going Through Your Chemotherapy? ───
+    // ─── Page 35: How Are You Going Through Your Chemotherapy? ───
     {
-        pageNumber: 32,
+        pageNumber: 35,
         title: "How Are You Going Through Your Chemotherapy?",
         titleHi: "आपकी कीमोथेरेपी कैसी चल रही है?",
         layoutType: "chemotherapy_tracking",
@@ -343,9 +419,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 33: Your NACT Completed ───
+    // ─── Page 36: Your NACT Completed ───
     {
-        pageNumber: 33,
+        pageNumber: 36,
         title: "Your NACT Completed (Chemotherapy/Systemic)",
         titleHi: "आपका NACT (कीमोथेरेपी/सिस्टेमिक) पूरा हो गया है।",
         layoutType: "chemotherapy_schedule",
@@ -356,9 +432,24 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 34: Surgery Admission Date Provided ───
+    // ─── Page 37: Radiation Therapy Date Booked Before start of Surgery? ───
     {
-        pageNumber: 34,
+        pageNumber: 37,
+        title: "Radiation Therapy Date Booked Before start of Surgery?",
+        titleHi: "क्या सर्जरी शुरू होने से पहले रेडिएशन थेरेपी की तारीख बुक की गई है?",
+        layoutType: "schedule",
+        questions: [
+            { id: "q1_date", text: "Got a date for Radiation Therapy", textHi: "रेडिएशन थेरेपी के लिए डेट मिल गई है", type: "date", category: "schedule" },
+            { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
+            { id: "q2_date", text: "Got a reappointment date", textHi: "दोबारा अपॉइंटमेंट की तारीख मिल गई है", type: "date", category: "schedule" },
+            { id: "q2_status", text: "Reappointment Status", textHi: "दोबारा अपॉइंटमेंट की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
+            { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+        ],
+    },
+
+    // ─── Page 38: Surgery Admission Date Provided ───
+    {
+        pageNumber: 38,
         title: "Surgery Admission Date Provided",
         titleHi: "सर्जरी के लिए भर्ती होने की तारीख दे दी गई है",
         layoutType: "schedule",
@@ -371,9 +462,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 35: End of CANTrac-Breast Tracker ───
+    // ─── Page 39: End of CANTrac-Breast Tracker ───
     {
-        pageNumber: 35,
+        pageNumber: 39,
         title: "End of CANTrac-Breast Tracker",
         titleHi: "कैंट्रैक-ब्रेस्ट ट्रैकर का अंत",
         layoutType: "transition",
@@ -382,9 +473,9 @@ const PAGES: PageDef[] = [
         ],
     },
 
-    // ─── Page 36: Start CANTrac-Breast Surgery Tracker ───
+    // ─── Page 40: Start CANTrac-Breast Surgery Tracker ───
     {
-        pageNumber: 36,
+        pageNumber: 40,
         title: "Start CANTrac-Breast Surgery Tracker",
         titleHi: "कैंट्रैक-ब्रेस्ट ब्रेस्ट सर्जरी शुरू करें",
         layoutType: "transition",
@@ -395,29 +486,29 @@ const PAGES: PageDef[] = [
 ];
 
 /**
- * Seed all 36 CANTrac Breast diary pages into the database.
- * Uses findOrCreate to avoid duplicates on re-run.
+ * Seed all 40 CANTrac Breast diary pages into the database.
+ * Drops all existing CANTrac-Breast pages first, then re-seeds fresh.
  */
 export async function seedDiaryPages(): Promise<number> {
+    // Drop all existing pages for this diary type
+    await DiaryPage.destroy({
+        where: { diaryType: DIARY_TYPE },
+    });
+
+    // Re-seed all pages
     let count = 0;
-
     for (const page of PAGES) {
-        const [, created] = await DiaryPage.findOrCreate({
-            where: {
-                pageNumber: page.pageNumber,
-                diaryType: DIARY_TYPE,
-            },
-            defaults: {
-                diaryCode: DIARY_CODE,
-                title: page.title,
-                titleHi: page.titleHi,
-                layoutType: page.layoutType,
-                questions: page.questions,
-                isActive: true,
-            },
+        await DiaryPage.create({
+            diaryCode: DIARY_CODE,
+            diaryType: DIARY_TYPE,
+            pageNumber: page.pageNumber,
+            title: page.title,
+            titleHi: page.titleHi,
+            layoutType: page.layoutType,
+            questions: page.questions,
+            isActive: true,
         });
-
-        if (created) count++;
+        count++;
     }
 
     return count;
