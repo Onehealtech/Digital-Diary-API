@@ -42,7 +42,7 @@ router.put(
 // Mark task as complete (Assistant only)
 router.put(
   "/:id/complete",
-  authCheck([UserRole.ASSISTANT]),
+  authCheck([UserRole.ASSISTANT, UserRole.DOCTOR]), // Allow doctor to mark complete as well
   taskController.completeTask
 );
 
