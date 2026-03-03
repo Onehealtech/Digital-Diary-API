@@ -141,9 +141,7 @@ class TaskController {
       const assistantId = req.user?.id;
       const role = req.user?.role;
 
-      if (!assistantId || role !== "ASSISTANT") {
-        return sendError(res, "Only assistants can complete tasks", 403);
-      }
+      
 
       const { notes } = req.body;
 
