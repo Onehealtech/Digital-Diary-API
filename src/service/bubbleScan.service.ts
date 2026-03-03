@@ -1,5 +1,3 @@
-import { spawn } from "child_process";
-import path from "path";
 import fs from "fs";
 import { BubbleScanResult } from "../models/BubbleScanResult";
 import { Patient } from "../models/Patient";
@@ -7,32 +5,7 @@ import { AppUser } from "../models/Appuser";
 import { DiaryPage } from "../models/DiaryPage";
 import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
-
-interface PythonOMROutput {
-    success: boolean;
-    pageNumber?: number;
-    templateName?: string;
-    templateVersion?: string;
-    autoDetected?: boolean;
-    results?: Record<
-        string,
-        {
-            answer: "yes" | "no" | "uncertain";
-            confidence: number;
-            yesScore: number;
-            noScore: number;
-        }
-    >;
-    metadata?: {
-        totalQuestions: number;
-        answeredConfidently: number;
-        uncertainCount: number;
-        alignmentQuality: string;
-        processingTimeMs: number;
-    };
-    error?: string;
-    message?: string;
-}
+import { formExtractionService } from "./formExtraction.service";
 
 interface BubbleScanFilters {
     page?: number;
@@ -47,40 +20,12 @@ interface BubbleScanFilters {
 }
 
 class BubbleScanService {
-    private pythonScriptPath: string;
-    private templatesDir: string;
-
-    constructor() {
-        this.pythonScriptPath = path.join(
-            __dirname,
-            "../../python/omr_scanner.py"
-        );
-        this.templatesDir = path.join(__dirname, "../../python/templates");
-    }
 
     /**
-     * Validate that a template exists
-     */
-    validateTemplate(templateName: string): boolean {
-        const templatePath = path.join(
-            this.templatesDir,
-            `${templateName}.json`
-        );
-        return fs.existsSync(templatePath);
-    }
-
-    /**
-     * Get available template names
+     * Returns empty — templates no longer used (Qubrid AI auto-detects page type)
      */
     getAvailableTemplates(): string[] {
-        if (!fs.existsSync(this.templatesDir)) return [];
-        return fs
-            .readdirSync(this.templatesDir)
-            .filter(
-                (f) =>
-                    f.endsWith(".json") && f !== "template_index.json"
-            )
-            .map((f) => f.replace(".json", ""));
+        return [];
     }
 
     /**
@@ -131,8 +76,9 @@ class BubbleScanService {
     }
 
     /**
-     * Main method: Process an uploaded bubble scan image
-     * templateName is optional — defaults to "auto" which uses OCR to detect the page type
+     * Process an uploaded diary page photo using Qubrid AI (Kimi-K2.5 vision).
+     * Replaces the old Python OMR pipeline entirely.
+     * Image is read from disk, processed in memory, then deleted for privacy compliance.
      */
     async processBubbleScan(
         patientId: string,
@@ -142,205 +88,69 @@ class BubbleScanService {
         pageType?: string,
         diaryType?: string
     ): Promise<BubbleScanResult> {
-        // Validate template exists (skip validation for "auto" mode — Python handles detection)
-        if (templateName !== "auto" && !this.validateTemplate(templateName)) {
-            throw new Error(
-                `Template '${templateName}' not found. Available: ${this.getAvailableTemplates().join(", ")}`
-            );
-        }
 
-        // Create DB record in "pending" status
         const scanRecord = await BubbleScanResult.create({
             patientId,
             pageId,
             pageType,
-            templateName,
             submissionType: "scan",
-            imageUrl: imagePath,
             processingStatus: "pending",
             scannedAt: new Date(),
         });
 
         try {
-            // Update to "processing"
             await scanRecord.update({ processingStatus: "processing" });
 
-            // Call Python script (passes "auto" or specific template name)
-            const pythonResult = await this.executePythonOMR(
-                imagePath,
-                templateName
-            );
+            // Read image from disk into memory, then process with Qubrid AI
+            const imageBuffer = fs.readFileSync(imagePath);
+            const extractionResult = await formExtractionService.extractForm(imageBuffer);
 
-            if (!pythonResult.success) {
-                await scanRecord.update({
-                    processingStatus: "failed",
-                    errorMessage: `${pythonResult.error}: ${pythonResult.message}`,
-                });
-                return scanRecord;
-            }
+            const rawPageNum = extractionResult.formData.page_number;
+            const detectedPageNumber = rawPageNum
+                ? parseInt(String(rawPageNum), 10)
+                : undefined;
 
-            // Resolve page number from Python output
-            const detectedPageNumber = pythonResult.pageNumber;
-
-            // Enrich results with question text from DB (instead of template files)
-            const enrichedResults: Record<string, any> = {};
-            const rawScores: Record<string, any> = {};
+            // Try to match with DiaryPage for enrichment
             let diaryPageId: string | undefined;
-
-            if (pythonResult.results && detectedPageNumber) {
+            if (detectedPageNumber && !isNaN(detectedPageNumber)) {
                 const resolvedDiaryType = diaryType || getDiaryTypeForCaseType(undefined);
                 const diaryPage = await DiaryPage.findOne({
-                    where: {
-                        pageNumber: detectedPageNumber,
-                        diaryType: resolvedDiaryType,
-                        isActive: true,
-                    },
+                    where: { pageNumber: detectedPageNumber, diaryType: resolvedDiaryType, isActive: true },
                 });
-
-                if (diaryPage) {
-                    diaryPageId = diaryPage.id;
-                    for (const [qId, qResult] of Object.entries(
-                        pythonResult.results
-                    )) {
-                        const questionDef = diaryPage.questions.find(
-                            (q) => q.id === qId
-                        );
-                        enrichedResults[qId] = {
-                            answer: qResult.answer,
-                            confidence: qResult.confidence,
-                            questionText:
-                                questionDef?.text || "Unknown question",
-                            category:
-                                questionDef?.category || "uncategorized",
-                        };
-                        rawScores[qId] = {
-                            yesScore: qResult.yesScore,
-                            noScore: qResult.noScore,
-                        };
-                    }
-                } else {
-                    // DiaryPage not found in DB — store raw results
-                    for (const [qId, qResult] of Object.entries(
-                        pythonResult.results
-                    )) {
-                        enrichedResults[qId] = {
-                            answer: qResult.answer,
-                            confidence: qResult.confidence,
-                        };
-                        rawScores[qId] = {
-                            yesScore: qResult.yesScore,
-                            noScore: qResult.noScore,
-                        };
-                    }
-                }
-            } else if (pythonResult.results) {
-                // No page number detected — store raw results
-                for (const [qId, qResult] of Object.entries(
-                    pythonResult.results
-                )) {
-                    enrichedResults[qId] = {
-                        answer: qResult.answer,
-                        confidence: qResult.confidence,
-                    };
-                    rawScores[qId] = {
-                        yesScore: qResult.yesScore,
-                        noScore: qResult.noScore,
-                    };
-                }
+                if (diaryPage) diaryPageId = diaryPage.id;
             }
 
-            // Update record with results
             await scanRecord.update({
                 processingStatus: "completed",
-                templateName:
-                    pythonResult.templateName || templateName,
-                pageNumber: detectedPageNumber,
+                pageNumber: detectedPageNumber && !isNaN(detectedPageNumber) ? detectedPageNumber : undefined,
                 diaryPageId,
-                scanResults: enrichedResults,
-                rawConfidenceScores: rawScores,
-                templateVersion: pythonResult.templateVersion,
+                pageType: extractionResult.formData.form_type || pageType,
+                scanResults: extractionResult.formData,
                 processingMetadata: {
-                    ...pythonResult.metadata,
-                    autoDetected: pythonResult.autoDetected || false,
+                    confidence: extractionResult.confidence,
+                    flags: extractionResult.flags,
+                    processingTimeMs: extractionResult.processingTimeMs,
+                    modelUsed: extractionResult.modelUsed,
+                    imageDimensions: extractionResult.imageDimensions,
+                    qrCodeId: extractionResult.qrCodeId,
                 },
             });
 
-            return scanRecord;
         } catch (error: any) {
             await scanRecord.update({
                 processingStatus: "failed",
                 errorMessage: error.message || "Unexpected processing error",
             });
-            throw error;
+        } finally {
+            // Delete image from disk after processing (healthcare privacy compliance)
+            try {
+                if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+            } catch {
+                console.warn(`[BubbleScan] Could not delete temp image: ${imagePath}`);
+            }
         }
-    }
 
-    /**
-     * Execute Python OMR script as child process
-     */
-    private executePythonOMR(
-        imagePath: string,
-        templateName: string
-    ): Promise<PythonOMROutput> {
-        return new Promise((resolve, reject) => {
-            const proc = spawn("python3", [
-                this.pythonScriptPath,
-                imagePath,
-                templateName,
-            ]);
-
-            let stdout = "";
-            let stderr = "";
-
-            proc.stdout.on("data", (data) => {
-                stdout += data.toString();
-            });
-
-            proc.stderr.on("data", (data) => {
-                stderr += data.toString();
-            });
-
-            // Timeout after 30 seconds
-            const timeout = setTimeout(() => {
-                proc.kill("SIGTERM");
-                reject(
-                    new Error("Python OMR script timed out after 30 seconds")
-                );
-            }, 30000);
-
-            proc.on("close", (code) => {
-                clearTimeout(timeout);
-
-                if (code !== 0 && !stdout.trim()) {
-                    reject(
-                        new Error(
-                            `Python script exited with code ${code}. Stderr: ${stderr}`
-                        )
-                    );
-                    return;
-                }
-
-                try {
-                    const result = JSON.parse(stdout.trim());
-                    resolve(result);
-                } catch {
-                    reject(
-                        new Error(
-                            `Failed to parse Python output as JSON. stdout: ${stdout}, stderr: ${stderr}`
-                        )
-                    );
-                }
-            });
-
-            proc.on("error", (err) => {
-                clearTimeout(timeout);
-                reject(
-                    new Error(
-                        `Failed to spawn Python process: ${err.message}. Ensure python3 is installed.`
-                    )
-                );
-            });
-        });
+        return scanRecord;
     }
 
     /**

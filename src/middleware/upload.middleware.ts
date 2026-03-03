@@ -51,3 +51,22 @@ export const bubbleScanUpload = multer({
     }
   },
 });
+
+// ─── CANTrac Form Extraction Upload ──────────────────────────────────────────
+// Uses memoryStorage so images are NEVER written to disk (healthcare privacy).
+// The image buffer is processed in-memory and discarded after extraction.
+const MAX_FORM_IMAGE_BYTES =
+  parseInt(process.env.MAX_IMAGE_SIZE_MB || "10") * 1024 * 1024;
+
+export const formExtractionUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FORM_IMAGE_BYTES },
+  fileFilter: (req: any, file: any, cb: any) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG and PNG images are accepted for form extraction"));
+    }
+  },
+});

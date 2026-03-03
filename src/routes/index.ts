@@ -21,6 +21,7 @@ import orderRoutes from "./order.routes";
 import walletRoutes from "./wallet.routes";
 import bubbleScanRoutes from "./bubbleScan.routes";
 import diaryPageRoutes from "./diaryPage.routes";
+import formExtractionRoutes from "./formExtraction.routes";
 
 const router = express.Router();
 
@@ -47,5 +48,6 @@ router.use("/v1/order", orderRoutes); // Order routes (Super Admin only)
 router.use("/v1/wallets", walletRoutes); // Wallet routes (Super Admin only)
 router.use("/v1/bubble-scan", bubbleScanRoutes); // Bubble scan OMR routes (Patient upload, Doctor review)
 router.use("/v1/diary-pages", diaryPageRoutes); // Diary page routes (questions for manual entry, seed)
+router.use("/v1", formExtractionRoutes);         // CANTrac form extraction via Gemini Vision (patient + staff)
 
 export default router;

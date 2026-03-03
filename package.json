@@ -14,6 +14,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/qrcode": "^1.5.6",
     "axios": "^1.13.5",
     "bcrypt": "^6.0.0",
@@ -25,6 +26,7 @@
     "express": "^5.2.1",
     "firebase-admin": "^13.6.1",
     "jsonwebtoken": "^9.0.3",
+    "jsqr": "^1.4.0",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.13",
     "nodemon": "^3.1.11",
@@ -34,6 +36,7 @@
     "reflect-metadata": "^0.2.2",
     "sequelize": "^6.37.7",
     "sequelize-typescript": "^2.1.6",
+    "sharp": "^0.34.5",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
