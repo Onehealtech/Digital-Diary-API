@@ -3,6 +3,7 @@ import { AppUser } from "../models/Appuser";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "../service/emailService";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { logActivity } from "../utils/activityLogger";
 
 /**
  * POST /api/v1/doctor/create-assistant
@@ -62,6 +63,14 @@ export const createAssistant = async (
 
         // Send password email
         await sendPasswordEmail(email, plainPassword, "ASSISTANT", fullName);
+
+        logActivity({
+            req,
+            userId: req.user!.id,
+            userRole: "DOCTOR",
+            action: "ASSISTANT_CREATED",
+            details: { assistantId: newAssistant.id, email: newAssistant.email },
+        });
 
         res.status(201).json({
             success: true,

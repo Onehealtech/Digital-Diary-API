@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { staffLogin, verifyStaffOTP } from "../service/staffAuth.service";
+import { logActivity } from "../utils/activityLogger";
 
 /**
  * POST /api/v1/auth/login
@@ -49,6 +50,14 @@ export const verify2FA = async (req: Request, res: Response): Promise<void> => {
         }
 
         const result = await verifyStaffOTP(email, otp);
+
+        logActivity({
+            req,
+            userId: result.user.id,
+            userRole: result.user.role,
+            action: "STAFF_LOGIN",
+            details: { email },
+        });
 
         res.status(200).json({
             success: true,

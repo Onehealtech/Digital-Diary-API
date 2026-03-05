@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { scanService } from "../service/scan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
+import { logActivity } from "../utils/activityLogger";
 
 /**
  * POST /api/v1/scan/submit
@@ -94,6 +95,14 @@ export const submitScan = async (
             { updatedAt: new Date() },
             { where: { id: patientId } }
         );
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "DIARY_SCAN_SUBMITTED",
+            details: { patientId, pageId, scanLogId: scanLog.id, isUpdate: !!existingScan },
+        });
 
         res.status(existingScan ? 200 : 201).json({
             success: true,
@@ -261,6 +270,14 @@ export const reviewDiaryEntry = async (
             flagged,
         });
 
+        logActivity({
+            req,
+            userId: doctorId,
+            userRole: "DOCTOR",
+            action: "DIARY_ENTRY_REVIEWED",
+            details: { diaryEntryId: id, flagged },
+        });
+
         sendResponse(res, entry, "Diary entry reviewed successfully");
     } catch (error: any) {
         sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
@@ -293,6 +310,14 @@ export const toggleFlag = async (
         }
 
         const entry = await scanService.toggleFlag(id, doctorId, flagged);
+
+        logActivity({
+            req,
+            userId: doctorId,
+            userRole: "DOCTOR",
+            action: "DIARY_ENTRY_FLAGGED",
+            details: { diaryEntryId: id, flagged },
+        });
 
         sendResponse(res, entry, `Diary entry ${flagged ? "flagged" : "unflagged"} successfully`);
     } catch (error: any) {
