@@ -56,7 +56,13 @@ export const requirePatientAccess = async (
                 break;
 
             case UserRole.ASSISTANT:
+                // Must belong to the parent doctor's patients
                 hasAccess = !!user.parentId && patient.doctorId === user.parentId;
+                // If "selected" access mode, also check assigned patient list
+                if (hasAccess && user.patientAccessMode === "selected") {
+                    const assigned: string[] = user.assignedPatientIds || [];
+                    hasAccess = assigned.includes(patientId);
+                }
                 break;
 
             default:

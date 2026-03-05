@@ -25,6 +25,17 @@ export const staffLogin = async (
         throw new Error("Invalid credentials");
     }
 
+    // Block login for assistants with ON_HOLD or DELETED status
+    if (user.role === "ASSISTANT") {
+        const status = (user as any).assistantStatus;
+        if (status === "DELETED") {
+            throw new Error("Your account has been deactivated. Contact your Doctor.");
+        }
+        if (status === "ON_HOLD") {
+            throw new Error("Your account is temporarily on hold. Contact your Doctor.");
+        }
+    }
+
     // Generate and send OTP
     const otp = generateOTP(email);
     await sendOTPEmail(email, otp, user.fullName);

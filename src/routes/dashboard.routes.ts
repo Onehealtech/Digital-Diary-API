@@ -2,6 +2,7 @@ import express from "express";
 import * as dashboardController from "../controllers/dashboard.controller";
 import { getDashboardReminders } from "../controllers/reminder.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = express.Router();
@@ -10,6 +11,7 @@ const router = express.Router();
 router.get(
     "/patients",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+    requirePermission('viewPatients'),
     dashboardController.getPatients
 );
 

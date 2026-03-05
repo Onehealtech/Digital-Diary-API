@@ -49,6 +49,15 @@ export const createAssistant = async (
             role: "ASSISTANT",
             parentId: req.user!.id, // Link to the Doctor
             isEmailVerified: false,
+            assistantStatus: "ACTIVE",
+            patientAccessMode: "all", // Default: access to all doctor's patients
+            assignedPatientIds: [],
+            permissions: {
+                viewPatients: true,
+                callPatients: true,
+                exportData: false,
+                sendNotifications: false,
+            },
         });
 
         // Send password email

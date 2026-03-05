@@ -8,6 +8,7 @@ import {
     getDiaryEntryStats,
 } from "../controllers/scan.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = Router();
@@ -35,6 +36,7 @@ router.get(
 router.get(
     "/",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('viewPatients'),
     getAllDiaryEntries
 );
 
@@ -42,6 +44,7 @@ router.get(
 router.get(
     "/:id",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('viewPatients'),
     getDiaryEntryById
 );
 
