@@ -1,0 +1,367 @@
+{
+  "model": "google/gemini-2.5-flash",
+  "timestamp": "2026-03-05T03:51:33.795Z",
+  "results": [
+    {
+      "file": "test-images/1000219329.jpeg",
+      "fileName": "1000219329.jpeg",
+      "originalSizeKB": 172,
+      "processingTimeMs": 4463,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 311,
+        "totalTokens": 2691
+      },
+      "extraction": {
+        "page_number": 6,
+        "page_title": "Investigations Summary 2",
+        "sections": [
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "MUGA Scan",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Echocardiography",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Bone Dexa Scan",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "ECG",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Chest Xray",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Blood Tests",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Other Tests",
+                "value": "Yes",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    },
+    {
+      "file": "test-images/1000219345.jpeg",
+      "fileName": "1000219345.jpeg",
+      "originalSizeKB": 171,
+      "processingTimeMs": 2681,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 224,
+        "totalTokens": 2604
+      },
+      "extraction": {
+        "page_number": 8,
+        "page_title": "Mammogram Done & Report Collected",
+        "sections": [
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "Mammogram Done",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Mammogram Report Collected",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Facing A Major Problem With This Test",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Facing a Major Problem Getting This Report",
+                "value": "No",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    },
+    {
+      "file": "test-images/1000219353.jpeg",
+      "fileName": "1000219353.jpeg",
+      "originalSizeKB": 227,
+      "processingTimeMs": 4430,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 438,
+        "totalTokens": 2818
+      },
+      "extraction": {
+        "page_number": 7,
+        "page_title": "Mammogram Schedule",
+        "sections": [
+          {
+            "section_title": "First Appointment",
+            "fields": [
+              {
+                "field": "DD: दिन",
+                "value": "03",
+                "confidence": 1
+              },
+              {
+                "field": "MM: माह",
+                "value": "Mar",
+                "confidence": 1
+              },
+              {
+                "field": "YY: साल",
+                "value": "2026",
+                "confidence": 1
+              },
+              {
+                "field": "Status (Select ONE)",
+                "value": "Scheduled",
+                "confidence": 1
+              }
+            ]
+          },
+          {
+            "section_title": "Second Attempt (If First Missed/Cancelled)",
+            "fields": [
+              {
+                "field": "DD: दिन",
+                "value": null,
+                "confidence": 1
+              },
+              {
+                "field": "MM: माह",
+                "value": null,
+                "confidence": 1
+              },
+              {
+                "field": "YY: साल",
+                "value": null,
+                "confidence": 1
+              },
+              {
+                "field": "Status (Select ONE)",
+                "value": null,
+                "confidence": 1
+              }
+            ]
+          },
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "Next Appointment Required",
+                "value": "No",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    },
+    {
+      "file": "test-images/1000219355.jpeg",
+      "fileName": "1000219355.jpeg",
+      "originalSizeKB": 160,
+      "processingTimeMs": 4331,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 315,
+        "totalTokens": 2695
+      },
+      "extraction": {
+        "page_number": 5,
+        "page_title": "Investigations Summary 1",
+        "sections": [
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "Mammogram",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "USG Breast(s)",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Biopsy Breast Lump",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "FNAC Axillary Node",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "PET CT Scan",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "MRI Breasts",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "Genetic Testing",
+                "value": "Yes",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    },
+    {
+      "file": "test-images/1000219363.jpeg",
+      "fileName": "1000219363.jpeg",
+      "originalSizeKB": 172,
+      "processingTimeMs": 4211,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 315,
+        "totalTokens": 2695
+      },
+      "extraction": {
+        "page_number": 5,
+        "page_title": "Investigations Summary 1",
+        "sections": [
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "Mammogram",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "USG Breast(s)",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Biopsy Breast Lump",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "FNAC Axillary Node",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "PET CT Scan",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "MRI Breasts",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Genetic Testing",
+                "value": "No",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    },
+    {
+      "file": "test-images/1000219367.jpeg",
+      "fileName": "1000219367.jpeg",
+      "originalSizeKB": 162,
+      "processingTimeMs": 2891,
+      "tokenUsage": {
+        "promptTokens": 2380,
+        "responseTokens": 268,
+        "totalTokens": 2648
+      },
+      "extraction": {
+        "page_number": 29,
+        "page_title": "Your Treatment Is Being Planned In Breast DMG/MDT",
+        "sections": [
+          {
+            "section_title": "Main",
+            "fields": [
+              {
+                "field": "Planned For Chemotherapy (NACT)",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Surgery Planned",
+                "value": "Mastectomy",
+                "confidence": 1
+              },
+              {
+                "field": "Radiotherapy Planned",
+                "value": "Yes",
+                "confidence": 1
+              },
+              {
+                "field": "Any Other Treatment Planned",
+                "value": "No",
+                "confidence": 1
+              },
+              {
+                "field": "All reports are ready but treatment has not been planned yet",
+                "value": "Yes",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "overall_confidence": "high",
+        "notes": null
+      }
+    }
+  ],
+  "costEstimate": {
+    "totalInputTokens": 14280,
+    "totalOutputTokens": 1871,
+    "estimatedCostUsd": 0.002176,
+    "costPerImageUsd": 0.000363,
+    "projected40kImagesUsd": 14.51
+  },
+  "summary": {
+    "total": 6,
+    "successful": 6,
+    "failed": 0
+  }
+}

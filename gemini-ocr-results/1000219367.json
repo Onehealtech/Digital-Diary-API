@@ -1,0 +1,49 @@
+{
+  "file": "test-images/1000219367.jpeg",
+  "fileName": "1000219367.jpeg",
+  "originalSizeKB": 162,
+  "processingTimeMs": 2891,
+  "tokenUsage": {
+    "promptTokens": 2380,
+    "responseTokens": 268,
+    "totalTokens": 2648
+  },
+  "extraction": {
+    "page_number": 29,
+    "page_title": "Your Treatment Is Being Planned In Breast DMG/MDT",
+    "sections": [
+      {
+        "section_title": "Main",
+        "fields": [
+          {
+            "field": "Planned For Chemotherapy (NACT)",
+            "value": "Yes",
+            "confidence": 1
+          },
+          {
+            "field": "Surgery Planned",
+            "value": "Mastectomy",
+            "confidence": 1
+          },
+          {
+            "field": "Radiotherapy Planned",
+            "value": "Yes",
+            "confidence": 1
+          },
+          {
+            "field": "Any Other Treatment Planned",
+            "value": "No",
+            "confidence": 1
+          },
+          {
+            "field": "All reports are ready but treatment has not been planned yet",
+            "value": "Yes",
+            "confidence": 1
+          }
+        ]
+      }
+    ],
+    "overall_confidence": "high",
+    "notes": null
+  }
+}
