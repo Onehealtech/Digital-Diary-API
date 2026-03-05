@@ -4,6 +4,7 @@ import {
     AuthRequest,
 } from "../middleware/authMiddleware";
 import { bubbleScanService } from "../service/bubbleScan.service";
+import { visionScanService } from "../modules/visionScan/visionScan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { getDiaryTypeForCaseType } from "../utils/constants";
 
@@ -46,19 +47,19 @@ export const manualSubmitBubbleScan = async (
 
 /**
  * POST /api/v1/bubble-scan/upload
- * Patient uploads a diary page photo for OMR bubble scanning
+ * Patient uploads a diary page photo for AI vision scanning
  */
 export const uploadBubbleScan = async (
     req: AuthenticatedRequest,
     res: Response
 ): Promise<void> => {
     try {
-        const { pageId, templateName, pageType } = req.body;
+        const { pageNumber } = req.body;
         const patientId = req.user!.id;
         const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
 
-        if (!pageId) {
-            sendError(res, 400, "pageId is required");
+        if (!pageNumber || isNaN(Number(pageNumber))) {
+            sendError(res, 400, "pageNumber (number) is required");
             return;
         }
 
@@ -67,14 +68,11 @@ export const uploadBubbleScan = async (
             return;
         }
 
-        // templateName is optional — defaults to "auto" (OCR auto-detection)
-        const imagePath = req.file.path;
-        const result = await bubbleScanService.processBubbleScan(
+        const result = await visionScanService.processScan(
             patientId,
-            pageId,
-            templateName || "auto",
-            imagePath,
-            pageType,
+            Number(pageNumber),
+            req.file.buffer,
+            req.file.mimetype,
             diaryType
         );
 
@@ -90,7 +88,8 @@ export const uploadBubbleScan = async (
         );
     } catch (error: any) {
         console.error("Bubble scan upload error:", error);
-        sendError(res, 500, error.message || "Failed to process bubble scan");
+        const status = error.message.includes("not found") ? 404 : 500;
+        sendError(res, status, error.message || "Failed to process bubble scan");
     }
 };
 
@@ -124,15 +123,22 @@ export const getBubbleScanHistory = async (
 
 /**
  * GET /api/v1/bubble-scan/templates
- * Get list of available scan templates
+ * Get list of available diary pages from DB
  */
 export const getAvailableTemplates = async (
     req: AuthenticatedRequest,
     res: Response
 ): Promise<void> => {
     try {
-        const templates = bubbleScanService.getAvailableTemplates();
-        sendResponse(res, 200, "Available templates retrieved", templates);
+        const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
+        const { DiaryPage } = require("../models/DiaryPage");
+        const pages = await DiaryPage.findAll({
+            where: { diaryType, isActive: true },
+            attributes: ["pageNumber", "title", "layoutType"],
+            order: [["pageNumber", "ASC"]],
+            raw: true,
+        });
+        sendResponse(res, 200, "Available templates retrieved", pages);
     } catch (error: any) {
         console.error("Get templates error:", error);
         sendError(res, 500, error.message || "Failed to get templates");
@@ -158,19 +164,17 @@ export const getBubbleScanById = async (
 
 /**
  * POST /api/v1/bubble-scan/:id/retry
- * Retry a failed scan
+ * Retry a failed scan (downloads image from S3 and reprocesses)
  */
 export const retryBubbleScan = async (
     req: AuthenticatedRequest,
     res: Response
 ): Promise<void> => {
     try {
-        const result = await bubbleScanService.retryScan(req.params.id as string);
-        const statusCode =
-            result.processingStatus === "completed" ? 200 : 200;
+        const result = await visionScanService.retryScan(req.params.id as string);
         sendResponse(
             res,
-            statusCode,
+            200,
             result.processingStatus === "completed"
                 ? "Bubble scan retry completed successfully"
                 : "Bubble scan retry failed - check errorMessage",
