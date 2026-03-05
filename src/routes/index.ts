@@ -20,7 +20,7 @@ import uploadImageRoutes from "./uploadImage.route";
 import orderRoutes from "./order.routes";
 import walletRoutes from "./wallet.routes";
 import bubbleScanRoutes from "./bubbleScan.routes";
-import visionScanRoutes from "./visionScan.routes";
+import visionScanRoutes from "../modules/visionScan/visionScan.routes";
 import diaryPageRoutes from "./diaryPage.routes";
 
 const router = express.Router();

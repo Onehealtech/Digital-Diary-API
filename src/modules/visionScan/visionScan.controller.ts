@@ -2,39 +2,29 @@ import { Response } from "express";
 import {
     AuthenticatedRequest,
     AuthRequest,
-} from "../middleware/authMiddleware";
-import { visionScanService } from "../service/visionScan.service";
-import { sendResponse, sendError } from "../utils/response";
-import { getDiaryTypeForCaseType } from "../utils/constants";
+} from "../../middleware/authMiddleware";
+import { visionScanService } from "./visionScan.service";
+import { sendResponse, sendError } from "../../utils/response";
+import { getDiaryTypeForCaseType } from "../../utils/constants";
 
-/**
- * POST /api/v1/vision-scan/upload
- * Patient uploads a diary page photo for AI-based extraction
- */
 export const uploadVisionScan = async (
     req: AuthenticatedRequest,
     res: Response
 ): Promise<void> => {
     try {
-        const { pageId } = req.body;
+        const { pageNumber } = req.body;
         const patientId = req.user!.id;
         const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
-
-        if (!pageId) {
-            sendError(res, 400, "pageId is required");
-            return;
-        }
 
         if (!req.file) {
             sendError(res, 400, "Image file is required");
             return;
         }
 
-        const imagePath = req.file.path;
         const result = await visionScanService.processScan(
             patientId,
-            pageId,
-            imagePath,
+            pageNumber,
+            req.file.path,
             diaryType
         );
 
@@ -50,14 +40,11 @@ export const uploadVisionScan = async (
         );
     } catch (error: any) {
         console.error("Vision scan upload error:", error);
-        sendError(res, 500, error.message || "Failed to process vision scan");
+        const status = error.message.includes("not found") ? 404 : 500;
+        sendError(res, status, error.message || "Failed to process vision scan");
     }
 };
 
-/**
- * POST /api/v1/vision-scan/manual
- * Patient submits diary answers manually (no scan)
- */
 export const manualSubmitVisionScan = async (
     req: AuthenticatedRequest,
     res: Response
@@ -66,15 +53,6 @@ export const manualSubmitVisionScan = async (
         const patientId = req.user!.id;
         const { pageNumber, answers } = req.body;
         const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
-
-        if (!pageNumber || typeof pageNumber !== "number") {
-            sendError(res, 400, "pageNumber (number) is required");
-            return;
-        }
-        if (!answers || typeof answers !== "object") {
-            sendError(res, 400, "answers (object) is required");
-            return;
-        }
 
         const result = await visionScanService.manualSubmit(
             patientId,
@@ -91,21 +69,17 @@ export const manualSubmitVisionScan = async (
     }
 };
 
-/**
- * GET /api/v1/vision-scan/history
- * Patient gets their scan history
- */
 export const getVisionScanHistory = async (
     req: AuthenticatedRequest,
     res: Response
 ): Promise<void> => {
     try {
         const patientId = req.user!.id;
-        const { page = 1, limit = 20 } = req.query;
+        const { page, limit } = req.query as any;
         const result = await visionScanService.getPatientScanHistory(
             patientId,
-            Number(page),
-            Number(limit)
+            page,
+            limit
         );
         sendResponse(res, 200, "Scan history retrieved successfully", result);
     } catch (error: any) {
@@ -114,10 +88,6 @@ export const getVisionScanHistory = async (
     }
 };
 
-/**
- * GET /api/v1/vision-scan/:id
- * Get single scan result
- */
 export const getVisionScanById = async (
     req: AuthenticatedRequest,
     res: Response
@@ -131,10 +101,6 @@ export const getVisionScanById = async (
     }
 };
 
-/**
- * POST /api/v1/vision-scan/:id/retry
- * Retry a failed scan
- */
 export const retryVisionScan = async (
     req: AuthenticatedRequest,
     res: Response
@@ -155,10 +121,6 @@ export const retryVisionScan = async (
     }
 };
 
-/**
- * PUT /api/v1/vision-scan/:id/review
- * Doctor reviews and optionally overrides scan results
- */
 export const reviewVisionScan = async (
     req: AuthRequest,
     res: Response
@@ -183,10 +145,6 @@ export const reviewVisionScan = async (
     }
 };
 
-/**
- * GET /api/v1/vision-scan/
- * Doctor/Assistant gets all scans for their patients
- */
 export const getAllVisionScans = async (
     req: AuthRequest,
     res: Response
@@ -208,17 +166,17 @@ export const getAllVisionScans = async (
             endDate,
             reviewed,
             flagged,
-        } = req.query;
+        } = req.query as any;
 
         const result = await visionScanService.getAllScans(userId, role, {
-            page: page ? Number(page) : undefined,
-            limit: limit ? Number(limit) : undefined,
-            processingStatus: processingStatus as string,
-            patientId: patientId as string,
-            startDate: startDate ? new Date(startDate as string) : undefined,
-            endDate: endDate ? new Date(endDate as string) : undefined,
-            reviewed: reviewed !== undefined ? reviewed === "true" : undefined,
-            flagged: flagged !== undefined ? flagged === "true" : undefined,
+            page,
+            limit,
+            processingStatus,
+            patientId,
+            startDate: startDate ? new Date(startDate) : undefined,
+            endDate: endDate ? new Date(endDate) : undefined,
+            reviewed,
+            flagged,
         });
         sendResponse(res, 200, "Scans retrieved successfully", result);
     } catch (error: any) {
