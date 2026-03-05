@@ -1,10 +1,9 @@
-import fs from "fs/promises";
-import path from "path";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { BubbleScanResult } from "../../models/BubbleScanResult";
 import { getDiaryTypeForCaseType } from "../../utils/constants";
 import { visionScanRepository } from "./visionScan.repository";
 import { buildExtractionPrompt } from "./visionScan.prompts";
-import { VISION_SCAN_CONFIG, MIME_TYPE_MAP } from "./visionScan.config";
+import { VISION_SCAN_CONFIG } from "./visionScan.config";
 import {
     AIExtractionResult,
     DiaryQuestion,
@@ -19,6 +18,7 @@ import {
 
 class VisionScanService {
     private apiKey: string;
+    private s3Client: S3Client;
 
     constructor() {
         this.apiKey = process.env.OPENROUTER_API_KEY || "";
@@ -27,12 +27,36 @@ class VisionScanService {
                 "[VisionScan] OPENROUTER_API_KEY not set in .env — scan processing will fail"
             );
         }
+        this.s3Client = new S3Client({ region: VISION_SCAN_CONFIG.S3_REGION });
+    }
+
+    private async uploadToS3(
+        buffer: Buffer,
+        mimeType: string,
+        patientId: string,
+        diaryType: string,
+        pageNumber: number
+    ): Promise<string> {
+        const ext = mimeType === "image/png" ? "png" : "jpg";
+        const key = `${VISION_SCAN_CONFIG.S3_KEY_PREFIX}/${patientId}/${diaryType}/page-${pageNumber}/${Date.now()}.${ext}`;
+
+        await this.s3Client.send(
+            new PutObjectCommand({
+                Bucket: VISION_SCAN_CONFIG.S3_BUCKET,
+                Key: key,
+                Body: buffer,
+                ContentType: mimeType,
+            })
+        );
+
+        return `https://${VISION_SCAN_CONFIG.S3_BUCKET}.s3.${VISION_SCAN_CONFIG.S3_REGION}.amazonaws.com/${key}`;
     }
 
     async processScan(
         patientId: string,
         pageNumber: number,
-        imagePath: string,
+        imageBuffer: Buffer,
+        mimeType: string,
         diaryType: string
     ): Promise<BubbleScanResult> {
         const diaryPage = await visionScanRepository.findDiaryPage(
@@ -45,19 +69,28 @@ class VisionScanService {
             );
         }
 
+        // Upload to S3 first
+        const s3Url = await this.uploadToS3(
+            imageBuffer,
+            mimeType,
+            patientId,
+            diaryType,
+            pageNumber
+        );
+
         const scanRecord = await visionScanRepository.createScanRecord({
             patientId,
             pageNumber,
             diaryPageId: diaryPage.id,
             submissionType: SubmissionType.SCAN,
             processingStatus: ProcessingStatus.PROCESSING,
-            imageUrl: imagePath,
+            imageUrl: s3Url,
         });
 
         try {
             const prompt = buildExtractionPrompt(diaryPage);
             const startTime = Date.now();
-            const aiResult = await this.callVisionApi(imagePath, prompt);
+            const aiResult = await this.callVisionApi(imageBuffer, mimeType, prompt);
             const processingTimeMs = Date.now() - startTime;
 
             const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
@@ -157,9 +190,35 @@ class VisionScanService {
         if (!pageNumber || !imageUrl) {
             throw new Error("Missing pageNumber or imageUrl on failed scan");
         }
+
+        // Download image from S3 for reprocessing
+        const { buffer, mimeType } = await this.downloadFromS3(imageUrl);
         await visionScanRepository.deleteScan(existing);
 
-        return this.processScan(patientId, pageNumber, imageUrl, diaryType);
+        return this.processScan(patientId, pageNumber, buffer, mimeType, diaryType);
+    }
+
+    private async downloadFromS3(
+        s3Url: string
+    ): Promise<{ buffer: Buffer; mimeType: string }> {
+        // Extract key from S3 URL
+        const url = new URL(s3Url);
+        const key = url.pathname.slice(1); // remove leading /
+
+        const response = await this.s3Client.send(
+            new GetObjectCommand({
+                Bucket: VISION_SCAN_CONFIG.S3_BUCKET,
+                Key: key,
+            })
+        );
+
+        const bodyBytes = await response.Body?.transformToByteArray();
+        if (!bodyBytes) throw new Error("Empty response from S3");
+
+        return {
+            buffer: Buffer.from(bodyBytes),
+            mimeType: response.ContentType || "image/jpeg",
+        };
     }
 
     async getPatientScanHistory(patientId: string, page = 1, limit = 20) {
@@ -240,7 +299,8 @@ class VisionScanService {
     }
 
     private async callVisionApi(
-        imagePath: string,
+        imageBuffer: Buffer,
+        mimeType: string,
         prompt: string
     ): Promise<{
         extraction: AIExtractionResult;
@@ -250,9 +310,6 @@ class VisionScanService {
             total_tokens: number;
         };
     }> {
-        const imageBuffer = await fs.readFile(imagePath);
-        const ext = path.extname(imagePath).toLowerCase();
-        const mimeType = MIME_TYPE_MAP[ext] || "image/jpeg";
         const base64 = imageBuffer.toString("base64");
 
         const body = {

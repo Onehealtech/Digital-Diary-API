@@ -1,6 +1,6 @@
 import express from "express";
 import { patientAuthCheck, authCheck } from "../../middleware/authMiddleware";
-import { bubbleScanUpload } from "../../middleware/upload.middleware";
+import { visionScanUpload } from "../../middleware/upload.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { UserRole } from "../../utils/constants";
 import * as ctrl from "./visionScan.controller";
@@ -27,7 +27,7 @@ router.post(
 router.post(
     "/upload",
     patientAuthCheck,
-    bubbleScanUpload.single("image"),
+    visionScanUpload.single("image"),
     validate({ body: uploadScanSchema }),
     ctrl.uploadVisionScan
 );

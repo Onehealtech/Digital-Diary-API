@@ -24,7 +24,8 @@ export const uploadVisionScan = async (
         const result = await visionScanService.processScan(
             patientId,
             pageNumber,
-            req.file.path,
+            req.file.buffer,
+            req.file.mimetype,
             diaryType
         );
 

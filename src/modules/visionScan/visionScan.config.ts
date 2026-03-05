@@ -6,6 +6,9 @@ export const VISION_SCAN_CONFIG = {
     LOW_CONFIDENCE_THRESHOLD: 0.8,
     HTTP_REFERER: "https://onehealtech.com",
     APP_TITLE: "CANTrac Diary Scan",
+    S3_BUCKET: process.env.AWS_S3_BUCKET || "onheal-bucket",
+    S3_REGION: process.env.AWS_REGION || "ap-south-1",
+    S3_KEY_PREFIX: "diary-scans",
 } as const;
 
 export const MIME_TYPE_MAP: Record<string, string> = {
