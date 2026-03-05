@@ -32,10 +32,11 @@ Your task: Look at the image and fill in the values for these EXACT fields:
 ${questionLines}
 
 CRITICAL BUBBLE DETECTION RULES:
-- A FILLED bubble is a SOLID DARK circle (blue/black ink, completely filled). It is distinctly darker and heavier than empty bubbles.
-- An EMPTY bubble is a HOLLOW circle with just a thin outline — light/white inside.
-- SPATIAL LAYOUT: For Yes/No rows, "Yes" with its bubble is ALWAYS on the LEFT. "No" with its bubble is ALWAYS on the RIGHT. Carefully check which SIDE has the solid dark bubble.
-- For each row, visually compare BOTH bubbles. One will be clearly darker/filled. Report the one that is filled (left=Yes, right=No).
+- A FILLED bubble has ANY visible mark inside it — pen ink, pencil shading, grey/silver fill, partial shading, or any marking that makes it visually different from a completely empty bubble.
+- An EMPTY bubble is a clean, hollow circle with nothing inside — just the printed outline.
+- Do NOT require dark or bold marks. Even light pencil marks, faint shading, or subtle grey fills count as FILLED.
+- SPATIAL LAYOUT: For Yes/No rows, "Yes" with its bubble is ALWAYS on the LEFT. "No" with its bubble is ALWAYS on the RIGHT.
+- For each row, carefully compare BOTH bubbles side by side. The one with ANY mark/fill/shading inside it (even faint) is the selected answer.
 - IGNORE the left checkbox column (those are for doctors only).
 - For date fields (DD/MM/YY bubbles), combine into a single date string like "03/Mar/2026".
 - For status fields, return only the selected option from the allowed values.
