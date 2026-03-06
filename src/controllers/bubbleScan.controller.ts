@@ -6,6 +6,7 @@ import {
 import { bubbleScanService } from "../service/bubbleScan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { getDiaryTypeForCaseType } from "../utils/constants";
+import { logActivity } from "../utils/activityLogger";
 
 /**
  * POST /api/v1/bubble-scan/manual
@@ -35,6 +36,14 @@ export const manualSubmitBubbleScan = async (
             answers,
             diaryType
         );
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "MANUAL_ENTRY_SUBMITTED",
+            details: { patientId, pageNumber },
+        });
 
         sendResponse(res, 201, "Manual submission saved successfully", result);
     } catch (error: any) {
@@ -77,6 +86,14 @@ export const uploadBubbleScan = async (
             pageType,
             diaryType
         );
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "BUBBLE_SCAN_UPLOADED",
+            details: { patientId, pageId, processingStatus: result.processingStatus },
+        });
 
         const statusCode =
             result.processingStatus === "completed" ? 201 : 200;
@@ -203,6 +220,15 @@ export const reviewBubbleScan = async (
             doctorId,
             { doctorNotes, flagged, overrides }
         );
+
+        logActivity({
+            req,
+            userId: doctorId,
+            userRole: "DOCTOR",
+            action: "BUBBLE_SCAN_REVIEWED",
+            details: { scanId: req.params.id, flagged },
+        });
+
         sendResponse(res, 200, "Bubble scan reviewed successfully", result);
     } catch (error: any) {
         const status = error.message.includes("not found") ? 404 : 500;

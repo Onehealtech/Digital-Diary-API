@@ -2,7 +2,12 @@ import ImageHistory from "../models/ImageHistory.model";
 
 export class ImageService {
 
-  static async uploadImage(diaryId: string, file: Express.Multer.File) {
+  static async uploadImage(
+    diaryId: string,
+    file: Express.Multer.File,
+    uploadSource?: string,
+    uploadedBy?: string
+  ) {
 
     if (!file) {
       throw new Error("No file uploaded");
@@ -13,6 +18,8 @@ export class ImageService {
       diaryId,
       imagePath: baseUrl ? `${baseUrl}/uploads/${file.filename}` : `/uploads/${file.filename}`,
       fileName: file.filename,
+      uploadSource: uploadSource || "scan",
+      uploadedBy: uploadedBy || "system",
     });
 
     return image;
@@ -22,7 +29,7 @@ export class ImageService {
 
     const images = await ImageHistory.findAll({
       where: { diaryId },
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "ASC"]],
     });
 
     return images;

@@ -15,6 +15,7 @@ import { Patient } from "./Patient";
 @Table({
   tableName: "app-users",
   timestamps: true,
+  paranoid: true, // Soft delete: sets deletedAt instead of destroying rows
 })
 export class AppUser extends Model {
   @Column({
@@ -133,6 +134,30 @@ export class AppUser extends Model {
     exportData?: boolean;
     sendNotifications?: boolean;
   };
+
+  // Assistant status: ACTIVE (working), ON_HOLD (temporarily inactive), DELETED (soft-deleted)
+  @Column({
+    type: DataType.ENUM("ACTIVE", "ON_HOLD", "DELETED"),
+    allowNull: true,
+    defaultValue: "ACTIVE",
+  })
+  assistantStatus?: "ACTIVE" | "ON_HOLD" | "DELETED";
+
+  // Patient access mode: "all" = all doctor's patients, "selected" = only assigned patients
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+    defaultValue: "all",
+  })
+  patientAccessMode?: "all" | "selected";
+
+  // List of patient IDs assigned to this assistant (used when patientAccessMode = "selected")
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+    defaultValue: [],
+  })
+  assignedPatientIds?: string[];
 
   @Column({
     type: DataType.BOOLEAN,

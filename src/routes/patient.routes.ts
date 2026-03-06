@@ -25,13 +25,14 @@ import {
 } from "../controllers/reminder.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = Router();
 
 // Legacy routes (Accessed by Doctors)
 router.post("/", authCheck([UserRole.VENDOR]), createPatient);
-router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), getDoctorPatients);
+router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('viewPatients'), getDoctorPatients);
 
 // Patient profile management (Accessed by Patients)
 router.post("/request-edit-otp", patientAuthCheck, requestEditOTP);
@@ -63,6 +64,7 @@ router.get(
 router.get(
     "/:id",
     newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+    requirePermission('viewPatients'),
     getPatientById
 );
 
@@ -86,6 +88,7 @@ router.put(
 router.post(
     "/:id/call",
     newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('callPatients'),
     logCallAttempt
 );
 

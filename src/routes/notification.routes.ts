@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { notificationController } from "../controllers/notification.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = Router();
@@ -43,6 +44,7 @@ router.get(
 router.post(
   "/",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('sendNotifications'),
   notificationController.createNotification
 );
 
@@ -50,6 +52,7 @@ router.post(
 router.post(
   "/bulk",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('sendNotifications'),
   notificationController.createBulkNotifications
 );
 

@@ -1,6 +1,7 @@
 import { AppUser } from "../models/Appuser";
 import { Patient } from "../models/Patient";
 import { Task } from "../models/Task";
+import { AuditLog } from "../models/AuditLog";
 import { Op } from "sequelize";
 
 interface StaffFilters {
@@ -319,6 +320,10 @@ async getVendorDoctors(
         "phone",
         "parentId",
         "permissions",
+        "assistantStatus",
+        "patientAccessMode",
+        "assignedPatientIds",
+        "isEmailVerified",
         "createdAt",
         "updatedAt",
       ],
@@ -390,6 +395,10 @@ async getVendorDoctors(
         "phone",
         "parentId",
         "permissions",
+        "assistantStatus",
+        "patientAccessMode",
+        "assignedPatientIds",
+        "isEmailVerified",
         "createdAt",
         "updatedAt",
       ],
@@ -449,8 +458,11 @@ async getVendorDoctors(
       throw new Error("Assistant not found");
     }
 
-    // Allowed updates
-    const allowedFields = ["fullName", "email", "phone", "permissions"];
+    // Allowed updates for assistants
+    const allowedFields = [
+      "fullName", "email", "phone", "permissions",
+      "assistantStatus", "patientAccessMode", "assignedPatientIds",
+    ];
     const updateData: any = {};
 
     for (const key of allowedFields) {
@@ -465,9 +477,12 @@ async getVendorDoctors(
   }
 
   /**
-   * Delete assistant
+   * Soft-delete assistant.
+   * Sets assistantStatus to DELETED, then uses Sequelize paranoid destroy
+   * so the row keeps its deletedAt timestamp. All activity logs and
+   * historical references (tasks, audit_logs) remain intact.
    */
-  async deleteAssistant(assistantId: string) {
+  async deleteAssistant(assistantId: string, deletedByUserId?: string) {
     const assistant = await AppUser.findOne({
       where: {
         id: assistantId,
@@ -479,29 +494,32 @@ async getVendorDoctors(
       throw new Error("Assistant not found");
     }
 
-    // Check if assistant has pending tasks
-    try {
-      const pendingTaskCount = await Task.count({
-        where: {
-          assignedTo: assistantId,
-          status: { [Op.in]: ["pending", "in-progress"] },
-        },
-      });
+    // Mark status as DELETED before soft-destroying
+    await assistant.update({ assistantStatus: "DELETED" });
 
-      if (pendingTaskCount > 0) {
-        throw new Error(
-          `Cannot delete assistant with ${pendingTaskCount} pending tasks. Please reassign or complete tasks first.`
-        );
-      }
-    } catch (err: any) {
-      // Re-throw if it's our business logic error, ignore if tasks table doesn't exist
-      if (err.message?.includes("pending tasks")) throw err;
-    }
-
+    // Paranoid destroy sets deletedAt (row stays in DB)
     await assistant.destroy();
 
+    // Log the deletion in audit_logs for permanent record
+    try {
+      await AuditLog.create({
+        userId: deletedByUserId || assistantId,
+        userRole: "doctor",
+        action: "DELETE_ASSISTANT",
+        details: {
+          assistantId,
+          assistantName: assistant.fullName,
+          assistantEmail: assistant.email,
+          parentId: assistant.parentId,
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the deletion
+    }
+
     return {
-      message: "Assistant deleted successfully",
+      message: "Assistant removed successfully. Records preserved.",
     };
   }
 }

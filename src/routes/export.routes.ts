@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { exportController } from "../controllers/export.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.post(
   "/patient-data",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('exportData'),
   exportController.exportPatientData
 );
 
@@ -21,6 +23,7 @@ router.post(
 router.post(
   "/diary-pages",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('exportData'),
   exportController.exportDiaryPages
 );
 
@@ -28,6 +31,7 @@ router.post(
 router.post(
   "/test-summary",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('exportData'),
   exportController.exportTestSummary
 );
 
@@ -35,6 +39,7 @@ router.post(
 router.get(
   "/exports",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.SUPER_ADMIN]),
+  requirePermission('exportData'),
   exportController.getUserExports
 );
 
@@ -42,6 +47,7 @@ router.get(
 router.get(
   "/exports/:id/download",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.SUPER_ADMIN]),
+  requirePermission('exportData'),
   exportController.downloadExport
 );
 
@@ -49,6 +55,7 @@ router.get(
 router.delete(
   "/exports/:id",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.SUPER_ADMIN]),
+  requirePermission('exportData'),
   exportController.deleteExport
 );
 
@@ -56,6 +63,7 @@ router.delete(
 router.get(
   "/analytics/patient/:id",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  requirePermission('exportData'),
   exportController.getPatientAnalytics
 );
 

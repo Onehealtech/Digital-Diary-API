@@ -7,6 +7,7 @@ import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
+import { logActivity } from "../utils/activityLogger";
 
 export const createPatient = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -28,6 +29,14 @@ export const createPatient = async (req: AuthenticatedRequest, res: Response) =>
       diaryId,
       vendorId,
       caseType:"PERI_OPERATIVE",
+    });
+
+    logActivity({
+      req,
+      userId: vendorId,
+      userRole: role,
+      action: "PATIENT_CREATED",
+      details: { patientId: patient.id, fullName, diaryId, doctorId },
     });
 
     return res.status(201).json({
@@ -85,6 +94,14 @@ export const getPatientById = async (req: AuthRequest, res: Response) => {
 
     const patient = await patientService.getPatientById(id, requesterId, role);
 
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_VIEWED",
+      details: { patientId: id },
+    });
+
     return sendResponse(res, patient, "Patient details fetched successfully");
   } catch (error: any) {
     return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
@@ -108,6 +125,14 @@ export const updatePatient = async (req: AuthRequest, res: Response) => {
     const updates = req.body;
 
     const patient = await patientService.updatePatient(id, requesterId, role, updates);
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_UPDATED",
+      details: { patientId: id, updatedFields: Object.keys(updates) },
+    });
 
     return sendResponse(res, patient, "Patient updated successfully");
   } catch (error: any) {
@@ -136,6 +161,14 @@ export const prescribeTests = async (req: AuthRequest, res: Response) => {
     }
 
     const patient = await patientService.prescribeTests(id, doctorId, tests);
+
+    logActivity({
+      req,
+      userId: doctorId,
+      userRole: "DOCTOR",
+      action: "TESTS_PRESCRIBED",
+      details: { patientId: id, tests },
+    });
 
     return sendResponse(res, patient, "Tests prescribed successfully", 201);
   } catch (error: any) {
@@ -166,6 +199,14 @@ export const updateTestStatus = async (req: AuthRequest, res: Response) => {
       completedDate,
       reportReceived,
       reportReceivedDate,
+    });
+
+    logActivity({
+      req,
+      userId: doctorId,
+      userRole: "DOCTOR",
+      action: "TEST_STATUS_UPDATED",
+      details: { patientId: id, testName, completed, reportReceived },
     });
 
     return sendResponse(res, patient, "Test status updated successfully");
@@ -200,6 +241,14 @@ export const logCallAttempt = async (req: AuthRequest, res: Response) => {
       notes,
       followUpRequired,
       followUpDate,
+    });
+
+    logActivity({
+      req,
+      userId: requesterId!,
+      userRole: role!,
+      action: "CALL_LOGGED",
+      details: { patientId: id, outcome, followUpRequired },
     });
 
     return sendResponse(res, callLog, "Call logged successfully", 201);

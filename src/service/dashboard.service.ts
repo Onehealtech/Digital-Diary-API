@@ -462,6 +462,9 @@ class DashboardService {
       },
       recentTasks,
       permissions: assistant.permissions || {},
+      assistantStatus: assistant.assistantStatus || "ACTIVE",
+      patientAccessMode: assistant.patientAccessMode || "all",
+      assignedPatientIds: assistant.assignedPatientIds || [],
     };
   }
 
