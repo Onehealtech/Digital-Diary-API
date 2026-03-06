@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
+import { Op } from "sequelize";
 
 class FCMService {
   private initialized = false;
@@ -182,7 +183,6 @@ class FCMService {
    */
   private async removeInvalidTokens(fcmTokens: string[]) {
     try {
-      const { Op } = require("sequelize");
       await Promise.all([
         Patient.update({ fcmToken: null }, { where: { fcmToken: { [Op.in]: fcmTokens } } }),
         AppUser.update({ fcmToken: null }, { where: { fcmToken: { [Op.in]: fcmTokens } } }),

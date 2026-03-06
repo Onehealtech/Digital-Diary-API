@@ -1,6 +1,6 @@
 import express from "express";
 import { patientAuthCheck, authCheck } from "../middleware/authMiddleware";
-import { bubbleScanUpload } from "../middleware/upload.middleware";
+import { visionScanUpload } from "../middleware/upload.middleware";
 import { UserRole } from "../utils/constants";
 import * as bubbleScanController from "../controllers/bubbleScan.controller";
 
@@ -15,11 +15,11 @@ router.post(
     bubbleScanController.manualSubmitBubbleScan
 );
 
-// Upload diary page photo for OMR bubble scanning
+// Upload diary page photo for AI vision scanning (replaces Python OMR)
 router.post(
     "/upload",
     patientAuthCheck,
-    bubbleScanUpload.single("image"),
+    visionScanUpload.single("image"),
     bubbleScanController.uploadBubbleScan
 );
 
@@ -30,7 +30,7 @@ router.get(
     bubbleScanController.getBubbleScanHistory
 );
 
-// Get available scan templates
+// Get available diary pages (replaces old Python templates list)
 router.get(
     "/templates",
     patientAuthCheck,
