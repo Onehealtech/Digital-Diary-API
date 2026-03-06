@@ -55,10 +55,9 @@ class VisionScanService {
     }
 
     private async detectPageNumber(
-        imageBuffer: Buffer,
+        base64: string,
         mimeType: string
     ): Promise<PageDetectionResult> {
-        const base64 = imageBuffer.toString("base64");
 
         const body = {
             model: VISION_SCAN_CONFIG.MODEL,
@@ -143,35 +142,28 @@ class VisionScanService {
         mimeType: string,
         diaryType: string
     ): Promise<BubbleScanResult | { valid: false; reason: string }> {
+        const base64 = imageBuffer.toString("base64");
         let detectedPageNumber: number;
 
         if (pageNumber) {
             detectedPageNumber = pageNumber;
         } else {
-            const detection = await this.detectPageNumber(imageBuffer, mimeType);
+            const detection = await this.detectPageNumber(base64, mimeType);
             if (!detection.valid) return detection;
             detectedPageNumber = detection.pageNumber;
         }
 
-        const diaryPage = await visionScanRepository.findDiaryPage(
-            detectedPageNumber,
-            diaryType
-        );
+        // Run DB lookup and S3 upload in parallel
+        const [diaryPage, s3Url] = await Promise.all([
+            visionScanRepository.findDiaryPage(detectedPageNumber, diaryType),
+            this.uploadToS3(imageBuffer, mimeType, patientId, diaryType, detectedPageNumber),
+        ]);
         if (!diaryPage) {
             throw new AppError(
                 404,
                 `Diary page ${detectedPageNumber} not found for diary type "${diaryType}"`
             );
         }
-
-        // Upload to S3 first
-        const s3Url = await this.uploadToS3(
-            imageBuffer,
-            mimeType,
-            patientId,
-            diaryType,
-            detectedPageNumber
-        );
 
         const scanRecord = await visionScanRepository.createScanRecord({
             patientId,
@@ -185,7 +177,7 @@ class VisionScanService {
         try {
             const prompt = buildExtractionPrompt(diaryPage);
             const startTime = Date.now();
-            const aiResult = await this.callVisionApi(imageBuffer, mimeType, prompt);
+            const aiResult = await this.callVisionApi(base64, mimeType, prompt);
             const processingTimeMs = Date.now() - startTime;
 
             const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
@@ -392,7 +384,7 @@ class VisionScanService {
     }
 
     private async callVisionApi(
-        imageBuffer: Buffer,
+        base64: string,
         mimeType: string,
         prompt: string
     ): Promise<{
@@ -403,7 +395,6 @@ class VisionScanService {
             total_tokens: number;
         };
     }> {
-        const base64 = imageBuffer.toString("base64");
 
         const body = {
             model: VISION_SCAN_CONFIG.MODEL,
