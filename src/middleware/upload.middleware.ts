@@ -51,3 +51,17 @@ export const bubbleScanUpload = multer({
     }
   },
 });
+
+// Vision scan upload — memory storage (no local file, buffer goes to S3)
+export const visionScanUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req: any, file: any, cb: any) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG and PNG images are allowed"));
+    }
+  },
+});
