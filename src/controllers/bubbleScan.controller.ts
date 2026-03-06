@@ -7,6 +7,7 @@ import { bubbleScanService } from "../service/bubbleScan.service";
 import { visionScanService } from "../modules/visionScan/visionScan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { getDiaryTypeForCaseType } from "../utils/constants";
+import { DiaryPage } from "../models/DiaryPage";
 
 /**
  * POST /api/v1/bubble-scan/manual
@@ -131,7 +132,6 @@ export const getAvailableTemplates = async (
 ): Promise<void> => {
     try {
         const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
-        const { DiaryPage } = require("../models/DiaryPage");
         const pages = await DiaryPage.findAll({
             where: { diaryType, isActive: true },
             attributes: ["pageNumber", "title", "layoutType"],
