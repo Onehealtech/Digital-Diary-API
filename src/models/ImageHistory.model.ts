@@ -29,4 +29,12 @@ export default class ImageHistory extends Model {
 
   @Column(DataType.STRING)
   fileName!: string;
+
+  @Default("scan")
+  @Column(DataType.STRING)
+  uploadSource!: string; // scan | manual | assistant | doctor
+
+  @Default("system")
+  @Column(DataType.STRING)
+  uploadedBy!: string; // userId of who uploaded
 }

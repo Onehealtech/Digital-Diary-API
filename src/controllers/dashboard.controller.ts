@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
@@ -40,6 +41,16 @@ export const getPatients = async (
                 return;
             }
             whereClause.doctorId = req.user!.parentId;
+            // If assistant has "selected" patient access, filter to assigned patients only
+            if (req.user!.patientAccessMode === "selected") {
+                const assigned: string[] = req.user!.assignedPatientIds || [];
+                if (assigned.length > 0) {
+                    whereClause.id = { [Op.in]: assigned };
+                } else {
+                    // No patients assigned — return empty
+                    whereClause.id = null;
+                }
+            }
         } else if (req.user!.role === UserRole.VENDOR) {
             // Vendor sees all patients (acts on behalf of pharmacist)
             // NOTE: Can be scoped later with a VendorDoctor mapping table

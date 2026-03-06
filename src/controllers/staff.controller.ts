@@ -239,9 +239,9 @@ async getVendorDoctors(req: AuthRequest, res: Response) {
         }
       }
 
-      const result = await staffService.deleteAssistant(id);
+      const result = await staffService.deleteAssistant(id, userId);
 
-      return sendResponse(res, result, "Assistant deleted successfully");
+      return sendResponse(res, result, "Assistant removed successfully");
     } catch (error: any) {
       return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
     }

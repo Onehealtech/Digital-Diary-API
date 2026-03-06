@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ImageService } from "../service/image.service";
+import { logActivity } from "../utils/activityLogger";
 
 export const uploadImage = async (req: Request, res: Response) => {
   try {
@@ -11,7 +12,23 @@ export const uploadImage = async (req: Request, res: Response) => {
       });
     }
 
-    const image = await ImageService.uploadImage(id, req.file as Express.Multer.File);
+    const uploadSource = req.body.uploadSource || "scan";
+    const uploadedBy = req.body.uploadedBy || (req as any).user?.id || "system";
+
+    const image = await ImageService.uploadImage(
+      id,
+      req.file as Express.Multer.File,
+      uploadSource,
+      uploadedBy
+    );
+
+    logActivity({
+      req,
+      userId: uploadedBy,
+      userRole: (req as any).user?.role || "PATIENT",
+      action: "DIARY_IMAGE_ADDED",
+      details: { diaryId: id, imageId: image.id, uploadSource, fileName: image.fileName },
+    });
 
     return res.status(201).json({
       message: "Image uploaded successfully",
