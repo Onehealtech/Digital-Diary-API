@@ -108,5 +108,11 @@ export class Diary extends Model {
     defaultValue: false,
   })
   commissionPaid!: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  fundTransferred!: boolean;
 }
 

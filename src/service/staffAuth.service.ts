@@ -11,8 +11,10 @@ export const staffLogin = async (
     email: string,
     password: string
 ): Promise<{ message: string; email: string }> => {
+    // Use paranoid: false so archived (soft-deleted) assistants get a clear error
     const user = await AppUser.findOne({
         where: { email: email.toLowerCase() },
+        paranoid: false,
     });
 
     if (!user) {
@@ -25,14 +27,20 @@ export const staffLogin = async (
         throw new Error("Invalid credentials");
     }
 
-    // Block login for assistants with ON_HOLD or DELETED status
+    // Block login for archived or on-hold assistants
     if (user.role === "ASSISTANT") {
         const status = (user as any).assistantStatus;
         if (status === "DELETED") {
-            throw new Error("Your account has been deactivated. Contact your Doctor.");
+            throw Object.assign(
+                new Error("Your account has been archived. Contact your Doctor to restore access."),
+                { loginBlocked: true, assistantId: user.id }
+            );
         }
         if (status === "ON_HOLD") {
-            throw new Error("Your account is temporarily on hold. Contact your Doctor.");
+            throw Object.assign(
+                new Error("Your account is temporarily on hold. Contact your Doctor."),
+                { loginBlocked: true, assistantId: user.id }
+            );
         }
     }
 

@@ -519,7 +519,95 @@ async getVendorDoctors(
     }
 
     return {
-      message: "Assistant removed successfully. Records preserved.",
+      message: "Assistant archived successfully. Records preserved.",
+    };
+  }
+
+  /**
+   * Get all archived (soft-deleted) assistants.
+   * Uses paranoid: false to include rows with deletedAt set.
+   */
+  async getArchivedAssistants(filters: StaffFilters = {}, doctorId?: string) {
+    const { page = 1, limit = 20, search } = filters;
+    const offset = (page - 1) * limit;
+
+    const whereClause: any = {
+      role: "ASSISTANT",
+      assistantStatus: "DELETED",
+      deletedAt: { [Op.ne]: null },
+    };
+
+    if (doctorId) {
+      whereClause.parentId = doctorId;
+    }
+
+    if (search) {
+      whereClause[Op.or] = [
+        { fullName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const { rows: assistants, count: total } = await AppUser.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "id", "fullName", "email", "phone", "parentId",
+        "permissions", "assistantStatus", "patientAccessMode",
+        "assignedPatientIds", "isEmailVerified",
+        "createdAt", "updatedAt", "deletedAt",
+      ],
+      include: [
+        {
+          model: AppUser,
+          as: "parent",
+          attributes: ["id", "fullName", "email"],
+        },
+      ],
+      order: [["deletedAt", "DESC"]],
+      limit,
+      offset,
+      paranoid: false,
+    });
+
+    return {
+      assistants: assistants.map((a) => a.toJSON()),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Restore an archived (soft-deleted) assistant.
+   * Clears deletedAt and sets assistantStatus back to ACTIVE.
+   */
+  async restoreAssistant(assistantId: string) {
+    const assistant = await AppUser.findOne({
+      where: {
+        id: assistantId,
+        role: "ASSISTANT",
+      },
+      paranoid: false,
+    });
+
+    if (!assistant) {
+      throw new Error("Assistant not found");
+    }
+
+    if (!assistant.deletedAt) {
+      throw new Error("Assistant is not archived");
+    }
+
+    await assistant.restore();
+    await assistant.update({ assistantStatus: "ACTIVE" });
+
+    return {
+      message: "Assistant restored successfully.",
+      assistant: assistant.toJSON(),
     };
   }
 }

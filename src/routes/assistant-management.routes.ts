@@ -18,6 +18,20 @@ router.get(
   staffController.getAllAssistants
 );
 
+// Get all archived assistants
+router.get(
+  "/archived",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
+  staffController.getArchivedAssistants
+);
+
+// Restore an archived assistant
+router.post(
+  "/:id/restore",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
+  staffController.restoreAssistant
+);
+
 // Get assistant by ID
 router.get(
   "/:id",

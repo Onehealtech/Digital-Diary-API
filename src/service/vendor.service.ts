@@ -458,6 +458,28 @@ export class VendorService {
   }
 
   /**
+   * Mark a diary sale as fund-transferred
+   */
+  async markFundTransferred(diaryId: string, vendorId: string) {
+    const diary = await Diary.findOne({
+      where: { id: diaryId, vendorId },
+    });
+
+    if (!diary) {
+      throw new Error("Sale record not found");
+    }
+
+    if (diary.fundTransferred) {
+      throw new Error("Funds already transferred for this sale");
+    }
+
+    diary.fundTransferred = true;
+    await diary.save();
+
+    return { message: "Sale marked as fund transferred", diaryId };
+  }
+
+  /**
    * Get vendor dashboard statistics
    */
   async getVendorDashboard(vendorId: string) {

@@ -2,6 +2,7 @@ import { Response } from "express";
 import { staffService } from "../service/staff.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
+import { logActivity } from "../utils/activityLogger";
 
 class StaffController {
   // ==================== DOCTOR MANAGEMENT ====================
@@ -241,7 +242,85 @@ async getVendorDoctors(req: AuthRequest, res: Response) {
 
       const result = await staffService.deleteAssistant(id, userId);
 
-      return sendResponse(res, result, "Assistant removed successfully");
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: "ASSISTANT_ARCHIVED",
+        details: { assistantId: id },
+      });
+
+      return sendResponse(res, result, "Assistant archived successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
+    }
+  }
+
+  /**
+   * GET /api/v1/assistants/archived
+   * Get all archived assistants
+   */
+  async getArchivedAssistants(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+        return sendError(res, "Only Super Admins and Doctors can view archived assistants", 403);
+      }
+
+      const { page, limit, search } = req.query;
+      const doctorId = role === "DOCTOR" ? userId : undefined;
+
+      const result = await staffService.getArchivedAssistants(
+        {
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
+          search: search as string,
+        },
+        doctorId
+      );
+
+      return sendResponse(res, result, "Archived assistants fetched successfully");
+    } catch (error: any) {
+      return sendError(res, error.message);
+    }
+  }
+
+  /**
+   * POST /api/v1/assistants/:id/restore
+   * Restore an archived assistant
+   */
+  async restoreAssistant(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+        return sendError(res, "Only Super Admins and Doctors can restore assistants", 403);
+      }
+
+      // If doctor, verify ownership via paranoid-false lookup
+      if (role === "DOCTOR") {
+        const { assistants } = await staffService.getArchivedAssistants({}, userId);
+        const owns = assistants.some((a: any) => a.id === id);
+        if (!owns) {
+          return sendError(res, "You can only restore your own assistants", 403);
+        }
+      }
+
+      const result = await staffService.restoreAssistant(id);
+
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: "ASSISTANT_RESTORED",
+        details: { assistantId: id },
+      });
+
+      return sendResponse(res, result, "Assistant restored successfully");
     } catch (error: any) {
       return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
     }
