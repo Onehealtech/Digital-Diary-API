@@ -105,6 +105,8 @@ class VisionScanService {
         }
 
         let rawText = data.choices?.[0]?.message?.content?.trim() || "";
+        const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
         if (rawText.startsWith("```")) {
             rawText = rawText
                 .replace(/^```(?:json)?\n?/, "")
@@ -132,7 +134,7 @@ class VisionScanService {
             };
         }
 
-        return { valid: true, pageNumber: parsed.pageNumber };
+        return { valid: true, pageNumber: parsed.pageNumber, usage };
     }
 
     async processScan(
@@ -144,6 +146,7 @@ class VisionScanService {
     ): Promise<BubbleScanResult | { valid: false; reason: string }> {
         const base64 = imageBuffer.toString("base64");
         let detectedPageNumber: number;
+        let detectionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
         if (pageNumber) {
             detectedPageNumber = pageNumber;
@@ -151,6 +154,7 @@ class VisionScanService {
             const detection = await this.detectPageNumber(base64, mimeType);
             if (!detection.valid) return detection;
             detectedPageNumber = detection.pageNumber;
+            detectionUsage = detection.usage;
         }
 
         // Run DB lookup and S3 upload in parallel
@@ -185,9 +189,9 @@ class VisionScanService {
 
             const metadata: ProcessingMetadata = {
                 model: VISION_SCAN_CONFIG.MODEL,
-                promptTokens: aiResult.usage.prompt_tokens,
-                responseTokens: aiResult.usage.completion_tokens,
-                totalTokens: aiResult.usage.total_tokens,
+                promptTokens: detectionUsage.prompt_tokens + aiResult.usage.prompt_tokens,
+                responseTokens: detectionUsage.completion_tokens + aiResult.usage.completion_tokens,
+                totalTokens: detectionUsage.total_tokens + aiResult.usage.total_tokens,
                 processingTimeMs,
                 lowConfidenceFields,
             };

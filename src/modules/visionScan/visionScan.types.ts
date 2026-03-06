@@ -87,6 +87,12 @@ export interface ReviewData {
     overrides?: Record<string, string>;
 }
 
+export interface TokenUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+}
+
 export type PageDetectionResult =
-    | { valid: true; pageNumber: number }
+    | { valid: true; pageNumber: number; usage: TokenUsage }
     | { valid: false; reason: string };
