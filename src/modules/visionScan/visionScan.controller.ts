@@ -6,6 +6,7 @@ import {
 import { visionScanService } from "./visionScan.service";
 import { sendResponse, sendError } from "../../utils/response";
 import { getDiaryTypeForCaseType } from "../../utils/constants";
+import { AppError } from "../../utils/AppError";
 
 export const uploadVisionScan = async (
     req: AuthenticatedRequest,
@@ -23,11 +24,16 @@ export const uploadVisionScan = async (
 
         const result = await visionScanService.processScan(
             patientId,
-            pageNumber,
+            pageNumber ?? undefined,
             req.file.buffer,
             req.file.mimetype,
             diaryType
         );
+
+        if ("valid" in result) {
+            sendError(res, 400, result.reason);
+            return;
+        }
 
         const statusCode =
             result.processingStatus === "completed" ? 201 : 200;
@@ -41,7 +47,7 @@ export const uploadVisionScan = async (
         );
     } catch (error: any) {
         console.error("Vision scan upload error:", error);
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message || "Failed to process vision scan");
     }
 };
@@ -65,7 +71,7 @@ export const manualSubmitVisionScan = async (
         sendResponse(res, 201, "Manual submission saved successfully", result);
     } catch (error: any) {
         console.error("Manual submit error:", error);
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message || "Failed to save manual submission");
     }
 };
@@ -97,7 +103,7 @@ export const getVisionScanById = async (
         const result = await visionScanService.getScanById(req.params.id as string);
         sendResponse(res, 200, "Scan result retrieved", result);
     } catch (error: any) {
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message);
     }
 };
@@ -108,6 +114,12 @@ export const retryVisionScan = async (
 ): Promise<void> => {
     try {
         const result = await visionScanService.retryScan(req.params.id as string);
+
+        if ("valid" in result) {
+            sendError(res, 400, result.reason);
+            return;
+        }
+
         sendResponse(
             res,
             200,
@@ -118,7 +130,8 @@ export const retryVisionScan = async (
         );
     } catch (error: any) {
         console.error("Scan retry error:", error);
-        sendError(res, 500, error.message || "Failed to retry scan");
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to retry scan");
     }
 };
 
@@ -141,7 +154,7 @@ export const reviewVisionScan = async (
         );
         sendResponse(res, 200, "Scan reviewed successfully", result);
     } catch (error: any) {
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message);
     }
 };

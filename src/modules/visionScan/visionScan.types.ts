@@ -86,3 +86,7 @@ export interface ReviewData {
     flagged?: boolean;
     overrides?: Record<string, string>;
 }
+
+export type PageDetectionResult =
+    | { valid: true; pageNumber: number }
+    | { valid: false; reason: string };

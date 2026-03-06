@@ -2,12 +2,10 @@ import { Response } from "express";
 import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
-import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { AuthenticatedRequest, AuthRequest } from "../middleware/authMiddleware";
 import { dashboardService } from "../service/dashboard.service";
 import { sendResponse, sendError } from "../utils/response";
-import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
-import { Op } from "sequelize";
 
 /**
  * GET /api/v1/dashboard/patients

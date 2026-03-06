@@ -1,5 +1,23 @@
 import { DiaryPage } from "../../models/DiaryPage";
 
+export const PAGE_DETECTION_PROMPT = `Look at this image and determine:
+1. Is this a photograph of a printed CANTrac medical diary page? The diary page will have a structured form layout with questions, yes/no bubbles, a page number, and typically a pink/magenta color scheme with the CANTrac branding or a breast cancer ribbon logo.
+2. If yes, what is the page number printed on the document (usually at the top center)?
+
+Return ONLY valid JSON (no markdown, no code fences, no explanation):
+{ "isValidDiaryPage": true, "pageNumber": <number> }
+
+If this is NOT a valid diary page (random photo, blank image, unrelated document, etc.):
+{ "isValidDiaryPage": false, "reason": "<brief reason>" }`;
+
+export const VISION_SCAN_SYSTEM_PROMPT = `You are a highly accurate medical document scanner specialized in reading printed forms with filled bubbles, checkboxes, and handwritten text. You process photographs of paper documents taken in real-world conditions — on tables, beds, or other surfaces.
+
+CORE PRINCIPLES:
+- Focus EXCLUSIVELY on the document area. Ignore all background elements (fabric, wood, patterns, shadows, fingers, other objects).
+- Be precise with bubble/checkbox detection. Bubbles may be filled with PEN or PENCIL — pencil marks are often lighter, grey, or faintly shaded. Treat any visible mark (dark ink, light pencil, grey shading, partial fill) as a FILLED bubble.
+- Return structured JSON only. Never include explanations, markdown, or commentary.
+- When uncertain, reflect that in your confidence score rather than guessing.`;
+
 export function buildExtractionPrompt(diaryPage: DiaryPage): string {
     const questionLines = diaryPage.questions
         .filter((q) => q.type !== "info")
@@ -27,6 +45,11 @@ export function buildExtractionPrompt(diaryPage: DiaryPage): string {
 
     return `You are analyzing a photograph of a medical diary page (CANTrac Breast Cancer Diary).
 This is Page ${diaryPage.pageNumber}: "${diaryPage.title}".
+
+IMAGE CONTEXT:
+- The image is a photograph of a printed page placed on a surface (table, bed, fabric, etc.).
+- IGNORE everything outside the white document area — background textures, patterns, shadows, and any non-document elements.
+- Focus ONLY on the printed form content within the document boundaries.
 
 Your task: Look at the image and fill in the values for these EXACT fields:
 ${questionLines}

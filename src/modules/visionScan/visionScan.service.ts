@@ -1,14 +1,16 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { BubbleScanResult } from "../../models/BubbleScanResult";
 import { getDiaryTypeForCaseType } from "../../utils/constants";
+import { AppError } from "../../utils/AppError";
 import { visionScanRepository } from "./visionScan.repository";
-import { buildExtractionPrompt } from "./visionScan.prompts";
+import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT } from "./visionScan.prompts";
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
 import {
     AIExtractionResult,
     DiaryQuestion,
     EnrichedResult,
     OpenRouterResponse,
+    PageDetectionResult,
     ProcessingMetadata,
     ProcessingStatus,
     ReviewData,
@@ -52,20 +54,113 @@ class VisionScanService {
         return `https://${VISION_SCAN_CONFIG.S3_BUCKET}.s3.${VISION_SCAN_CONFIG.S3_REGION}.amazonaws.com/${key}`;
     }
 
+    private async detectPageNumber(
+        imageBuffer: Buffer,
+        mimeType: string
+    ): Promise<PageDetectionResult> {
+        const base64 = imageBuffer.toString("base64");
+
+        const body = {
+            model: VISION_SCAN_CONFIG.MODEL,
+            messages: [
+                {
+                    role: "system",
+                    content: VISION_SCAN_SYSTEM_PROMPT,
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: PAGE_DETECTION_PROMPT },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: `data:${mimeType};base64,${base64}`,
+                            },
+                        },
+                    ],
+                },
+            ],
+            temperature: 0,
+            max_tokens: 100,
+        };
+
+        const response = await fetch(VISION_SCAN_CONFIG.OPENROUTER_API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.apiKey}`,
+                "HTTP-Referer": VISION_SCAN_CONFIG.HTTP_REFERER,
+                "X-Title": VISION_SCAN_CONFIG.APP_TITLE,
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new AppError(502, `Page detection API error (${response.status}): ${errorText}`);
+        }
+
+        const data = (await response.json()) as OpenRouterResponse;
+        if (data.error) {
+            throw new AppError(502, `Page detection error: ${data.error.message}`);
+        }
+
+        let rawText = data.choices?.[0]?.message?.content?.trim() || "";
+        if (rawText.startsWith("```")) {
+            rawText = rawText
+                .replace(/^```(?:json)?\n?/, "")
+                .replace(/\n?```$/, "");
+        }
+
+        let parsed: { isValidDiaryPage: boolean; pageNumber?: number; reason?: string };
+        try {
+            parsed = JSON.parse(rawText);
+        } catch {
+            throw new AppError(500, `Failed to parse page detection response: ${rawText}`);
+        }
+
+        if (!parsed.isValidDiaryPage) {
+            return {
+                valid: false,
+                reason: `Invalid image: This does not appear to be a CANTrac diary page. ${parsed.reason || ""}`,
+            };
+        }
+
+        if (!parsed.pageNumber || typeof parsed.pageNumber !== "number") {
+            return {
+                valid: false,
+                reason: `Could not detect page number from the diary page image.`,
+            };
+        }
+
+        return { valid: true, pageNumber: parsed.pageNumber };
+    }
+
     async processScan(
         patientId: string,
-        pageNumber: number,
+        pageNumber: number | undefined,
         imageBuffer: Buffer,
         mimeType: string,
         diaryType: string
-    ): Promise<BubbleScanResult> {
+    ): Promise<BubbleScanResult | { valid: false; reason: string }> {
+        let detectedPageNumber: number;
+
+        if (pageNumber) {
+            detectedPageNumber = pageNumber;
+        } else {
+            const detection = await this.detectPageNumber(imageBuffer, mimeType);
+            if (!detection.valid) return detection;
+            detectedPageNumber = detection.pageNumber;
+        }
+
         const diaryPage = await visionScanRepository.findDiaryPage(
-            pageNumber,
+            detectedPageNumber,
             diaryType
         );
         if (!diaryPage) {
-            throw new Error(
-                `Diary page ${pageNumber} not found for diary type "${diaryType}"`
+            throw new AppError(
+                404,
+                `Diary page ${detectedPageNumber} not found for diary type "${diaryType}"`
             );
         }
 
@@ -75,12 +170,12 @@ class VisionScanService {
             mimeType,
             patientId,
             diaryType,
-            pageNumber
+            detectedPageNumber
         );
 
         const scanRecord = await visionScanRepository.createScanRecord({
             patientId,
-            pageNumber,
+            pageNumber: detectedPageNumber,
             diaryPageId: diaryPage.id,
             submissionType: SubmissionType.SCAN,
             processingStatus: ProcessingStatus.PROCESSING,
@@ -114,7 +209,7 @@ class VisionScanService {
                 }),
                 visionScanRepository.syncToScanLog(
                     patientId,
-                    pageNumber,
+                    detectedPageNumber,
                     enrichedResults
                 ),
             ]);
@@ -140,9 +235,7 @@ class VisionScanService {
             diaryType
         );
         if (!diaryPage) {
-            throw new Error(
-                `Diary page ${pageNumber} not found for ${diaryType}`
-            );
+            throw new AppError(404, `Diary page ${pageNumber} not found for ${diaryType}`);
         }
 
         const enrichedResults: Record<string, EnrichedResult> = {};
@@ -174,11 +267,11 @@ class VisionScanService {
         return record;
     }
 
-    async retryScan(scanId: string): Promise<BubbleScanResult> {
+    async retryScan(scanId: string): Promise<BubbleScanResult | { valid: false; reason: string }> {
         const existing = await visionScanRepository.findScanById(scanId);
-        if (!existing) throw new Error("Scan not found");
+        if (!existing) throw new AppError(404, "Scan not found");
         if (existing.processingStatus !== ProcessingStatus.FAILED) {
-            throw new Error("Can only retry failed scans");
+            throw new AppError(400, "Can only retry failed scans");
         }
 
         const caseType = await visionScanRepository.findPatientCaseType(
@@ -188,7 +281,7 @@ class VisionScanService {
 
         const { patientId, pageNumber, imageUrl } = existing;
         if (!pageNumber || !imageUrl) {
-            throw new Error("Missing pageNumber or imageUrl on failed scan");
+            throw new AppError(400, "Missing pageNumber or imageUrl on failed scan");
         }
 
         // Download image from S3 for reprocessing
@@ -213,7 +306,7 @@ class VisionScanService {
         );
 
         const bodyBytes = await response.Body?.transformToByteArray();
-        if (!bodyBytes) throw new Error("Empty response from S3");
+        if (!bodyBytes) throw new AppError(500, "Empty response from S3");
 
         return {
             buffer: Buffer.from(bodyBytes),
@@ -227,13 +320,13 @@ class VisionScanService {
 
     async getScanById(scanId: string) {
         const scan = await visionScanRepository.findScanByIdWithPatient(scanId);
-        if (!scan) throw new Error("Bubble scan result not found");
+        if (!scan) throw new AppError(404, "Bubble scan result not found");
         return scan;
     }
 
     async reviewScan(scanId: string, doctorId: string, data: ReviewData) {
         const scan = await visionScanRepository.findScanById(scanId);
-        if (!scan) throw new Error("Bubble scan result not found");
+        if (!scan) throw new AppError(404, "Bubble scan result not found");
         return visionScanRepository.updateScanReview(scan, doctorId, data);
     }
 
@@ -316,6 +409,10 @@ class VisionScanService {
             model: VISION_SCAN_CONFIG.MODEL,
             messages: [
                 {
+                    role: "system",
+                    content: VISION_SCAN_SYSTEM_PROMPT,
+                },
+                {
                     role: "user",
                     content: [
                         { type: "text", text: prompt },
@@ -345,15 +442,13 @@ class VisionScanService {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(
-                `OpenRouter API error (${response.status}): ${errorText}`
-            );
+            throw new AppError(502, `OpenRouter API error (${response.status}): ${errorText}`);
         }
 
         const data = (await response.json()) as OpenRouterResponse;
 
         if (data.error) {
-            throw new Error(`Vision API error: ${data.error.message}`);
+            throw new AppError(502, `Vision API error: ${data.error.message}`);
         }
 
         const rawText = data.choices?.[0]?.message?.content || "";
@@ -374,9 +469,7 @@ class VisionScanService {
         try {
             extraction = JSON.parse(cleanText);
         } catch {
-            throw new Error(
-                `Failed to parse vision API response as JSON: ${cleanText.slice(0, 300)}`
-            );
+            throw new AppError(500, `Failed to parse vision API response as JSON: ${cleanText.slice(0, 300)}`);
         }
 
         return { extraction, usage };

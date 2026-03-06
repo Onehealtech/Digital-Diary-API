@@ -8,6 +8,7 @@ import { visionScanService } from "../modules/visionScan/visionScan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { getDiaryTypeForCaseType } from "../utils/constants";
 import { DiaryPage } from "../models/DiaryPage";
+import { AppError } from "../utils/AppError";
 import { logActivity } from "../utils/activityLogger";
 
 /**
@@ -50,7 +51,7 @@ export const manualSubmitBubbleScan = async (
         sendResponse(res, 201, "Manual submission saved successfully", result);
     } catch (error: any) {
         console.error("Manual submit error:", error);
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message || "Failed to save manual submission");
     }
 };
@@ -68,11 +69,6 @@ export const uploadBubbleScan = async (
         const patientId = req.user!.id;
         const diaryType = getDiaryTypeForCaseType(req.user?.caseType);
 
-        if (!pageNumber || isNaN(Number(pageNumber))) {
-            sendError(res, 400, "pageNumber (number) is required");
-            return;
-        }
-
         if (!req.file) {
             sendError(res, 400, "Image file is required");
             return;
@@ -80,18 +76,23 @@ export const uploadBubbleScan = async (
 
         const result = await visionScanService.processScan(
             patientId,
-            Number(pageNumber),
+            pageNumber ? Number(pageNumber) : undefined,
             req.file.buffer,
             req.file.mimetype,
             diaryType
         );
+
+        if ("valid" in result) {
+            sendError(res, 400, result.reason);
+            return;
+        }
 
         logActivity({
             req,
             userId: patientId,
             userRole: "PATIENT",
             action: "BUBBLE_SCAN_UPLOADED",
-            details: { patientId, pageId, processingStatus: result.processingStatus },
+            details: { patientId, pageNumber, processingStatus: result.processingStatus },
         });
 
         const statusCode =
@@ -106,7 +107,7 @@ export const uploadBubbleScan = async (
         );
     } catch (error: any) {
         console.error("Bubble scan upload error:", error);
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message || "Failed to process bubble scan");
     }
 };
@@ -174,7 +175,7 @@ export const getBubbleScanById = async (
         const result = await bubbleScanService.getScanById(req.params.id as string);
         sendResponse(res, 200, "Bubble scan result retrieved", result);
     } catch (error: any) {
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message);
     }
 };
@@ -189,6 +190,12 @@ export const retryBubbleScan = async (
 ): Promise<void> => {
     try {
         const result = await visionScanService.retryScan(req.params.id as string);
+
+        if ("valid" in result) {
+            sendError(res, 400, result.reason);
+            return;
+        }
+
         sendResponse(
             res,
             200,
@@ -199,7 +206,8 @@ export const retryBubbleScan = async (
         );
     } catch (error: any) {
         console.error("Bubble scan retry error:", error);
-        sendError(res, 500, error.message || "Failed to retry scan");
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to retry scan");
     }
 };
 
@@ -235,7 +243,7 @@ export const reviewBubbleScan = async (
 
         sendResponse(res, 200, "Bubble scan reviewed successfully", result);
     } catch (error: any) {
-        const status = error.message.includes("not found") ? 404 : 500;
+        const status = error instanceof AppError ? error.statusCode : 500;
         sendError(res, status, error.message);
     }
 };
