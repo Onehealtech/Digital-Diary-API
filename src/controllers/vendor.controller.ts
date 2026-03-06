@@ -273,6 +273,22 @@ export class VendorController {
   }
 
   /**
+   * PUT /api/vendors/:id/sales/:diaryId/mark-transferred - Mark sale as fund transferred
+   */
+  async markFundTransferred(req: Request, res: Response) {
+    try {
+      const vendorId = req.params.id as string;
+      const diaryId = req.params.diaryId as string;
+
+      const result = await vendorService.markFundTransferred(diaryId, vendorId);
+
+      return sendResponse(res, 200, "Fund transfer marked successfully", result);
+    } catch (error: any) {
+      return sendError(res, 400, error.message);
+    }
+  }
+
+  /**
    * GET /api/vendors/:id/dashboard - Get vendor dashboard stats
    */
   async getVendorDashboard(req: Request, res: Response) {

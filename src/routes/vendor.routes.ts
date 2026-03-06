@@ -68,6 +68,13 @@ router.get(
   vendorController.getVendorSales.bind(vendorController)
 );
 
+// PUT /api/v1/vendors/:id/sales/:diaryId/mark-transferred - Mark fund as transferred
+router.put(
+  "/:id/sales/:diaryId/mark-transferred",
+  authCheck([UserRole.VENDOR]),
+  vendorController.markFundTransferred.bind(vendorController)
+);
+
 // GET /api/v1/vendors/:id/inventory - Get assigned diaries
 router.get(
   "/:id/inventory",
