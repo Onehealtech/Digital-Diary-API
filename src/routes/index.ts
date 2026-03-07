@@ -15,6 +15,7 @@ import financialRoutes from "./financial.routes";
 import exportRoutes from "./export.routes";
 import doctorManagementRoutes from "./doctor-management.routes";
 import assistantManagementRoutes from "./assistant-management.routes";
+import userManagementRoutes from "./user-management.routes";
 import auditRoutes from "./audit.routes";
 import uploadImageRoutes from "./uploadImage.route";
 import orderRoutes from "./order.routes";
@@ -42,6 +43,7 @@ router.use("/v1/financials", financialRoutes); // Financial routes (Transactions
 router.use("/v1/reports", exportRoutes); // Reports & Export routes (Patient data, Diary pages, Analytics)
 router.use("/v1/doctors", doctorManagementRoutes); // Doctor management routes (Super Admin)
 router.use("/v1/assistants", assistantManagementRoutes); // Assistant management routes (Super Admin & Doctor)
+router.use("/v1/users", userManagementRoutes); // User management routes (Super Admin archive/restore)
 router.use("/v1/audit-logs", auditRoutes); // Audit log routes (Super Admin only)
 router.use("/v1/upload", uploadImageRoutes); // Upload image routes (Super Admin only)
 router.use("/v1/order", orderRoutes); // Order routes (Super Admin only)

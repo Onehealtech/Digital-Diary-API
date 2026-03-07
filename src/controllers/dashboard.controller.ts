@@ -7,7 +7,6 @@ import { dashboardService } from "../service/dashboard.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
-import { Op } from "sequelize";
 
 /**
  * GET /api/v1/dashboard/patients

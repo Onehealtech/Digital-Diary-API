@@ -27,15 +27,23 @@ export const staffLogin = async (
         throw new Error("Invalid credentials");
     }
 
-    // Block login for archived or on-hold assistants
-    if (user.role === "ASSISTANT") {
-        const status = (user as any).assistantStatus;
-        if (status === "DELETED") {
+    // Block login for archived (soft-deleted) users
+    if (user.deletedAt) {
+        if (user.role === "ASSISTANT") {
             throw Object.assign(
                 new Error("Your account has been archived. Contact your Doctor to restore access."),
                 { loginBlocked: true, assistantId: user.id }
             );
         }
+        throw Object.assign(
+            new Error("Your account has been archived. Contact the Super Admin to restore access."),
+            { loginBlocked: true }
+        );
+    }
+
+    // Block login for on-hold assistants
+    if (user.role === "ASSISTANT") {
+        const status = (user as any).assistantStatus;
         if (status === "ON_HOLD") {
             throw Object.assign(
                 new Error("Your account is temporarily on hold. Contact your Doctor."),
@@ -70,7 +78,7 @@ export const verifyStaffOTP = async (
     // Get user details
     const user = await AppUser.findOne({
         where: { email: email.toLowerCase() },
-        attributes: ["id", "fullName", "email", "role", "parentId", "isEmailVerified"],
+        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified"],
     });
 
     if (!user) {

@@ -115,24 +115,29 @@ export const createStaff = async (
                     cfError.message
                 );
 
-                // Still return success, but flag the Cashfree failure
+                // Still send the password email
+                await sendPasswordEmail(email, plainPassword, role, fullName);
+
+                // Return success for user creation, with a separate warning for Cashfree
                 res.status(201).json({
                     success: true,
-                    message: `${role} created successfully, but Cashfree vendor registration failed. ` +
-                        `Credentials sent to ${email}. Please retry Cashfree onboarding manually.`,
+                    message: `${role} created successfully. Credentials sent to ${email}.`,
                     data: {
                         id: newUser.id,
                         fullName: newUser.fullName,
                         email: newUser.email,
                         role: newUser.role,
                         cashfreeVendorId: null,
-                        cashfreeError: cfError.message,
                         createdBy: req.user!.id,
                     },
+                    warnings: [
+                        {
+                            type: "CASHFREE_ONBOARDING_FAILED",
+                            message: "Cashfree vendor registration failed. Please retry onboarding from the user profile.",
+                            detail: cfError.message,
+                        },
+                    ],
                 });
-
-                // Still send the password email
-                await sendPasswordEmail(email, plainPassword, role, fullName);
                 return;
             }
         }
