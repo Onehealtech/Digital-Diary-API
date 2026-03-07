@@ -137,6 +137,10 @@ class VisionScanService {
         return { valid: true, pageNumber: parsed.pageNumber, usage };
     }
 
+    /**
+     * Fast path: detect page, validate, create record, queue extraction.
+     * Returns immediately after queuing — UI gets scan record in "processing" status.
+     */
     async processScan(
         patientId: string,
         pageNumber: number | undefined,
@@ -146,7 +150,6 @@ class VisionScanService {
     ): Promise<BubbleScanResult | { valid: false; reason: string }> {
         const base64 = imageBuffer.toString("base64");
         let detectedPageNumber: number;
-        let detectionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
         if (pageNumber) {
             detectedPageNumber = pageNumber;
@@ -154,7 +157,6 @@ class VisionScanService {
             const detection = await this.detectPageNumber(base64, mimeType);
             if (!detection.valid) return detection;
             detectedPageNumber = detection.pageNumber;
-            detectionUsage = detection.usage;
         }
 
         // Run DB lookup and S3 upload in parallel
@@ -178,10 +180,53 @@ class VisionScanService {
             imageUrl: s3Url,
         });
 
+        // Queue extraction in background — don't await
+        const { visionScanQueue } = require("./visionScan.queue");
+        await visionScanQueue.add("extract", {
+            scanRecordId: scanRecord.id,
+            base64,
+            mimeType,
+            diaryType,
+            detectedPageNumber,
+            patientId,
+        });
+
+        return scanRecord;
+    }
+
+    /**
+     * Background worker: runs the actual AI extraction and updates the scan record.
+     */
+    async processExtraction(data: {
+        scanRecordId: string;
+        base64: string;
+        mimeType: string;
+        diaryType: string;
+        detectedPageNumber: number;
+        patientId: string;
+    }): Promise<Record<string, EnrichedResult> | null> {
+        const scanRecord = await visionScanRepository.findScanById(data.scanRecordId);
+        if (!scanRecord) {
+            console.error(`[VisionScan] Scan record ${data.scanRecordId} not found, skipping extraction`);
+            return null;
+        }
+
+        const diaryPage = await visionScanRepository.findDiaryPage(
+            data.detectedPageNumber,
+            data.diaryType
+        );
+        if (!diaryPage) {
+            await visionScanRepository.updateScanFailed(
+                scanRecord,
+                `Diary page ${data.detectedPageNumber} not found for "${data.diaryType}"`
+            );
+            return null;
+        }
+
         try {
             const prompt = buildExtractionPrompt(diaryPage);
             const startTime = Date.now();
-            const aiResult = await this.callVisionApi(base64, mimeType, prompt);
+            const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
             const processingTimeMs = Date.now() - startTime;
 
             const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
@@ -189,9 +234,9 @@ class VisionScanService {
 
             const metadata: ProcessingMetadata = {
                 model: VISION_SCAN_CONFIG.MODEL,
-                promptTokens: detectionUsage.prompt_tokens + aiResult.usage.prompt_tokens,
-                responseTokens: detectionUsage.completion_tokens + aiResult.usage.completion_tokens,
-                totalTokens: detectionUsage.total_tokens + aiResult.usage.total_tokens,
+                promptTokens: aiResult.usage.prompt_tokens,
+                responseTokens: aiResult.usage.completion_tokens,
+                totalTokens: aiResult.usage.total_tokens,
                 processingTimeMs,
                 lowConfidenceFields,
             };
@@ -204,19 +249,19 @@ class VisionScanService {
                     flagged: lowConfidenceFields.length > 0,
                 }),
                 visionScanRepository.syncToScanLog(
-                    patientId,
-                    detectedPageNumber,
+                    data.patientId,
+                    data.detectedPageNumber,
                     enrichedResults
                 ),
             ]);
 
-            return scanRecord;
+            return enrichedResults;
         } catch (error: any) {
             await visionScanRepository.updateScanFailed(
                 scanRecord,
                 error.message || "Unexpected processing error"
             );
-            throw error;
+            throw error; // Re-throw so BullMQ can retry
         }
     }
 
@@ -263,7 +308,7 @@ class VisionScanService {
         return record;
     }
 
-    async retryScan(scanId: string): Promise<BubbleScanResult | { valid: false; reason: string }> {
+    async retryScan(scanId: string): Promise<BubbleScanResult> {
         const existing = await visionScanRepository.findScanById(scanId);
         if (!existing) throw new AppError(404, "Scan not found");
         if (existing.processingStatus !== ProcessingStatus.FAILED) {
@@ -280,11 +325,23 @@ class VisionScanService {
             throw new AppError(400, "Missing pageNumber or imageUrl on failed scan");
         }
 
-        // Download image from S3 for reprocessing
+        // Download image from S3, reset status, and re-queue extraction
         const { buffer, mimeType } = await this.downloadFromS3(imageUrl);
-        await visionScanRepository.deleteScan(existing);
+        const base64 = buffer.toString("base64");
 
-        return this.processScan(patientId, pageNumber, buffer, mimeType, diaryType);
+        await existing.update({ processingStatus: ProcessingStatus.PROCESSING, errorMessage: null });
+
+        const { visionScanQueue } = require("./visionScan.queue");
+        await visionScanQueue.add("extract", {
+            scanRecordId: existing.id,
+            base64,
+            mimeType,
+            diaryType,
+            detectedPageNumber: pageNumber,
+            patientId,
+        });
+
+        return existing;
     }
 
     private async downloadFromS3(

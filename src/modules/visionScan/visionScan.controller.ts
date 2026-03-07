@@ -35,14 +35,10 @@ export const uploadVisionScan = async (
             return;
         }
 
-        const statusCode =
-            result.processingStatus === "completed" ? 201 : 200;
         sendResponse(
             res,
-            statusCode,
-            result.processingStatus === "completed"
-                ? "Vision scan processed successfully"
-                : "Vision scan processing failed - check errorMessage",
+            202,
+            "Scan accepted and queued for processing",
             result
         );
     } catch (error: any) {
@@ -115,17 +111,10 @@ export const retryVisionScan = async (
     try {
         const result = await visionScanService.retryScan(req.params.id as string);
 
-        if ("valid" in result) {
-            sendError(res, 400, result.reason);
-            return;
-        }
-
         sendResponse(
             res,
             200,
-            result.processingStatus === "completed"
-                ? "Scan retry completed successfully"
-                : "Scan retry failed - check errorMessage",
+            "Scan retry queued for processing",
             result
         );
     } catch (error: any) {

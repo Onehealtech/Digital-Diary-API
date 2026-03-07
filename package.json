@@ -17,6 +17,7 @@
     "axios": "^1.13.5",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.2",
+    "bullmq": "^5.70.4",
     "cashfree-pg": "^5.1.0",
     "cors": "^2.8.6",
     "decimal.js": "^10.6.0",

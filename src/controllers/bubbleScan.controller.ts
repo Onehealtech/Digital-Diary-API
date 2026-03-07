@@ -95,14 +95,10 @@ export const uploadBubbleScan = async (
             details: { patientId, pageNumber, processingStatus: result.processingStatus },
         });
 
-        const statusCode =
-            result.processingStatus === "completed" ? 201 : 200;
         sendResponse(
             res,
-            statusCode,
-            result.processingStatus === "completed"
-                ? "Bubble scan processed successfully"
-                : "Bubble scan processing failed - check errorMessage",
+            202,
+            "Scan accepted and queued for processing",
             result
         );
     } catch (error: any) {
@@ -191,17 +187,10 @@ export const retryBubbleScan = async (
     try {
         const result = await visionScanService.retryScan(req.params.id as string);
 
-        if ("valid" in result) {
-            sendError(res, 400, result.reason);
-            return;
-        }
-
         sendResponse(
             res,
             200,
-            result.processingStatus === "completed"
-                ? "Bubble scan retry completed successfully"
-                : "Bubble scan retry failed - check errorMessage",
+            "Scan retry queued for processing",
             result
         );
     } catch (error: any) {
