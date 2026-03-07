@@ -1,8 +1,7 @@
-import { Queue, Worker, Job } from "bullmq";
+import { Queue } from "bullmq";
 import { redisConnection } from "../../config/redis";
-import { visionScanService } from "./visionScan.service";
 
-const QUEUE_NAME = "vision-scan-extraction";
+export const VISION_SCAN_QUEUE_NAME = "vision-scan-extraction";
 
 export interface VisionScanJobData {
     scanRecordId: string;
@@ -13,7 +12,7 @@ export interface VisionScanJobData {
     patientId: string;
 }
 
-export const visionScanQueue = new Queue<VisionScanJobData>(QUEUE_NAME, {
+export const visionScanQueue = new Queue<VisionScanJobData>(VISION_SCAN_QUEUE_NAME, {
     connection: redisConnection,
     defaultJobOptions: {
         attempts: 2,
@@ -21,25 +20,4 @@ export const visionScanQueue = new Queue<VisionScanJobData>(QUEUE_NAME, {
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 200 },
     },
-});
-
-export const visionScanWorker = new Worker<VisionScanJobData>(
-    QUEUE_NAME,
-    async (job: Job<VisionScanJobData>) => {
-        console.log(`[VisionScan Worker] Processing job ${job.id} for scan ${job.data.scanRecordId}`);
-        const result = await visionScanService.processExtraction(job.data);
-        console.log(`[VisionScan Worker] Extraction result for ${job.data.scanRecordId}:`, JSON.stringify(result, null, 2));
-    },
-    {
-        connection: redisConnection,
-        concurrency: 3,
-    }
-);
-
-visionScanWorker.on("completed", (job) => {
-    console.log(`[VisionScan Worker] Job ${job.id} completed for scan ${job.data.scanRecordId}`);
-});
-
-visionScanWorker.on("failed", (job, err) => {
-    console.error(`[VisionScan Worker] Job ${job?.id} failed:`, err.message);
 });

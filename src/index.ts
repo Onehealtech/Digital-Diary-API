@@ -95,9 +95,6 @@ const startServer = async () => {
     // Initialize Firebase Admin SDK for push notifications
     fcmService.initialize();
 
-    // Start BullMQ vision scan worker
-    require('./modules/visionScan/visionScan.queue');
-
     // Start Express server
     app.listen(PORT, () => {
       console.log(`🚀 Server is running on http://localhost:${PORT}`);
