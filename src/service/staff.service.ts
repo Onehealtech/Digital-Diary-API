@@ -87,12 +87,15 @@ async getVendorDoctors(
   vendorId: string,
   filters: StaffFilters = {}
 ) {
+  if (!vendorId) {
+    throw new Error("Vendor id is required");
+  }
   const { page = 1, limit = 20, search } = filters;
   const offset = (page - 1) * limit;
 
   const whereClause: any = {
     role: "DOCTOR",
-    // parentId: vendorId, // ✅ IMPORTANT
+    parentId: vendorId,
   };
 
   if (search) {
@@ -525,3 +528,4 @@ async getVendorDoctors(
 }
 
 export const staffService = new StaffService();
+
