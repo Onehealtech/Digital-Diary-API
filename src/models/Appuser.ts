@@ -170,6 +170,12 @@ export class AppUser extends Model {
     allowNull: true,
   })
   fcmToken?: string;
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: true,
+    defaultValue: true,
+  })
+  isApproved?: boolean;
 
   // 🔗 Doctor → Patients
   @HasMany(() => Patient)

@@ -5,11 +5,12 @@ import { AppUser } from "../models/Appuser";
 
 import { createCashfreeVendor } from "../service/cashfree-vendor.service";
 import { Response } from "express";
-import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { AuthenticatedRequest, AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "../service/emailService";
 import { createWallet } from "../service/wallet.service";
+import { Op } from "sequelize";
 const walletTypeMap: Record<string, "VENDOR" | "DOCTOR" | "PLATFORM"> = {
     VENDOR: "VENDOR",
     DOCTOR: "DOCTOR",
@@ -46,18 +47,35 @@ export const createStaff = async (
             return;
         }
 
+        let isApproved = true; // By default, non-doctor roles are auto-approved
+        // const existingDoctor = await AppUser.findOne({
+        //     where: {
+        //         role: UserRole.DOCTOR,
+        //         [Op.or]: [
+        //             { email: email.toLowerCase() },
+        //             { phone },
+        //             { license }
+        //         ]
+        //     }
+        // });
+        // if (existingDoctor) {
+        //     isApproved = false;
+        // }
         // Check if user already exists
-        const existingUser = await AppUser.findOne({
-            where: { email: email.toLowerCase() },
-        });
-
-        if (existingUser) {
-            res.status(409).json({
-                success: false,
-                message: "User with this email already exists",
+        if (!UserRole.DOCTOR) {
+            const existingUser = await AppUser.findOne({
+                where: { email: email.toLowerCase() },
             });
-            return;
+
+            if (existingUser) {
+                res.status(409).json({
+                    success: false,
+                    message: "User with this email already exists",
+                });
+                return;
+            }
         }
+
 
         // ── Generate password ──────────────────────────────────────────
         const plainPassword = generateSecurePassword();
@@ -73,6 +91,7 @@ export const createStaff = async (
             isEmailVerified: false,
             license,
             hospital,
+            isApproved: UserRole.DOCTOR ? false : true, // Doctors require approval, others are auto-approved
             specialization,
             commissionType,
             commissionRate,
@@ -140,7 +159,7 @@ export const createStaff = async (
         // ── Send password email ────────────────────────────────────────
         await sendPasswordEmail(email, plainPassword, role, fullName);
 
-        // ── Success response ───────────────────────────────────────────
+        // ── Success response ───────────
         res.status(201).json({
             success: true,
             message: `${role} created successfully.${needsCashfree ? " Registered on Cashfree." : ""} Credentials sent to ${email}`,
@@ -153,6 +172,7 @@ export const createStaff = async (
                 createdBy: req.user!.id,
             },
         });
+
     } catch (error: any) {
         console.error("Create staff error:", error);
         res.status(500).json({
@@ -161,7 +181,27 @@ export const createStaff = async (
         });
     }
 };
+export const approveDoctor = async (req: AuthRequest, res: Response) => {
+    const userId = req.params.id as string;
+    const doctor = await AppUser.findByPk(userId);
 
+    if (!doctor) {
+        return res.status(404).json({
+            success: false,
+            message: "Doctor not found"
+        })
+    }
+
+    await doctor.update({
+        isApproved: true
+    });
+
+    res.json({
+        success: true,
+        message: "Doctor approved successfully"
+    });
+
+};
 /**
  * Retry Cashfree vendor registration for users where it previously failed.
  * Called by SuperAdmin when cashfreeVendorId is null on a Doctor/Vendor.

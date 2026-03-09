@@ -28,7 +28,7 @@ export const createPatient = async (req: AuthenticatedRequest, res: Response) =>
       doctorId,
       diaryId,
       vendorId,
-      caseType:"PERI_OPERATIVE",
+      caseType:"PERI OPERATIVE",
     });
 
     logActivity({

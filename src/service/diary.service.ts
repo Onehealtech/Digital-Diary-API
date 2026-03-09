@@ -361,9 +361,12 @@ export class DiaryService {
     const whereClause: any = {};
 
     whereClause.vendorId = params.vendorId;
+    whereClause.isDeleted = false; // Only show non-deleted requests when filtering by status
 
     if (params.status) {
       whereClause.status = params.status;
+      whereClause.isDeleted = false; // Only show non-deleted requests when filtering by status
+
     }
 
     const requests = await DiaryRequest.findAndCountAll({
@@ -408,6 +411,7 @@ export class DiaryService {
 
     if (params.status) {
       whereClause.status = params.status;
+      whereClause.isDeleted = false; // Only show non-deleted requests when filtering by status
     }
 
     const requests = await DiaryRequest.findAndCountAll({
@@ -476,7 +480,15 @@ export class DiaryService {
 
     return request;
   }
-
+  async DeleteDiaryRequest(requestId: string) {
+    const request = await DiaryRequest.findByPk(requestId);
+    if (!request) {
+      throw new Error("Request not found");
+    }
+    request.isDeleted = true;
+    await request.save();
+    return request;
+  }
   /**
    * Approve diary request
    */

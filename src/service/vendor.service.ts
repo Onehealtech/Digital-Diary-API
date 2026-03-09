@@ -431,7 +431,7 @@ export class VendorService {
       diaryId: data.diaryId,
       vendorId: data.vendorId,
       doctorId: data.doctorId,
-      caseType:"PERI_OPERATIVE",
+      caseType:"PERI OPERATIVE",
       status: "ACTIVE",
       registeredDate: new Date(),
     });

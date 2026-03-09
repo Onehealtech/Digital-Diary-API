@@ -91,6 +91,11 @@ router.post(
   authCheck([UserRole.VENDOR]),
   diaryController.createDiaryRequest.bind(diaryController)
 );
+router.get(
+  "/delete-requests/:id",
+  authCheck([UserRole.VENDOR]),
+  diaryController.deleteDiaryRequest.bind(diaryController)
+);
 
 // PUT /api/v1/diary-requests/:id/approve - Approve diary request
 router.put(

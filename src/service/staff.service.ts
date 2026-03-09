@@ -92,7 +92,7 @@ async getVendorDoctors(
 
   const whereClause: any = {
     role: "DOCTOR",
-    // parentId: vendorId, // ✅ IMPORTANT
+    parentId: vendorId, // ✅ IMPORTANT
   };
 
   if (search) {

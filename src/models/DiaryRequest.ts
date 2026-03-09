@@ -67,6 +67,13 @@ export class DiaryRequest extends Model {
   rejectionReason?: string;
 
   @Column({
+    type: DataType.BOOLEAN,
+    allowNull: true,
+    defaultValue: false,
+  })
+  isDeleted?: boolean;
+
+  @Column({
     type: DataType.JSONB,
     allowNull: true,
   })

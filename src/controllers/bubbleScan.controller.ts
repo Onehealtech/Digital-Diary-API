@@ -91,7 +91,7 @@ export const uploadBubbleScan = async (
             userId: patientId,
             userRole: "PATIENT",
             action: "BUBBLE_SCAN_UPLOADED",
-            details: { patientId, pageId, processingStatus: result.processingStatus },
+            details: { patientId, processingStatus: result.processingStatus },
         });
 
         const statusCode =

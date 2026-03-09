@@ -34,9 +34,13 @@ export class DoctorAuthService {
     return doctor;
   }
 
-  static async login(email: string, password: string) {
+ static async login(email: string, password: string) {
+
     const doctor = await AppUser.findOne({
-      where: { email: email.toLowerCase(), role: "doctor" },
+      where: {
+        email: email.toLowerCase(),
+        role: "doctor",
+      },
     });
 
     if (!doctor) {
@@ -44,8 +48,14 @@ export class DoctorAuthService {
     }
 
     const isMatch = await bcrypt.compare(password.trim(), doctor.password);
+
     if (!isMatch) {
       throw new Error("Invalid credentials");
+    }
+
+    // ✅ Approval check
+    if (!doctor.isApproved) {
+      throw new Error("Waiting for Super Admin approval");
     }
 
     const token = jwt.sign(

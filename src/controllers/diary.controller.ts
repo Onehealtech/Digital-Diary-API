@@ -224,6 +224,16 @@ export class DiaryController {
     }
   }
 
+  async deleteDiaryRequest(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const request = await diaryService.DeleteDiaryRequest(id);
+      return sendResponse(res, 200, "Diary request deleted successfully", request);
+    } catch (error: any) {
+      return sendError(res, 500, "Failed to delete diary request", error.message);
+    }
+  }
+
   /**
    * PUT /api/diary-requests/:id/approve - Approve diary request
    */

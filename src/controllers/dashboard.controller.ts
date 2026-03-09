@@ -1,5 +1,4 @@
 import { Response } from "express";
-import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
