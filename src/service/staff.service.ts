@@ -106,59 +106,72 @@ async getVendorDoctors(
     ];
   }
 
-  const { rows: doctors, count: total } =
-    await AppUser.findAndCountAll({
-      where: whereClause,
-      attributes: [
-        "id",
-        "fullName",
-        "email",
-        "phone",
-        "specialization",
-        "hospital",
-        "license",
-        "isActive",
-        "createdAt",
-        "updatedAt",
-      ],
-      order: [["createdAt", "DESC"]],
-      limit,
-      offset,
-    });
+    const whereClause: any = {
+      role: "DOCTOR",
+      // parentId: vendorId, // ✅ IMPORTANT
+    };
 
-  const doctorsWithStats = await Promise.all(
-    doctors.map(async (doctor) => {
-      const patientCount = await Patient.count({
-        where: { doctorId: doctor.id },
+    if (search) {
+      whereClause[Op.or] = [
+        { fullName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const { rows: doctors, count: total } =
+      await AppUser.findAndCountAll({
+        where: whereClause,
+        attributes: [
+          "id",
+          "fullName",
+          "email",
+          "phone",
+          "specialization",
+          "hospital",
+          "license",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+        ],
+        order: [["createdAt", "DESC"]],
+        limit,
+        offset,
       });
 
-      const assistantCount = await AppUser.count({
-        where: {
-          role: "ASSISTANT",
-          parentId: doctor.id,
-        },
-      });
+    const doctorsWithStats = await Promise.all(
+      doctors.map(async (doctor) => {
+        const patientCount = await Patient.count({
+          where: { doctorId: doctor.id },
+        });
 
-      return {
-        ...doctor.toJSON(),
-        stats: {
-          totalPatients: patientCount,
-          totalAssistants: assistantCount,
-        },
-      };
-    })
-  );
+        const assistantCount = await AppUser.count({
+          where: {
+            role: "ASSISTANT",
+            parentId: doctor.id,
+          },
+        });
 
-  return {
-    doctors: doctorsWithStats,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
-}
+        return {
+          ...doctor.toJSON(),
+          stats: {
+            totalPatients: patientCount,
+            totalAssistants: assistantCount,
+          },
+        };
+      })
+    );
+
+    return {
+      doctors: doctorsWithStats,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 
 
   /**
@@ -612,6 +625,239 @@ async getVendorDoctors(
       message: "Assistant restored successfully.",
       assistant: assistant.toJSON(),
     };
+  }
+  /**
+   * Soft-delete a user (SUPER_ADMIN, DOCTOR, or VENDOR).
+   * Prevents self-archiving. Uses Sequelize paranoid destroy.
+   */
+  async archiveUser(userId: string, archivedByUserId: string) {
+    if (userId === archivedByUserId) {
+      throw new Error("You cannot archive your own account");
+    }
+
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    await user.update({ isActive: false });
+    await user.destroy(); // paranoid soft-delete
+
+    try {
+      await AuditLog.create({
+        userId: archivedByUserId,
+        userRole: "super_admin",
+        action: "USER_ARCHIVED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetEmail: user.email,
+          targetRole: user.role,
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    return {
+      message: `${user.role} user archived successfully. Records preserved.`,
+    };
+  }
+
+  /**
+   * Get all archived (soft-deleted) users (SUPER_ADMIN, DOCTOR, VENDOR).
+   */
+  async getArchivedUsers(filters: StaffFilters = {}) {
+    const { page = 1, limit = 20, search } = filters;
+    const offset = (page - 1) * limit;
+
+    const whereClause: any = {
+      role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      deletedAt: { [Op.ne]: null },
+    };
+
+    if (search) {
+      whereClause[Op.or] = [
+        { fullName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const { rows: users, count: total } = await AppUser.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "id", "fullName", "email", "phone", "role",
+        "hospital", "specialization", "license", "location", "GST",
+        "isActive", "createdAt", "updatedAt", "deletedAt",
+      ],
+      order: [["deletedAt", "DESC"]],
+      limit,
+      offset,
+      paranoid: false,
+    });
+
+    return {
+      users: users.map((u) => u.toJSON()),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Restore an archived (soft-deleted) user.
+   * Clears deletedAt and sets isActive back to true.
+   */
+  async restoreUser(userId: string) {
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      },
+      paranoid: false,
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (!user.deletedAt) {
+      throw new Error("User is not archived");
+    }
+
+    await user.restore();
+    await user.update({ isActive: true });
+
+    return {
+      message: `${user.role} user restored successfully.`,
+      user: user.toJSON(),
+    };
+  }
+
+  // ==================== USER PROFILE VIEW & EDIT ====================
+
+  /**
+   * Get any user (SUPER_ADMIN, DOCTOR, VENDOR) by ID with role-specific stats.
+   */
+  async getUserById(userId: string) {
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      },
+      attributes: [
+        "id", "fullName", "email", "phone", "role",
+        "hospital", "specialization", "license", "GST", "location",
+        "commissionType", "commissionRate", "cashfreeVendorId",
+        "isActive", "isEmailVerified", "createdAt", "updatedAt",
+      ],
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const result: Record<string, unknown> = { ...user.toJSON() };
+
+    // Add role-specific stats
+    if (user.role === "DOCTOR") {
+      const patientCount = await Patient.count({ where: { doctorId: userId } });
+      const assistantCount = await AppUser.count({
+        where: { role: "ASSISTANT", parentId: userId },
+      });
+      let taskCount = 0;
+      try {
+        taskCount = await Task.count({ where: { createdBy: userId } });
+      } catch {
+        // Tasks table may not exist
+      }
+      result.stats = { totalPatients: patientCount, totalAssistants: assistantCount, totalTasks: taskCount };
+    }
+
+    return result;
+  }
+
+  /**
+   * Update any user (SUPER_ADMIN, DOCTOR, VENDOR) by ID.
+   * Role is never editable. Prevents self-role modification.
+   * Supports optional password reset (model hooks handle hashing).
+   */
+  async updateUser(
+    userId: string,
+    updates: Record<string, unknown>,
+    requesterId: string
+  ) {
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Allowed fields for update (role is NEVER allowed)
+    const allowedFields = [
+      "fullName", "phone", "hospital", "specialization",
+      "license", "GST", "location", "commissionType", "commissionRate",
+      "password",
+    ];
+
+    const updateData: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (updates[key] !== undefined && updates[key] !== "") {
+        updateData[key] = updates[key];
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new Error("No valid fields to update");
+    }
+
+    await user.update(updateData);
+
+    // Audit log
+    try {
+      await AuditLog.create({
+        userId: requesterId,
+        userRole: "super_admin",
+        action: "USER_UPDATED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetRole: user.role,
+          updatedFields: Object.keys(updateData),
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    // Return updated user WITHOUT password
+    const updated = await AppUser.findByPk(userId, {
+      attributes: [
+        "id", "fullName", "email", "phone", "role",
+        "hospital", "specialization", "license", "GST", "location",
+        "commissionType", "commissionRate", "cashfreeVendorId",
+        "isActive", "isEmailVerified", "createdAt", "updatedAt",
+      ],
+    });
+
+    return updated?.toJSON();
   }
 }
 

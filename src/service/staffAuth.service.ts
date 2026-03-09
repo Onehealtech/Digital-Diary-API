@@ -70,7 +70,7 @@ export const verifyStaffOTP = async (
     // Get user details
     const user = await AppUser.findOne({
         where: { email: email.toLowerCase() },
-        attributes: ["id", "fullName", "email", "role", "parentId", "isEmailVerified"],
+        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified"],
     });
 
     if (!user) {

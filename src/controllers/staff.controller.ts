@@ -32,31 +32,31 @@ class StaffController {
       return sendError(res, error.message);
     }
   }
-async getVendorDoctors(req: AuthRequest, res: Response) {
-  try {
-    const role = req.user?.role;
-    const vendorId = req.user?.id;
+  async getVendorDoctors(req: AuthRequest, res: Response) {
+    try {
+      const role = req.user?.role;
+      const vendorId = req.user?.id;
 
-    if (role !== "VENDOR") {
-      return sendError(res, "Only Vendors can view their doctors", 403);
-    }
-
-    const { page, limit, search } = req.query;
-
-    const result = await staffService.getVendorDoctors(
-      vendorId as string,
-      {
-        page: page ? Number(page) : undefined,
-        limit: limit ? Number(limit) : undefined,
-        search: search as string,
+      if (role !== "VENDOR") {
+        return sendError(res, "Only Vendors can view their doctors", 403);
       }
-    );
 
-    return sendResponse(res, result, "Vendor doctors fetched successfully");
-  } catch (error: any) {
-    return sendError(res, error.message);
+      const { page, limit, search } = req.query;
+
+      const result = await staffService.getVendorDoctors(
+        vendorId as string,
+        {
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
+          search: search as string,
+        }
+      );
+
+      return sendResponse(res, result, "Vendor doctors fetched successfully");
+    } catch (error: any) {
+      return sendError(res, error.message);
+    }
   }
-}
 
   /**
    * GET /api/v1/doctors/:id
@@ -321,6 +321,148 @@ async getVendorDoctors(req: AuthRequest, res: Response) {
       });
 
       return sendResponse(res, result, "Assistant restored successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
+    }
+  }
+  // ==================== USER PROFILE VIEW & EDIT ====================
+
+  /**
+   * GET /api/v1/users/:id
+   * Get user profile by ID (Super Admin only)
+   */
+  async getUserById(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can view user profiles", 403);
+      }
+
+      const user = await staffService.getUserById(id);
+
+      return sendResponse(res, user, "User details fetched successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+  }
+
+  /**
+   * PUT /api/v1/users/:id
+   * Update user profile (Super Admin only)
+   */
+  async updateUser(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can update user profiles", 403);
+      }
+
+      const updates = req.body;
+
+      const user = await staffService.updateUser(id, updates, userId!);
+
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: "USER_UPDATED",
+        details: { targetUserId: id, updatedFields: Object.keys(updates) },
+      });
+
+      return sendResponse(res, user, "User updated successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+    }
+  }
+
+  // ==================== USER ARCHIVING (SUPER_ADMIN, DOCTOR, VENDOR) ====================
+
+  /**
+   * DELETE /api/v1/users/:id
+   * Archive (soft-delete) a user. Super Admin only. Cannot archive self.
+   */
+  async archiveUser(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can archive users", 403);
+      }
+
+      const result = await staffService.archiveUser(id, userId!);
+
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: "USER_ARCHIVED",
+        details: { targetUserId: id },
+      });
+
+      return sendResponse(res, result, "User archived successfully");
+    } catch (error: any) {
+      return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
+    }
+  }
+
+  /**
+   * GET /api/v1/users/archived
+   * Get all archived users. Super Admin only.
+   */
+  async getArchivedUsers(req: AuthRequest, res: Response) {
+    try {
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can view archived users", 403);
+      }
+
+      const { page, limit, search } = req.query;
+
+      const result = await staffService.getArchivedUsers({
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        search: search as string,
+      });
+
+      return sendResponse(res, result, "Archived users fetched successfully");
+    } catch (error: any) {
+      return sendError(res, error.message);
+    }
+  }
+
+  /**
+   * POST /api/v1/users/:id/restore
+   * Restore an archived user. Super Admin only.
+   */
+  async restoreUser(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can restore users", 403);
+      }
+
+      const result = await staffService.restoreUser(id);
+
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: "USER_RESTORED",
+        details: { targetUserId: id },
+      });
+
+      return sendResponse(res, result, "User restored successfully");
     } catch (error: any) {
       return sendError(res, error.message, error.message.includes("not found") ? 404 : 400);
     }
