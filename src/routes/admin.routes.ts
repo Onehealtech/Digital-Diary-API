@@ -1,7 +1,9 @@
 import express from "express";
 import * as adminController from "../controllers/admin.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
+import { createStaffSchema } from "../schemas/staff.schemas";
 
 const router = express.Router();
 
@@ -9,6 +11,7 @@ const router = express.Router();
 router.post(
     "/create-staff",
     authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+    validate({ body: createStaffSchema }),
     adminController.createStaff
 );
 
