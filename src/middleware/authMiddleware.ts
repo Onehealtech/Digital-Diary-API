@@ -72,15 +72,22 @@ export const authCheck = (allowedRoles: UserRole[]) => {
         raw: true
       });
 
-      // Check if user exists and has allowed role
-      if (user && allowedRoles.includes(user.role as UserRole)) {
-        res.locals.auth = decoded;
-        req.user = user;
-        next();
-      } else {
+      if (!user) {
         responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, API_MESSAGES.UNAUTHORIZED);
         return;
       }
+
+      // User exists but role doesn't match → 403 Forbidden (not 401)
+      // This distinction is critical: 401 = bad/expired token (triggers auto-logout),
+      // 403 = valid token but insufficient permissions (no logout needed).
+      if (!allowedRoles.includes(user.role as UserRole)) {
+        responseMiddleware(res, HTTP_STATUS.FORBIDDEN, API_MESSAGES.FORBIDDEN);
+        return;
+      }
+
+      res.locals.auth = decoded;
+      req.user = user;
+      next();
 
     } catch (error) {
       console.error('Auth Check Error:', error);
