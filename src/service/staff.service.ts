@@ -106,10 +106,10 @@ async getVendorDoctors(
     ];
   }
 
-    const whereClause: any = {
-      role: "DOCTOR",
-      // parentId: vendorId, // ✅ IMPORTANT
-    };
+    // const whereClause: any = {
+    //   role: "DOCTOR",
+    //   // parentId: vendorId, // ✅ IMPORTANT
+    // };
 
     if (search) {
       whereClause[Op.or] = [
