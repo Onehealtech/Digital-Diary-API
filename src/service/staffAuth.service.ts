@@ -27,23 +27,15 @@ export const staffLogin = async (
         throw new Error("Invalid credentials");
     }
 
-    // Block login for archived (soft-deleted) users
-    if (user.deletedAt) {
-        if (user.role === "ASSISTANT") {
+    // Block login for archived or on-hold assistants
+    if (user.role === "ASSISTANT") {
+        const status = (user as any).assistantStatus;
+        if (status === "DELETED") {
             throw Object.assign(
                 new Error("Your account has been archived. Contact your Doctor to restore access."),
                 { loginBlocked: true, assistantId: user.id }
             );
         }
-        throw Object.assign(
-            new Error("Your account has been archived. Contact the Super Admin to restore access."),
-            { loginBlocked: true }
-        );
-    }
-
-    // Block login for on-hold assistants
-    if (user.role === "ASSISTANT") {
-        const status = (user as any).assistantStatus;
         if (status === "ON_HOLD") {
             throw Object.assign(
                 new Error("Your account is temporarily on hold. Contact your Doctor."),

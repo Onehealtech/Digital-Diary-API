@@ -83,12 +83,28 @@ class StaffService {
       },
     };
   }
-  async getVendorDoctors(
-    vendorId: string,
-    filters: StaffFilters = {}
-  ) {
-    const { page = 1, limit = 20, search } = filters;
-    const offset = (page - 1) * limit;
+async getVendorDoctors(
+  vendorId: string,
+  filters: StaffFilters = {}
+) {
+  if (!vendorId) {
+    throw new Error("Vendor id is required");
+  }
+  const { page = 1, limit = 20, search } = filters;
+  const offset = (page - 1) * limit;
+
+  const whereClause: any = {
+    role: "DOCTOR",
+    parentId: vendorId,
+  };
+
+  if (search) {
+    whereClause[Op.or] = [
+      { fullName: { [Op.iLike]: `%${search}%` } },
+      { email: { [Op.iLike]: `%${search}%` } },
+      { phone: { [Op.iLike]: `%${search}%` } },
+    ];
+  }
 
     const whereClause: any = {
       role: "DOCTOR",
@@ -846,3 +862,4 @@ class StaffService {
 }
 
 export const staffService = new StaffService();
+
