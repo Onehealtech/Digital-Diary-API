@@ -12,11 +12,10 @@ import {
   reconcileWallet,
   recordAdvancePayment,
 } from "../service/wallet.service";
-import { v4 as uuid } from "uuid";
 import axios from "axios";
 import { AppUser } from "../models/Appuser";
 /* =========================================================
-   Get My Wallet
+Get My Wallet
 ========================================================= */
 
 export const getMyWallet = async (
@@ -264,6 +263,7 @@ export const createPayoutOrder = async (
       return;
     }
     const { amount }:any = req.body;
+const { v4: uuid } = await import("uuid");
 
     const orderId = `payout_${uuid()}`;
 

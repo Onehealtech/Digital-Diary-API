@@ -10,7 +10,7 @@ const router = express.Router();
 // Super Admin only routes
 router.post(
     "/create-staff",
-    authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+    authCheck([UserRole.SUPER_ADMIN]),
     validate({ body: createStaffSchema }),
     adminController.createStaff
 );

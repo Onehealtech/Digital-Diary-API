@@ -23,6 +23,7 @@ import walletRoutes from "./wallet.routes";
 import bubbleScanRoutes from "./bubbleScan.routes";
 import visionScanRoutes from "../modules/visionScan/visionScan.routes";
 import diaryPageRoutes from "./diaryPage.routes";
+import doctorOnboardRoutes from "./doctorOnboard.routes";
 
 const router = express.Router();
 
@@ -51,5 +52,6 @@ router.use("/v1/wallets", walletRoutes); // Wallet routes (Super Admin only)
 router.use("/v1/bubble-scan", bubbleScanRoutes); // Bubble scan OMR routes (Patient upload, Doctor review)
 router.use("/v1/vision-scan", visionScanRoutes); // Vision AI scan routes (Patient upload, Doctor review)
 router.use("/v1/diary-pages", diaryPageRoutes); // Diary page routes (questions for manual entry, seed)
+router.use("/v1/doctor-onboard", doctorOnboardRoutes); // Doctor onboard requests & vendor-doctor assignments
 
 export default router;

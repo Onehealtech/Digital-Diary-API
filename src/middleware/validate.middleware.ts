@@ -26,7 +26,8 @@ export function validate(schemas: ValidateOptions) {
             if (!result.success) {
                 errors.push(...formatErrors(result.error));
             } else {
-                (req as any).query = result.data;
+                // Express 5: req.query is read-only, store parsed data on res.locals
+                res.locals.validatedQuery = result.data;
             }
         }
 
@@ -35,7 +36,8 @@ export function validate(schemas: ValidateOptions) {
             if (!result.success) {
                 errors.push(...formatErrors(result.error));
             } else {
-                req.params = result.data;
+                // Express 5: req.params is read-only, store parsed data on res.locals
+                res.locals.validatedParams = result.data;
             }
         }
 
