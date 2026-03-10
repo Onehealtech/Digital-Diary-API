@@ -1,7 +1,7 @@
 export const VISION_SCAN_CONFIG = {
     OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
     MODEL: "google/gemini-2.5-flash",
-    MAX_TOKENS: 2048,
+    MAX_TOKENS: 200,
     TEMPERATURE: 0.1,
     LOW_CONFIDENCE_THRESHOLD: 0.8,
     HTTP_REFERER: "https://onehealtech.com",
