@@ -3,6 +3,10 @@ import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { AppUser } from "../models/Appuser";
+import {
+  patientNotificationHistoryParamsSchema,
+  patientNotificationHistoryQuerySchema,
+} from "../schemas/notification.schemas";
 
 class NotificationController {
   /**
@@ -300,6 +304,43 @@ class NotificationController {
       return sendResponse(res, { success: true }, "FCM token updated successfully");
     } catch (error: any) {
       return sendError(res, error.message);
+    }
+  }
+
+  /**
+   * GET /api/v1/notifications/patient/:patientId/history
+   * Get notification history sent to a specific patient (for Doctor/Assistant)
+   */
+  async getPatientNotificationHistory(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return sendError(res, "Unauthorized", 401);
+      }
+
+      // Validate params with Zod
+      const paramsParsed = patientNotificationHistoryParamsSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
+        return sendError(res, paramsParsed.error.issues[0].message, 400);
+      }
+
+      const queryParsed = patientNotificationHistoryQuerySchema.safeParse(req.query);
+      if (!queryParsed.success) {
+        return sendError(res, queryParsed.error.issues[0].message, 400);
+      }
+
+      const { patientId } = paramsParsed.data;
+      const { page, limit } = queryParsed.data;
+
+      const result = await notificationService.getPatientNotificationHistory(
+        patientId,
+        { page, limit }
+      );
+
+      return sendResponse(res, result, "Patient notification history fetched successfully");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return sendError(res, message);
     }
   }
 }

@@ -3,6 +3,7 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
+import { notificationRepository } from "../repositories/notification.repository";
 
 interface NotificationFilters {
   page?: number;
@@ -384,6 +385,30 @@ class NotificationService {
       unread,
       read: total - unread,
       bySeverity,
+    };
+  }
+
+  /**
+   * Get notification history for a specific patient.
+   * Used by Doctor/Assistant to see what notifications were sent to a patient.
+   */
+  async getPatientNotificationHistory(
+    patientId: string,
+    filters: { page?: number; limit?: number } = {}
+  ) {
+    const { rows: notifications, count: total } =
+      await notificationRepository.findByPatientId(patientId, filters);
+
+    const { page = 1, limit = 20 } = filters;
+
+    return {
+      notifications,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 }
