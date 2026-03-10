@@ -14,7 +14,8 @@ import {
 } from "../service/wallet.service";
 import axios from "axios";
 import { AppUser } from "../models/Appuser";
-import { v4 as uuid } from "uuid";
+import { v3 as uuidv3 } from "uuid";
+const UUID_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 /* =========================================================
 Get My Wallet
 ========================================================= */
@@ -265,7 +266,7 @@ export const createPayoutOrder = async (
     }
     const { amount }:any = req.body;
 
-    const orderId = `payout_${uuid()}`;
+    const orderId = `payout_${uuidv3(`${userId}_${Date.now()}`, UUID_NAMESPACE)}`;
 
     const response = await axios.post(
       "https://sandbox.cashfree.com/pg/orders",
