@@ -3,7 +3,10 @@ import {
   Column,
   Model,
   DataType,
+  ForeignKey,
+  BelongsTo,
 } from "sequelize-typescript";
+import { AppUser } from "./Appuser";
 
 @Table({
   tableName: "notifications",
@@ -29,11 +32,15 @@ export class Notification extends Model {
   })
   recipientType!: "patient" | "staff";
 
+  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
     allowNull: false,
   })
   senderId!: string;
+
+  @BelongsTo(() => AppUser, { foreignKey: "senderId", as: "sender" })
+  sender?: AppUser;
 
   @Column({
     type: DataType.ENUM("alert", "info", "reminder", "task-assigned", "test-result"),

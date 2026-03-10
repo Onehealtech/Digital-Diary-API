@@ -26,6 +26,13 @@ router.get(
   notificationController.getAllNotifications
 );
 
+// Get notification history for a specific patient (Doctor/Assistant)
+router.get(
+  "/patient/:patientId/history",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.getPatientNotificationHistory
+);
+
 // Update staff FCM token for push notifications
 router.put(
   "/fcm-token",
