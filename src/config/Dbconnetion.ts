@@ -23,6 +23,8 @@ import { Payout } from '../models/payout.model';
 import { WalletTransaction } from '../models/walletTransaction.model';
 import { BubbleScanResult } from '../models/BubbleScanResult';
 import { DiaryPage } from '../models/DiaryPage';
+import { DoctorOnboardRequest } from '../models/DoctorOnboardRequest';
+import { VendorDoctor } from '../models/VendorDoctor';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -75,6 +77,8 @@ export const sequelize = new Sequelize({
     WalletTransaction,
     BubbleScanResult,
     DiaryPage,
+    DoctorOnboardRequest,
+    VendorDoctor,
   ],
 
   // Logging configuration

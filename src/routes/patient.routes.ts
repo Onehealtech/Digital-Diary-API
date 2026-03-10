@@ -26,12 +26,14 @@ import {
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
+import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
+import { createPatientSchema } from "../schemas/staff.schemas";
 
 const router = Router();
 
 // Legacy routes (Accessed by Doctors)
-router.post("/", authCheck([UserRole.VENDOR]), createPatient);
+router.post("/", authCheck([UserRole.VENDOR]), validate({ body: createPatientSchema }), createPatient);
 router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('viewPatients'), getDoctorPatients);
 
 // Patient profile management (Accessed by Patients)
