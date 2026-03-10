@@ -14,6 +14,7 @@ import {
 } from "../service/wallet.service";
 import axios from "axios";
 import { AppUser } from "../models/Appuser";
+import { v4 as uuid } from "uuid";
 /* =========================================================
 Get My Wallet
 ========================================================= */
@@ -263,7 +264,6 @@ export const createPayoutOrder = async (
       return;
     }
     const { amount }:any = req.body;
-const { v4: uuid } = await import("uuid");
 
     const orderId = `payout_${uuid()}`;
 
