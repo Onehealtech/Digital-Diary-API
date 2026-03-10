@@ -130,6 +130,42 @@ class BubbleScanService {
             scannedAt: new Date(),
         });
 
+        // Sync to scan_logs table
+        try {
+            const scanLogPageId = `backend_page_${pageNumber}`;
+            const scanData: Record<string, any> = {};
+            for (const [qId, qResult] of Object.entries(enrichedResults)) {
+                scanData[qId] = qResult.answer;
+                if (qResult.questionText) {
+                    scanData[`${qId}_text`] = qResult.questionText;
+                }
+            }
+
+            const existingScanLog = await ScanLog.findOne({
+                where: { patientId, pageId: scanLogPageId },
+            });
+
+            if (existingScanLog) {
+                await existingScanLog.update({
+                    scanData,
+                    scannedAt: new Date(),
+                    isUpdated: true,
+                    updatedCount: existingScanLog.updatedCount + 1,
+                });
+            } else {
+                await ScanLog.create({
+                    patientId,
+                    pageId: scanLogPageId,
+                    scanData,
+                    scannedAt: new Date(),
+                    isUpdated: false,
+                    updatedCount: 0,
+                });
+            }
+        } catch (syncError: any) {
+            console.error("Failed to sync manual bubble scan to scan_logs:", syncError.message);
+        }
+
         return record;
     }
 

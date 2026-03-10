@@ -1,11 +1,14 @@
 import { Response } from "express";
 import { ScanLog } from "../models/ScanLog";
+import { BubbleScanResult } from "../models/BubbleScanResult";
 import { Patient } from "../models/Patient";
+import { DiaryPage } from "../models/DiaryPage";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { scanService } from "../service/scan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { logActivity } from "../utils/activityLogger";
+import { getDiaryTypeForCaseType } from "../utils/constants";
 
 /**
  * POST /api/v1/scan/submit
@@ -88,6 +91,67 @@ export const submitScan = async (
                 updatedCount: 0,
                 imageUrl: imageUrl || null,
             });
+        }
+
+        // Sync to bubble_scan_results table
+        try {
+            const pageNumberMatch = pageId.match(/(\d+)$/);
+            if (pageNumberMatch) {
+                const pageNumber = parseInt(pageNumberMatch[1], 10);
+                const bubblePageId = `page-${pageNumber}`;
+
+                // Look up patient's caseType to resolve diaryType
+                const patient = await Patient.findByPk(patientId, {
+                    attributes: ["caseType"],
+                });
+                const diaryType = getDiaryTypeForCaseType(patient?.caseType);
+
+                // Try to enrich with question text from DiaryPage
+                const diaryPage = await DiaryPage.findOne({
+                    where: { pageNumber, diaryType, isActive: true },
+                });
+
+                const enrichedResults: Record<string, any> = {};
+                for (const [qId, answer] of Object.entries(parsedScanData)) {
+                    if (qId.endsWith("_text")) continue; // skip text fields
+                    const questionDef = diaryPage?.questions?.find(
+                        (q: any) => q.id === qId
+                    );
+                    enrichedResults[qId] = {
+                        answer,
+                        confidence: 1.0,
+                        questionText: questionDef?.text || undefined,
+                        category: questionDef?.category || "uncategorized",
+                    };
+                }
+
+                const existingBubbleScan = await BubbleScanResult.findOne({
+                    where: { patientId, pageId: bubblePageId },
+                });
+
+                if (existingBubbleScan) {
+                    await existingBubbleScan.update({
+                        scanResults: enrichedResults,
+                        scannedAt: new Date(),
+                        imageUrl: imageUrl || existingBubbleScan.imageUrl,
+                    });
+                } else {
+                    await BubbleScanResult.create({
+                        patientId,
+                        pageId: bubblePageId,
+                        pageNumber,
+                        diaryPageId: diaryPage?.id || null,
+                        submissionType: "manual",
+                        processingStatus: "completed",
+                        scanResults: enrichedResults,
+                        scannedAt: new Date(),
+                        imageUrl: imageUrl || null,
+                    });
+                }
+            }
+        } catch (syncError: any) {
+            console.error("Failed to sync scan to bubble_scan_results:", syncError.message);
+            // Non-blocking: don't fail the main request if sync fails
         }
 
         // Update patient's lastActive timestamp (using updatedAt)
