@@ -187,6 +187,7 @@ class VisionScanService {
     }
     async manualSubmit(patientId, pageNumber, answers, diaryType) {
         const diaryPage = await visionScan_repository_1.visionScanRepository.findDiaryPage(pageNumber, diaryType);
+        console.log(diaryPage, "diaryPage");
         if (!diaryPage) {
             throw new AppError_1.AppError(404, `Diary page ${pageNumber} not found for ${diaryType}`);
         }
@@ -200,6 +201,7 @@ class VisionScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
+        console.log(enrichedResults, "enrichedResults");
         const record = await visionScan_repository_1.visionScanRepository.createScanRecord({
             patientId,
             pageNumber,
@@ -208,6 +210,8 @@ class VisionScanService {
             processingStatus: visionScan_types_1.ProcessingStatus.COMPLETED,
             scanResults: enrichedResults,
         });
+        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
+        console.log(record, "record");
         await visionScan_repository_1.visionScanRepository.syncToScanLog(patientId, pageNumber, enrichedResults);
         return record;
     }

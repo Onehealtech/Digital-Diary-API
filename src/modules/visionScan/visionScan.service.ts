@@ -275,6 +275,8 @@ class VisionScanService {
             pageNumber,
             diaryType
         );
+        console.log(diaryPage,"diaryPage");
+        
         if (!diaryPage) {
             throw new AppError(404, `Diary page ${pageNumber} not found for ${diaryType}`);
         }
@@ -289,7 +291,8 @@ class VisionScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
-
+        console.log(enrichedResults,"enrichedResults");
+        
         const record = await visionScanRepository.createScanRecord({
             patientId,
             pageNumber,
@@ -298,7 +301,8 @@ class VisionScanService {
             processingStatus: ProcessingStatus.COMPLETED,
             scanResults: enrichedResults,
         });
-
+        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
+        console.log(record,"record");
         await visionScanRepository.syncToScanLog(
             patientId,
             pageNumber,
