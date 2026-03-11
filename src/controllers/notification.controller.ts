@@ -112,6 +112,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         relatedTaskId,
         relatedTestName,
         actionUrl,
@@ -131,6 +132,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         relatedTaskId,
         relatedTestName,
         actionUrl,
@@ -161,6 +163,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         actionUrl,
         deliveryMethod,
         filters,
@@ -177,6 +180,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         actionUrl,
         deliveryMethod,
         filters,
@@ -341,6 +345,39 @@ class NotificationController {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return sendError(res, message);
+    }
+  }
+  /**
+   * POST /api/v1/notifications/translate
+   * Translate notification title and message to target language (Hindi by default)
+   */
+  async translateText(req: AuthRequest, res: Response) {
+    try {
+      const { title, message, targetLanguage = "hi" } = req.body;
+
+      if (!title && !message) {
+        return sendError(res, "At least one of title or message is required", 400);
+      }
+
+      // Dynamic import because google-translate-api-x is ESM-only
+      const { default: translate } = await (Function('return import("google-translate-api-x")')() as Promise<any>);
+
+      const results: { translatedTitle?: string; translatedMessage?: string } = {};
+
+      if (title) {
+        const titleResult = await translate(title, { to: targetLanguage });
+        results.translatedTitle = titleResult.text;
+      }
+
+      if (message) {
+        const messageResult = await translate(message, { to: targetLanguage });
+        results.translatedMessage = messageResult.text;
+      }
+
+      return sendResponse(res, results, "Translation successful");
+    } catch (error: any) {
+      console.error("Translation error:", error);
+      return sendError(res, error.message || "Translation failed");
     }
   }
 }

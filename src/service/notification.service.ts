@@ -21,6 +21,7 @@ interface CreateNotificationData {
   severity?: "low" | "medium" | "high" | "critical";
   title: string;
   message: string;
+  language?: "en" | "hi";
   relatedTaskId?: string;
   relatedTestName?: string;
   actionUrl?: string;
@@ -33,6 +34,7 @@ interface BulkNotificationData {
   severity?: "low" | "medium" | "high" | "critical";
   title: string;
   message: string;
+  language?: "en" | "hi";
   actionUrl?: string;
   deliveryMethod?: "in-app" | "sms" | "email";
   filters?: {
@@ -128,12 +130,57 @@ class NotificationService {
   }
 
   /**
+   * Build personalized greeting based on sender role and language
+   */
+  private async buildGreeting(
+    senderId: string,
+    patientName: string,
+    language: "en" | "hi" = "en"
+  ): Promise<string> {
+    const sender = await AppUser.findByPk(senderId, {
+      attributes: ["id", "fullName", "role", "parentId"],
+    });
+
+    if (!sender) return "";
+
+    let greeting = "";
+    if (sender.role === "ASSISTANT") {
+      // Look up parent doctor name
+      let doctorName = "your Doctor";
+      if (sender.parentId) {
+        const doctor = await AppUser.findByPk(sender.parentId, {
+          attributes: ["id", "fullName"],
+        });
+        if (doctor?.fullName) doctorName = `Dr. ${doctor.fullName}`;
+      }
+      greeting = `Hello ${patientName}, this is ${sender.fullName}, assistant to ${doctorName}.`;
+    } else {
+      greeting = `Hello ${patientName}, this is Dr. ${sender.fullName}.`;
+    }
+
+    // Translate greeting to Hindi if needed
+    if (language === "hi") {
+      try {
+        const { default: translate } = await (Function('return import("google-translate-api-x")')() as Promise<any>);
+        const result = await translate(greeting, { to: "hi" });
+        greeting = result.text;
+      } catch (err) {
+        console.error("Greeting translation error:", err);
+        // Fall back to English greeting
+      }
+    }
+
+    return greeting;
+  }
+
+  /**
    * Create single notification
    * Used by Doctor/Assistant to send to individual patient or staff
    */
   async createNotification(data: CreateNotificationData) {
     // Verify recipient exists and get FCM token
     let fcmToken: string | null = null;
+    let patientName = "";
 
     if (data.recipientType === "patient") {
       const patient = await Patient.findByPk(data.recipientId);
@@ -141,12 +188,22 @@ class NotificationService {
         throw new Error("Patient not found");
       }
       fcmToken = patient.fcmToken || null;
+      patientName = patient.fullName || "";
     } else {
       const staff = await AppUser.findByPk(data.recipientId);
       if (!staff) {
         throw new Error("Staff member not found");
       }
       fcmToken = staff.fcmToken || null;
+    }
+
+    // Build personalized greeting and prepend to message
+    let finalMessage = data.message;
+    if (data.recipientType === "patient" && patientName) {
+      const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+      if (greeting) {
+        finalMessage = `${greeting}\n\n${data.message}`;
+      }
     }
 
     const notification = await Notification.create({
@@ -156,7 +213,7 @@ class NotificationService {
       type: data.type,
       severity: data.severity || "low",
       title: data.title,
-      message: data.message,
+      message: finalMessage,
       relatedTaskId: data.relatedTaskId,
       relatedTestName: data.relatedTestName,
       actionUrl: data.actionUrl,
@@ -166,7 +223,7 @@ class NotificationService {
 
     // Send FCM push notification if token exists
     if (fcmToken) {
-      fcmService.sendPushNotification(fcmToken, data.title, data.message, {
+      fcmService.sendPushNotification(fcmToken, data.title, finalMessage, {
         notificationId: notification.id,
         type: data.type,
         severity: data.severity || "low",
@@ -203,7 +260,7 @@ class NotificationService {
       whereClause.status = filters.status;
     }
 
-    // Get all matching patients (include fcmToken for push)
+    // Get all matching patients (include fcmToken and fullName for greeting)
     const patients = await Patient.findAll({
       where: whereClause,
       attributes: ["id", "fullName", "fcmToken"],
@@ -213,22 +270,31 @@ class NotificationService {
       throw new Error("No patients found matching the filters");
     }
 
-    // Create notifications for all patients
+    // Create notifications for all patients with personalized greeting
     const notifications = await Promise.all(
-      patients.map((patient) =>
-        Notification.create({
+      patients.map(async (patient) => {
+        let finalMessage = data.message;
+        const patientName = patient.fullName || "";
+        if (patientName) {
+          const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+          if (greeting) {
+            finalMessage = `${greeting}\n\n${data.message}`;
+          }
+        }
+
+        return Notification.create({
           senderId: data.senderId,
           recipientId: patient.id,
           recipientType: "patient",
           type: data.type,
           severity: data.severity || "low",
           title: data.title,
-          message: data.message,
+          message: finalMessage,
           actionUrl: data.actionUrl,
           deliveryMethod: data.deliveryMethod || "in-app",
           delivered: true,
-        })
-      )
+        });
+      })
     );
 
     // Send FCM push to all patients with tokens
