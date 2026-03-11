@@ -19,6 +19,7 @@ export const submitScan = async (
         const { pageId, scanData } = req.body;
         console.log(pageId, scanData,"pageId, scanData");
         
+        
         // Validate required fields
         if (!pageId || !scanData) {
             res.status(400).json({
