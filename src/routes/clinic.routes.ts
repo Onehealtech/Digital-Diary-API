@@ -1,6 +1,6 @@
 import express from "express";
 import * as clinicController from "../controllers/clinic.controller";
-import { createReminder } from "../controllers/reminder.controller";
+import { createReminder, getPatientRemindersforadmin } from "../controllers/reminder.controller";
 import { authCheck } from "../middleware/authMiddleware";
 import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
@@ -22,5 +22,7 @@ router.post(
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     createReminder
 );
+
+router.get("/patients/:patientId", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), getPatientRemindersforadmin);
 
 export default router;

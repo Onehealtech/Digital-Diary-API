@@ -6,6 +6,7 @@ import { Op } from 'sequelize';
 
 // Import Models
 import { AppUser, AppUser as AppUserModel } from '../models/Appuser';
+import { Patient } from '../models/Patient';
 
 // Import Utils
 import { responseMiddleware } from '../utils/response';
@@ -85,6 +86,18 @@ export const authCheck = (allowedRoles: UserRole[]) => {
         return;
       }
 
+      // Force logout ON_HOLD or DELETED assistants
+      if (user.role === 'ASSISTANT') {
+        if (user.assistantStatus === 'ON_HOLD') {
+          responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, 'Your account is temporarily on hold. Contact your Doctor.');
+          return;
+        }
+        if (user.assistantStatus === 'DELETED') {
+          responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, 'Your account has been archived. Please contact your doctor.');
+          return;
+        }
+      }
+
       res.locals.auth = decoded;
       req.user = user;
       next();
@@ -119,6 +132,16 @@ export const patientAuthCheck = async (
     // Verify this is a patient token
     if (decoded.type !== "PATIENT") {
       responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, "Invalid patient token");
+      return;
+    }
+
+    // Check if patient is still active in DB (force logout for deactivated patients)
+    const patient = await Patient.findByPk(decoded.id, {
+      attributes: ["id", "status"],
+    });
+
+    if (!patient || patient.status === "INACTIVE") {
+      responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, "Your account has been deactivated. Please contact your doctor.");
       return;
     }
 

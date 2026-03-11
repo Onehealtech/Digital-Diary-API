@@ -104,6 +104,36 @@ export const initializeDatabase = async (): Promise<void> => {
     console.log('✅ Database connection established successfully');
 
     // await sequelize.sync({ alter: true }); // Add new columns to existing tables
+
+    // ── Targeted migrations (idempotent) ──────────────────────────────────
+    // Add patient deactivation columns and INACTIVE status
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        -- Add INACTIVE to status enum if not present
+        BEGIN
+          ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'INACTIVE';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        -- Add deactivation columns
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'deactivationReason') THEN
+          ALTER TABLE "patients" ADD COLUMN "deactivationReason" TEXT;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'deactivatedAt') THEN
+          ALTER TABLE "patients" ADD COLUMN "deactivatedAt" TIMESTAMP WITH TIME ZONE;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'deactivatedBy') THEN
+          ALTER TABLE "patients" ADD COLUMN "deactivatedBy" UUID;
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ Patient deactivation migration warning:', err instanceof Error ? err.message : err);
+    });
+
     console.log('✅ Database models synchronized');
 
   } catch (error) {

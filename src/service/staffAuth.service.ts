@@ -67,14 +67,26 @@ export const verifyStaffOTP = async (
         throw new Error("Invalid or expired OTP");
     }
 
-    // Get user details
+    // Get user details (paranoid: false to catch soft-deleted/archived assistants)
     const user = await AppUser.findOne({
         where: { email: email.toLowerCase() },
-        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified"],
+        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus"],
+        paranoid: false,
     });
 
     if (!user) {
         throw new Error("User not found");
+    }
+
+    // Block OTP verification for archived or on-hold assistants
+    if (user.role === "ASSISTANT") {
+        const status = (user as any).assistantStatus;
+        if (status === "DELETED") {
+            throw new Error("Your account has been archived. Please contact your doctor.");
+        }
+        if (status === "ON_HOLD") {
+            throw new Error("Your account is temporarily on hold. Contact your Doctor.");
+        }
     }
 
     // Generate JWT token

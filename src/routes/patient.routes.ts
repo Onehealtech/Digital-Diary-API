@@ -8,6 +8,8 @@ import {
     logCallAttempt,
     getTestProgress,
     getPatientsNeedingFollowUp,
+    deactivatePatient,
+    activatePatient,
     updateFcmToken,
     getPatientNotifications,
     getPatientNotificationStats,
@@ -75,6 +77,22 @@ router.put(
     "/:id",
     newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
     updatePatient
+);
+
+// Deactivate patient
+router.put(
+    "/:id/deactivate",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    deactivatePatient
+);
+
+// Activate patient
+router.put(
+    "/:id/activate",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    activatePatient
 );
 
 
