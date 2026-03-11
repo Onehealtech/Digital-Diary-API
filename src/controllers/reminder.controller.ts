@@ -140,6 +140,51 @@ export const getPatientReminders = async (
     }
 };
 
+export const getPatientRemindersforadmin = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.params.patientId;
+        const { status } = req.query;
+
+        const whereClause: any = { patientId };
+
+        // Filter by status if provided
+        if (status && ["PENDING", "READ", "EXPIRED"].includes(status as string)) {
+            whereClause.status = status;
+        }
+
+        const reminders = await Reminder.findAll({
+            where: whereClause,
+            order: [["reminderDate", "DESC"]],
+            attributes: [
+                "id",
+                "message",
+                "reminderDate",
+                "type",
+                "status",
+                "createdAt",
+            ],
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Reminders retrieved successfully",
+            data: {
+                reminders,
+                total: reminders.length,
+            },
+        });
+    } catch (error: any) {
+        console.error("Get patient reminders error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to retrieve reminders",
+        });
+    }
+};
+
 /**
  * PATCH /api/v1/patient/reminders/:id/read
  * Mark reminder as read

@@ -58,6 +58,7 @@ export const createAssistant = async (
                 callPatients: true,
                 exportData: false,
                 sendNotifications: false,
+                deactivatePatients: false,
             },
         });
 

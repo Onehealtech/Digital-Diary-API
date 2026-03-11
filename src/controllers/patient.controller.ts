@@ -300,6 +300,73 @@ export const getPatientsNeedingFollowUp = async (req: AuthRequest, res: Response
   }
 };
 
+/**
+ * PUT /api/v1/patients/:id/deactivate
+ * Deactivate a patient (set status to INACTIVE)
+ */
+export const deactivatePatient = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const { reason } = req.body;
+    if (!reason || typeof reason !== "string" || !reason.trim()) {
+      return sendError(res, "Deactivation reason is required", 400);
+    }
+
+    const patient = await patientService.deactivatePatient(id, requesterId, role, reason.trim());
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_DEACTIVATED",
+      details: { patientId: id, reason: reason.trim() },
+    });
+
+    return sendResponse(res, patient, "Patient deactivated successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
+/**
+ * PUT /api/v1/patients/:id/activate
+ * Reactivate an inactive patient
+ */
+export const activatePatient = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const patient = await patientService.activatePatient(id, requesterId, role);
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_ACTIVATED",
+      details: { patientId: id },
+    });
+
+    return sendResponse(res, patient, "Patient activated successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
 // =========================================================================
 // PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
 // =========================================================================

@@ -373,6 +373,89 @@ class PatientService {
   }
 
   /**
+   * Deactivate a patient — sets status to INACTIVE with reason.
+   */
+  async deactivatePatient(
+    patientId: string,
+    requesterId: string,
+    role: string,
+    reason: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can deactivate patients");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status === "INACTIVE") {
+      throw new Error("Patient is already inactive");
+    }
+
+    await patient.update({
+      status: "INACTIVE",
+      deactivationReason: reason,
+      deactivatedAt: new Date(),
+      deactivatedBy: requesterId,
+    });
+
+    return patient;
+  }
+
+  /**
+   * Reactivate an inactive patient — sets status back to ACTIVE.
+   */
+  async activatePatient(
+    patientId: string,
+    requesterId: string,
+    role: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can activate patients");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status !== "INACTIVE") {
+      throw new Error("Patient is not inactive");
+    }
+
+    await patient.update({
+      status: "ACTIVE",
+      deactivationReason: null,
+      deactivatedAt: null,
+      deactivatedBy: null,
+    });
+
+    return patient;
+  }
+
+  /**
    * Get patients needing follow-up
    * (No recent contact or incomplete tests)
    */
@@ -399,8 +482,8 @@ class PatientService {
       },
       attributes: [
         "id",
-        "name",
-        "phoneNumber",
+        "fullName",
+        "phone",
         "lastDoctorContact",
         "totalTestsPrescribed",
         "testCompletionPercentage",

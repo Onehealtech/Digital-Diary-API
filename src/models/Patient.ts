@@ -110,10 +110,28 @@ export class Patient extends Model {
   registeredDate?: Date;
 
   @Column({
-    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED"),
+    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE"),
     defaultValue: "ACTIVE",
   })
-  status!: "ACTIVE" | "CRITICAL" | "COMPLETED";
+  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE";
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  deactivationReason?: string;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  deactivatedAt?: Date;
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  deactivatedBy?: string;
 
   @Column({
     type: DataType.ENUM(

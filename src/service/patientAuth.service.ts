@@ -16,6 +16,10 @@ export const patientLogin = async (
         throw new Error("Invalid sticker ID. Please check your diary.");
     }
 
+    if (patient.status === "INACTIVE") {
+        throw new Error("Your account has been deactivated. Please contact your doctor.");
+    }
+
     return {
         message: "OTP Required. Please enter the verification code.",
         diaryId,
@@ -42,6 +46,10 @@ export const verifyPatientOTP = async (
 
     if (!patient) {
         throw new Error("Patient not found");
+    }
+
+    if (patient.status === "INACTIVE") {
+        throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
 
     // Generate long-lived JWT token (30 days for illiterate users)

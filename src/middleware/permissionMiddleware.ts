@@ -3,7 +3,7 @@ import { CustomRequest } from './authMiddleware';
 import { responseMiddleware } from '../utils/response';
 import { HTTP_STATUS, API_MESSAGES, UserRole } from '../utils/constants';
 
-type PermissionKey = 'viewPatients' | 'callPatients' | 'exportData' | 'sendNotifications';
+type PermissionKey = 'viewPatients' | 'callPatients' | 'exportData' | 'sendNotifications' | 'deactivatePatients';
 
 /**
  * Middleware factory that checks a specific permission for ASSISTANT users.
