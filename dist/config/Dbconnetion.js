@@ -82,7 +82,7 @@ exports.sequelize = new sequelize_typescript_1.Sequelize({
         VendorDoctor_1.VendorDoctor,
     ],
     // Logging configuration
-    logging: false,
+    logging: true,
     // Connection pool settings for better performance
     pool: {
         max: 5,
@@ -100,7 +100,7 @@ const initializeDatabase = async () => {
     try {
         await exports.sequelize.authenticate();
         console.log('✅ Database connection established successfully');
-        await exports.sequelize.sync({ alter: true }); // Add new columns to existing tables
+        // await sequelize.sync({ alter: true }); // Add new columns to existing tables
         console.log('✅ Database models synchronized');
     }
     catch (error) {

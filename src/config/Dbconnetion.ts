@@ -82,7 +82,7 @@ export const sequelize = new Sequelize({
   ],
 
   // Logging configuration
-   logging: false, // Disable SQL query logging for production
+   logging: true, // Disable SQL query logging for production
 
   // Connection pool settings for better performance
   pool: {
@@ -103,7 +103,7 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
 
-    await sequelize.sync({ alter: true }); // Add new columns to existing tables
+    // await sequelize.sync({ alter: true }); // Add new columns to existing tables
     console.log('✅ Database models synchronized');
 
   } catch (error) {
