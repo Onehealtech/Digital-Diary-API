@@ -60,6 +60,7 @@ class BubbleScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
+        console.log(enrichedResults, "enrichedResults");
         const record = await BubbleScanResult_1.BubbleScanResult.create({
             patientId,
             pageId: `page-${pageNumber}`,
@@ -70,6 +71,8 @@ class BubbleScanService {
             scanResults: enrichedResults,
             scannedAt: new Date(),
         });
+        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
+        console.log(record, "record");
         return record;
     }
     /**

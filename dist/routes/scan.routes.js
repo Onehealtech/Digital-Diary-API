@@ -35,4 +35,5 @@ const router = express_1.default.Router();
 // upload.single('image') allows an optional diary photo to be uploaded with the scan
 router.post("/submit", authMiddleware_1.patientAuthCheck, upload_middleware_1.upload.single("image"), scanController.submitScan);
 router.get("/history", authMiddleware_1.patientAuthCheck, scanController.getScanHistory);
+router.get("/history-admin/:patientId", scanController.getScanHistoryAdmin);
 exports.default = router;

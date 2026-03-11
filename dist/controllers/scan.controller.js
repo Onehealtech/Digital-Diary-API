@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDiaryEntryStats = exports.getEntriesNeedingReview = exports.toggleFlag = exports.reviewDiaryEntry = exports.getDiaryEntryById = exports.getAllDiaryEntries = exports.getScanHistory = exports.submitScan = void 0;
+exports.getDiaryEntryStats = exports.getEntriesNeedingReview = exports.toggleFlag = exports.reviewDiaryEntry = exports.getDiaryEntryById = exports.getAllDiaryEntries = exports.getScanHistoryAdmin = exports.getScanHistory = exports.submitScan = void 0;
 const ScanLog_1 = require("../models/ScanLog");
 const Patient_1 = require("../models/Patient");
 const scan_service_1 = require("../service/scan.service");
@@ -150,6 +150,40 @@ const getScanHistory = async (req, res) => {
     }
 };
 exports.getScanHistory = getScanHistory;
+const getScanHistoryAdmin = async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+        const patientId = req.params.patientId;
+        const { rows: scans, count: total } = await ScanLog_1.ScanLog.findAndCountAll({
+            where: { patientId },
+            limit: Number(limit),
+            offset,
+            order: [["scannedAt", "DESC"]],
+        });
+        res.status(200).json({
+            success: true,
+            message: "Scan history retrieved successfully",
+            data: {
+                scans,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    totalPages: Math.ceil(total / Number(limit)),
+                },
+            },
+        });
+    }
+    catch (error) {
+        console.error("Get scan history error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to retrieve scan history",
+        });
+    }
+};
+exports.getScanHistoryAdmin = getScanHistoryAdmin;
 /**
  * GET /api/v1/diary-entries
  * Get all diary entries for doctor/assistant to review

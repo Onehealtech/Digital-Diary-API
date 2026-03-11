@@ -99,6 +99,7 @@ class BubbleScanService {
         const diaryPage = await DiaryPage.findOne({
             where: { pageNumber, diaryType, isActive: true },
         });
+        
         if (!diaryPage) {
             throw new Error(
                 `Diary page ${pageNumber} not found for ${diaryType}`
@@ -118,7 +119,8 @@ class BubbleScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
-
+        console.log(enrichedResults,"enrichedResults");
+        
         const record = await BubbleScanResult.create({
             patientId,
             pageId: `page-${pageNumber}`,
@@ -129,7 +131,9 @@ class BubbleScanService {
             scanResults: enrichedResults,
             scannedAt: new Date(),
         });
-
+        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
+        console.log(record,"record");
+        
         return record;
     }
 

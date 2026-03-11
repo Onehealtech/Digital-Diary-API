@@ -169,6 +169,44 @@ export const getScanHistory = async (
         });
     }
 };
+export const getScanHistoryAdmin = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+
+        const patientId = req.params.patientId;
+
+        const { rows: scans, count: total } = await ScanLog.findAndCountAll({
+            where: { patientId },
+            limit: Number(limit),
+            offset,
+            order: [["scannedAt", "DESC"]],
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Scan history retrieved successfully",
+            data: {
+                scans,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    totalPages: Math.ceil(total / Number(limit)),
+                },
+            },
+        });
+    } catch (error: any) {
+        console.error("Get scan history error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to retrieve scan history",
+        });
+    }
+};
 
 /**
  * GET /api/v1/diary-entries
