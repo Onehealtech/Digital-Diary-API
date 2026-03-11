@@ -47,6 +47,13 @@ router.get(
   notificationController.getNotificationById
 );
 
+// Translate notification text (Doctor/Assistant only)
+router.post(
+  "/translate",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.translateText
+);
+
 // Send single notification (Doctor/Assistant only)
 router.post(
   "/",
