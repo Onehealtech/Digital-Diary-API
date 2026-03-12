@@ -65,7 +65,7 @@ export const createReminder = async (
 
         // Create reminder
         const reminder = await Reminder.create({
-            patientId:patient.id,
+            patientId: patient.id,
             message,
             reminderDate: new Date(reminderDate),
             type,
@@ -169,14 +169,7 @@ export const getPatientRemindersforadmin = async (
         const reminders = await Reminder.findAll({
             where: whereClause,
             order: [["reminderDate", "DESC"]],
-            attributes: [
-                "id",
-                "message",
-                "reminderDate",
-                "type",
-                "status",
-                "createdAt",
-            ],
+
         });
 
         res.status(200).json({
@@ -406,6 +399,7 @@ export const resendReminder = async (
     try {
         const { id } = req.params;
         const userId = req.user!.id;
+        const { newReminderDate, newReminderMessage } = req.body;
 
         const reminder = await Reminder.findOne({
             where: { id, createdBy: userId },
@@ -417,36 +411,68 @@ export const resendReminder = async (
             return;
         }
 
-        if (reminder.status === "ACCEPTED" || reminder.status === "CLOSED" || reminder.status === "EXPIRED") {
-             res.status(400).json({ success: false, message: `Cannot resend a reminder that is ${reminder.status}` });
-             return;
+        if (
+            reminder.status === "ACCEPTED" ||
+            reminder.status === "CLOSED" ||
+            reminder.status === "EXPIRED"
+        ) {
+            res.status(400).json({
+                success: false,
+                message: `Cannot resend a reminder that is ${reminder.status}`
+            });
+            return;
         }
 
         if (reminder.reminderCount >= 2) {
-            // Already sent twice. Auto-close it now.
             reminder.status = "CLOSED";
             await reminder.save();
-             res.status(400).json({ success: false, message: "Max resend limit reached. Reminder has been closed." });
-             return;
+
+            res.status(400).json({
+                success: false,
+                message: "Max resend limit reached. Reminder has been closed."
+            });
+            return;
         }
 
-        // Resend
+        // ✅ Save new reminder info
+        if (newReminderDate) {
+            reminder.newReminderDate = new Date(newReminderDate);
+        }
+
+        if (newReminderMessage) {
+            reminder.newReminderMessage = newReminderMessage;
+        }
+
         reminder.reminderCount += 1;
+
         await reminder.save();
 
+        // SMS
         if (reminder.patient?.phone) {
-            const smsContent = `[RESEND] OneHeal Appointment/Reminder: ${reminder.type}\nDate: ${new Date(reminder.reminderDate).toLocaleString()}\n${reminder.message}`;
-            twilioService.sendSMS(reminder.patient.phone, smsContent).catch(err => console.error("Twilio SMS resend err:", err));
+
+            const smsContent = `OneHeal Appointment Update
+
+Type: ${reminder.type}
+New Date: ${new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString()}
+
+${reminder.newReminderMessage || reminder.message}`;
+
+            twilioService
+                .sendSMS(reminder.patient.phone, smsContent)
+                .catch(err => console.error("Twilio SMS resend err:", err));
         }
 
         res.status(200).json({
             success: true,
-            message: "Reminder resent successfully",
+            message: "Reminder rescheduled and resent successfully",
             data: reminder,
         });
 
     } catch (error: any) {
-         console.error("Resend reminder error:", error);
-         res.status(500).json({ success: false, message: error.message || "Failed to resend reminder" });
+        console.error("Resend reminder error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to resend reminder"
+        });
     }
 };

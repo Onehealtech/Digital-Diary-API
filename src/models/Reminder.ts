@@ -82,4 +82,16 @@ export class Reminder extends Model {
 
     @BelongsTo(() => AppUser)
     creator!: AppUser;
+
+    @Column({
+        type: DataType.DATE,
+        allowNull: true,
+    })
+    newReminderDate?: Date;
+
+    @Column({
+        type: DataType.TEXT,
+        allowNull: true,
+    })
+    newReminderMessage?: string;
 }
