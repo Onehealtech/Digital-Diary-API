@@ -306,13 +306,19 @@ export const respondToReminder = async (
         const { status, rejectReason } = req.body;
 
         if (!status || !["ACCEPTED", "REJECTED"].includes(status)) {
-             res.status(400).json({ success: false, message: "Valid status (ACCEPTED/REJECTED) is required" });
-             return;
+            res.status(400).json({
+                success: false,
+                message: "Valid status (ACCEPTED/REJECTED) is required"
+            });
+            return;
         }
 
         const reminder = await Reminder.findOne({
             where: { id, patientId },
-            include: [{ model: Patient }]
+            include: [
+                { model: Patient },
+                { model: AppUser, as: "creator", attributes: ["id", "fullName", "email"] }
+            ]
         });
 
         if (!reminder) {
@@ -321,23 +327,32 @@ export const respondToReminder = async (
         }
 
         if (reminder.status === "CLOSED" || reminder.status === "EXPIRED") {
-             res.status(400).json({ success: false, message: "Cannot respond to this reminder anymore" });
-             return;
+            res.status(400).json({
+                success: false,
+                message: "Cannot respond to this reminder anymore"
+            });
+            return;
         }
 
+        // Update reminder status
         reminder.status = status as "ACCEPTED" | "REJECTED";
-        if (status === "REJECTED" && rejectReason) {
-            reminder.rejectReason = rejectReason;
+
+        if (status === "REJECTED") {
+            reminder.rejectReason = rejectReason || null;
         }
+
         await reminder.save();
 
-        // If rejected, notify doctor/assistant
+        // If rejected → notify doctor/assistant
         if (status === "REJECTED") {
-            const creator = await AppUser.findByPk(reminder.createdBy);
+
+            const creator = reminder.getDataValue("creator");
+
             if (creator) {
+
                 // In-app Notification
                 await Notification.create({
-                    senderId: patientId, // patient sending to staff
+                    senderId: creator.id, // must exist in app-users
                     recipientId: creator.id,
                     recipientType: "staff",
                     type: "alert",
@@ -358,7 +373,9 @@ export const respondToReminder = async (
                         reminder.type,
                         new Date(reminder.reminderDate).toLocaleString(),
                         rejectReason || "No reason given"
-                    ).catch(err => console.error("Rejection Email Error:", err));
+                    ).catch(err =>
+                        console.error("Rejection Email Error:", err)
+                    );
                 }
             }
         }
@@ -368,9 +385,13 @@ export const respondToReminder = async (
             message: `Reminder ${status.toLowerCase()} successfully`,
             data: reminder,
         });
+
     } catch (error: any) {
         console.error("Respond reminder error:", error);
-        res.status(500).json({ success: false, message: error.message || "Failed to respond to reminder" });
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to respond to reminder"
+        });
     }
 };
 
