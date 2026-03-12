@@ -119,11 +119,32 @@ __decorate([
 ], Patient.prototype, "registeredDate", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED"),
+        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE"),
         defaultValue: "ACTIVE",
     }),
     __metadata("design:type", String)
 ], Patient.prototype, "status", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.TEXT,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Patient.prototype, "deactivationReason", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.DATE,
+        allowNull: true,
+    }),
+    __metadata("design:type", Date)
+], Patient.prototype, "deactivatedAt", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.UUID,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Patient.prototype, "deactivatedBy", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.ENUM("PERI_OPERATIVE", "POST_OPERATIVE", "FOLLOW_UP", "CHEMOTHERAPY", "RADIOLOGY"),

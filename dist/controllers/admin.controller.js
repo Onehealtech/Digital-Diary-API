@@ -15,7 +15,7 @@ const walletTypeMap = {
 };
 const createStaff = async (req, res) => {
     try {
-        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, location, commissionType, commissionRate } = req.body;
+        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, location, commissionType, commissionRate, landLinePhone } = req.body;
         // ── Validate required fields ───────────────────────────────────
         if (!fullName || !email || !role) {
             res.status(400).json({
@@ -65,6 +65,7 @@ const createStaff = async (req, res) => {
             commissionRate,
             GST,
             location,
+            landLinePhone,
         });
         if (role == constants_1.UserRole.VENDOR) {
             const walletType = walletTypeMap[role];

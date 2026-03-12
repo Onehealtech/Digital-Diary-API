@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.markAllPatientNotificationsAsRead = exports.markPatientNotificationAsRead = exports.getPatientNotificationStats = exports.getPatientNotifications = exports.updateFcmToken = exports.getPatientsNeedingFollowUp = exports.getTestProgress = exports.logCallAttempt = exports.updateTestStatus = exports.prescribeTests = exports.updatePatient = exports.getPatientById = exports.getDoctorPatients = exports.createPatient = void 0;
+exports.markAllPatientNotificationsAsRead = exports.markPatientNotificationAsRead = exports.getPatientNotificationStats = exports.getPatientNotifications = exports.updateFcmToken = exports.activatePatient = exports.deactivatePatient = exports.getPatientsNeedingFollowUp = exports.getTestProgress = exports.logCallAttempt = exports.updateTestStatus = exports.prescribeTests = exports.updatePatient = exports.getPatientById = exports.getDoctorPatients = exports.createPatient = void 0;
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const patient_service_1 = require("../service/patient.service");
@@ -268,6 +268,66 @@ const getPatientsNeedingFollowUp = async (req, res) => {
     }
 };
 exports.getPatientsNeedingFollowUp = getPatientsNeedingFollowUp;
+/**
+ * PUT /api/v1/patients/:id/deactivate
+ * Deactivate a patient (set status to INACTIVE)
+ */
+const deactivatePatient = async (req, res) => {
+    try {
+        const id = req.params.id;
+        const requesterId = req.user?.id;
+        const role = req.user?.role;
+        if (!requesterId || !role) {
+            return (0, response_1.sendError)(res, "Unauthorized", 401);
+        }
+        const { reason } = req.body;
+        if (!reason || typeof reason !== "string" || !reason.trim()) {
+            return (0, response_1.sendError)(res, "Deactivation reason is required", 400);
+        }
+        const patient = await patient_service_1.patientService.deactivatePatient(id, requesterId, role, reason.trim());
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: requesterId,
+            userRole: role,
+            action: "PATIENT_DEACTIVATED",
+            details: { patientId: id, reason: reason.trim() },
+        });
+        return (0, response_1.sendResponse)(res, patient, "Patient deactivated successfully");
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return (0, response_1.sendError)(res, message, message.includes("not found") ? 404 : 400);
+    }
+};
+exports.deactivatePatient = deactivatePatient;
+/**
+ * PUT /api/v1/patients/:id/activate
+ * Reactivate an inactive patient
+ */
+const activatePatient = async (req, res) => {
+    try {
+        const id = req.params.id;
+        const requesterId = req.user?.id;
+        const role = req.user?.role;
+        if (!requesterId || !role) {
+            return (0, response_1.sendError)(res, "Unauthorized", 401);
+        }
+        const patient = await patient_service_1.patientService.activatePatient(id, requesterId, role);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: requesterId,
+            userRole: role,
+            action: "PATIENT_ACTIVATED",
+            details: { patientId: id },
+        });
+        return (0, response_1.sendResponse)(res, patient, "Patient activated successfully");
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return (0, response_1.sendError)(res, message, message.includes("not found") ? 404 : 400);
+    }
+};
+exports.activatePatient = activatePatient;
 // =========================================================================
 // PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
 // =========================================================================

@@ -38,4 +38,7 @@ const router = express_1.default.Router();
 router.post("/register-patient", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, validate_middleware_1.validate)({ body: staff_schemas_1.registerPatientSchema }), clinicController.registerPatient);
 // Doctor and Assistant can create reminders
 router.post("/create-reminder", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), reminder_controller_1.createReminder);
+router.get("/patients/:patientId", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), reminder_controller_1.getPatientRemindersforadmin);
+// Doctor and Assistant can resend an existing reminder
+router.post("/reminders/:id/resend", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), reminder_controller_1.resendReminder);
 exports.default = router;

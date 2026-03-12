@@ -62,6 +62,13 @@ __decorate([
 ], AppUser.prototype, "phone", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(50),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], AppUser.prototype, "landLinePhone", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.STRING(255),
         allowNull: false,
         unique: true,

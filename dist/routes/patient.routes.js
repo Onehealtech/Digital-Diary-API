@@ -21,6 +21,7 @@ router.get("/profile", authMiddleware_1.patientAuthCheck, patientProfile_control
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", authMiddleware_1.patientAuthCheck, reminder_controller_1.getPatientReminders);
 router.patch("/reminders/:id/read", authMiddleware_1.patientAuthCheck, reminder_controller_1.markReminderAsRead);
+router.patch("/reminders/:id/respond", authMiddleware_1.patientAuthCheck, reminder_controller_1.respondToReminder);
 // Patient FCM token (Accessed by Patients)
 router.put("/fcm-token", authMiddleware_1.patientAuthCheck, patient_controller_1.updateFcmToken);
 // Patient notifications (Accessed by Patients)
@@ -35,6 +36,10 @@ router.get("/follow-up", (0, authMiddleware_2.authCheck)([constants_1.UserRole.D
 router.get("/:id", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), (0, permissionMiddleware_1.requirePermission)('viewPatients'), patient_controller_1.getPatientById);
 // Update patient details
 router.put("/:id", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), patient_controller_1.updatePatient);
+// Deactivate patient
+router.put("/:id/deactivate", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('deactivatePatients'), patient_controller_1.deactivatePatient);
+// Activate patient
+router.put("/:id/activate", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('deactivatePatients'), patient_controller_1.activatePatient);
 // Update test status
 router.put("/:id/tests/:testName", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR]), patient_controller_1.updateTestStatus);
 // Log call attempt

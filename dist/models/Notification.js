@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Notification = void 0;
 const sequelize_typescript_1 = require("sequelize-typescript");
 const Appuser_1 = require("./Appuser");
+const Patient_1 = require("./Patient");
 let Notification = class Notification extends sequelize_typescript_1.Model {
 };
 __decorate([
@@ -116,6 +117,39 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], Notification.prototype, "delivered", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.TEXT,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Notification.prototype, "responseMessage", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.DATE,
+        allowNull: true,
+    }),
+    __metadata("design:type", Date)
+], Notification.prototype, "respondedAt", void 0);
+__decorate([
+    (0, sequelize_typescript_1.ForeignKey)(() => Patient_1.Patient),
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.UUID,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Notification.prototype, "responseId", void 0);
+__decorate([
+    (0, sequelize_typescript_1.BelongsTo)(() => Patient_1.Patient, { foreignKey: "responseId", as: "responseBy" }),
+    __metadata("design:type", Patient_1.Patient)
+], Notification.prototype, "responseBy", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.BOOLEAN,
+        defaultValue: false,
+    }),
+    __metadata("design:type", Boolean)
+], Notification.prototype, "isResponded", void 0);
 Notification = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "notifications",

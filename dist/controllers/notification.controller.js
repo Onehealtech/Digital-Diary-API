@@ -81,7 +81,7 @@ class NotificationController {
             if (!senderId || !["DOCTOR", "ASSISTANT"].includes(role || "")) {
                 return (0, response_1.sendError)(res, "Only doctors and assistants can send notifications", 403);
             }
-            const { recipientId, recipientType = "patient", type, severity, title, message, relatedTaskId, relatedTestName, actionUrl, deliveryMethod, } = req.body;
+            const { recipientId, recipientType = "patient", type, severity, title, message, language, relatedTaskId, relatedTestName, actionUrl, deliveryMethod, } = req.body;
             // Validation
             if (!recipientId || !type || !title || !message) {
                 return (0, response_1.sendError)(res, "recipientId, type, title, and message are required", 400);
@@ -94,6 +94,7 @@ class NotificationController {
                 severity,
                 title,
                 message,
+                language,
                 relatedTaskId,
                 relatedTestName,
                 actionUrl,
@@ -116,7 +117,7 @@ class NotificationController {
             if (!senderId || !["DOCTOR", "ASSISTANT"].includes(role || "")) {
                 return (0, response_1.sendError)(res, "Only doctors and assistants can send bulk notifications", 403);
             }
-            const { type, severity, title, message, actionUrl, deliveryMethod, filters, } = req.body;
+            const { type, severity, title, message, language, actionUrl, deliveryMethod, filters, } = req.body;
             // Validation
             if (!type || !title || !message) {
                 return (0, response_1.sendError)(res, "type, title, and message are required", 400);
@@ -127,6 +128,7 @@ class NotificationController {
                 severity,
                 title,
                 message,
+                language,
                 actionUrl,
                 deliveryMethod,
                 filters,
@@ -261,6 +263,56 @@ class NotificationController {
         catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             return (0, response_1.sendError)(res, message);
+        }
+    }
+    /**
+     * POST /api/v1/notifications/translate
+     * Translate notification title and message to target language (Hindi by default)
+     */
+    async translateText(req, res) {
+        try {
+            const { title, message, targetLanguage = "hi" } = req.body;
+            if (!title && !message) {
+                return (0, response_1.sendError)(res, "At least one of title or message is required", 400);
+            }
+            // Dynamic import because google-translate-api-x is ESM-only
+            const { default: translate } = await Function('return import("google-translate-api-x")')();
+            const results = {};
+            if (title) {
+                const titleResult = await translate(title, { to: targetLanguage });
+                results.translatedTitle = titleResult.text;
+            }
+            if (message) {
+                const messageResult = await translate(message, { to: targetLanguage });
+                results.translatedMessage = messageResult.text;
+            }
+            return (0, response_1.sendResponse)(res, results, "Translation successful");
+        }
+        catch (error) {
+            console.error("Translation error:", error);
+            return (0, response_1.sendError)(res, error.message || "Translation failed");
+        }
+    }
+    /**
+   * POST /api/v1/notifications/:id/respond
+   * Patient responds to a notification
+   */
+    async respondToNotification(req, res) {
+        try {
+            const notificationId = req.params.id;
+            const patientId = req.user?.id;
+            if (!patientId) {
+                return (0, response_1.sendError)(res, "Only patients can respond to notifications", 403);
+            }
+            const { message } = req.body;
+            if (!message) {
+                return (0, response_1.sendError)(res, "Response message is required", 400);
+            }
+            const result = await notification_service_1.notificationService.respondToNotification(notificationId, patientId, message);
+            return (0, response_1.sendResponse)(res, result, "Response sent successfully");
+        }
+        catch (error) {
+            return (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 500);
         }
     }
 }

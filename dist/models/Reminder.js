@@ -58,11 +58,25 @@ __decorate([
 ], Reminder.prototype, "type", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("PENDING", "READ", "EXPIRED"),
+        type: sequelize_typescript_1.DataType.ENUM("PENDING", "READ", "EXPIRED", "ACCEPTED", "REJECTED", "CLOSED"),
         defaultValue: "PENDING",
     }),
     __metadata("design:type", String)
 ], Reminder.prototype, "status", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.TEXT,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Reminder.prototype, "rejectReason", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.INTEGER,
+        defaultValue: 1,
+    }),
+    __metadata("design:type", Number)
+], Reminder.prototype, "reminderCount", void 0);
 __decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
@@ -75,6 +89,20 @@ __decorate([
     (0, sequelize_typescript_1.BelongsTo)(() => Appuser_1.AppUser),
     __metadata("design:type", Appuser_1.AppUser)
 ], Reminder.prototype, "creator", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.DATE,
+        allowNull: true,
+    }),
+    __metadata("design:type", Date)
+], Reminder.prototype, "newReminderDate", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.TEXT,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Reminder.prototype, "newReminderMessage", void 0);
 Reminder = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "reminders",

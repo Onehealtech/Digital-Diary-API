@@ -11,7 +11,7 @@ const activityLogger_1 = require("../utils/activityLogger");
  */
 const createAssistant = async (req, res) => {
     try {
-        const { fullName, email, phone } = req.body;
+        const { fullName, email, phone, landLinePhone } = req.body;
         // Validate required fields
         if (!fullName || !email) {
             res.status(400).json({
@@ -39,6 +39,7 @@ const createAssistant = async (req, res) => {
             email: email.toLowerCase(),
             password: plainPassword,
             phone,
+            landLinePhone,
             role: "ASSISTANT",
             parentId: req.user.id,
             isEmailVerified: false,
@@ -50,6 +51,7 @@ const createAssistant = async (req, res) => {
                 callPatients: true,
                 exportData: false,
                 sendNotifications: false,
+                deactivatePatients: false,
             },
         });
         // Send password email

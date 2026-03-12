@@ -404,7 +404,16 @@ class DashboardService {
                 },
             },
         });
+        // Fetch parent doctor name for the assistant banner
+        let doctorName = '';
+        if (doctorId) {
+            const doctor = await Appuser_1.AppUser.findByPk(doctorId, {
+                attributes: ['id', 'fullName'],
+            });
+            doctorName = doctor?.fullName ? `Dr. ${doctor.fullName}` : '';
+        }
         return {
+            doctorName,
             patients: {
                 total: totalPatients,
                 activeCases,

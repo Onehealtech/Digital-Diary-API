@@ -11,6 +11,7 @@ var UserRole;
     UserRole["VENDOR"] = "VENDOR";
     UserRole["DOCTOR"] = "DOCTOR";
     UserRole["ASSISTANT"] = "ASSISTANT";
+    UserRole["PATIENT"] = "PATIENT";
 })(UserRole = exports.UserRole || (exports.UserRole = {}));
 /**
  * API Response Messages

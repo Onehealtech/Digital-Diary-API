@@ -13,6 +13,7 @@ const cors_1 = __importDefault(require("cors"));
 const routes_1 = __importDefault(require("./routes"));
 const Dbconnetion_1 = require("./config/Dbconnetion");
 const fcm_service_1 = require("./service/fcm.service");
+const reminderCron_service_1 = require("./service/reminderCron.service");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
 // Allowed origins for CORS
@@ -75,6 +76,8 @@ const startServer = async () => {
         await (0, Dbconnetion_1.initializeDatabase)();
         // Initialize Firebase Admin SDK for push notifications
         fcm_service_1.fcmService.initialize();
+        // Start background jobs/cron intervals
+        reminderCron_service_1.reminderCronService.start();
         // Start Express server
         app.listen(PORT, () => {
             console.log(`🚀 Server is running on http://localhost:${PORT}`);

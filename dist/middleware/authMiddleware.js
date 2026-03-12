@@ -8,6 +8,7 @@ exports.patientAuthCheck = exports.authCheck = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 // Import Models
 const Appuser_1 = require("../models/Appuser");
+const Patient_1 = require("../models/Patient");
 // Import Utils
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
@@ -53,6 +54,17 @@ const authCheck = (allowedRoles) => {
                 (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.FORBIDDEN, constants_1.API_MESSAGES.FORBIDDEN);
                 return;
             }
+            // Force logout ON_HOLD or DELETED assistants
+            if (user.role === 'ASSISTANT') {
+                if (user.assistantStatus === 'ON_HOLD') {
+                    (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, 'Your account is temporarily on hold. Contact your Doctor.');
+                    return;
+                }
+                if (user.assistantStatus === 'DELETED') {
+                    (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, 'Your account has been archived. Please contact your doctor.');
+                    return;
+                }
+            }
             res.locals.auth = decoded;
             req.user = user;
             next();
@@ -80,6 +92,14 @@ const patientAuthCheck = async (req, res, next) => {
         // Verify this is a patient token
         if (decoded.type !== "PATIENT") {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, "Invalid patient token");
+            return;
+        }
+        // Check if patient is still active in DB (force logout for deactivated patients)
+        const patient = await Patient_1.Patient.findByPk(decoded.id, {
+            attributes: ["id", "status"],
+        });
+        if (!patient || patient.status === "INACTIVE") {
+            (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, "Your account has been deactivated. Please contact your doctor.");
             return;
         }
         // Attach patient info to request
