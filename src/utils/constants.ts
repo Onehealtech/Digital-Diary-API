@@ -7,6 +7,7 @@ export enum UserRole {
   VENDOR = 'VENDOR',
   DOCTOR = 'DOCTOR',
   ASSISTANT = 'ASSISTANT',
+  PATIENT = 'PATIENT',
 }
 
 /**

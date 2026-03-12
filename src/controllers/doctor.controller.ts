@@ -14,7 +14,7 @@ export const createAssistant = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { fullName, email, phone } = req.body;
+        const { fullName, email, phone , landLinePhone } = req.body;
 
         // Validate required fields
         if (!fullName || !email) {
@@ -47,6 +47,7 @@ export const createAssistant = async (
             email: email.toLowerCase(),
             password: plainPassword,
             phone,
+            landLinePhone,
             role: "ASSISTANT",
             parentId: req.user!.id, // Link to the Doctor
             isEmailVerified: false,

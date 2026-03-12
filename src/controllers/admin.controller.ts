@@ -21,7 +21,7 @@ export const createStaff = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, location, commissionType, commissionRate } = req.body;
+        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, location, commissionType, commissionRate , landLinePhone } = req.body;
 
         // ── Validate required fields ───────────────────────────────────
         if (!fullName || !email || !role) {
@@ -78,6 +78,7 @@ export const createStaff = async (
             commissionRate,
             GST,
             location,
+            landLinePhone,
         });
         if (role == UserRole.VENDOR) {
             const walletType = walletTypeMap[role];

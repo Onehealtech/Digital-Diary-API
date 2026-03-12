@@ -5,6 +5,7 @@ import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
 import { notificationRepository } from "../repositories/notification.repository";
 import { twilioService } from "./twilioService";
+import { sendEmail } from "../utils/common";
 
 interface NotificationFilters {
   page?: number;
@@ -331,10 +332,10 @@ class NotificationService {
         let finalMessage = data.message;
         const patientName = patient.fullName || "";
         if (patientName) {
-           const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
-           if (greeting) {
-             finalMessage = `${greeting}\n\n${data.message}`;
-           }
+          const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+          if (greeting) {
+            finalMessage = `${greeting}\n\n${data.message}`;
+          }
         }
         const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
         twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error("Twilio SMS bulk err:", err));
@@ -507,6 +508,69 @@ class NotificationService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async respondToNotification(
+    notificationId: any,
+    patientId: string,
+    message: string
+  ) {
+
+    const notification = await Notification.findOne({
+      where: {
+        id: notificationId,
+        recipientId: patientId,
+        recipientType: "patient",
+      },
+    });
+
+    if (!notification) {
+      throw new Error("Notification not found");
+    }
+
+    const patient = await Patient.findByPk(patientId);
+
+    if (!patient) {
+      throw new Error("Patient not found");
+    }
+
+    const staff = await AppUser.findByPk(notification.senderId);
+
+    if (!staff) {
+      throw new Error("Staff not found");
+    }
+
+    // Save responsez
+    notification.responseMessage = message;
+    notification.respondedAt = new Date();
+    notification.responseId = patientId;   // ✅ correct field
+    notification.isResponded = true;
+
+    await notification.save();
+
+    const responseText = `Patient ${patient.fullName} responded: ${message}`;
+
+    // In-app notification
+    await this.createNotification({
+      senderId: patientId,
+      recipientId: notification.senderId,
+      recipientType: "staff",
+      type: "info",
+      severity: "low",
+      title: "Patient Response",
+      message: responseText,
+    });
+
+    // Send SMS
+    if (staff.phone) {
+      twilioService
+        .sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
+        .catch((err) => console.error("Twilio SMS error:", err));
+    }
+
+    return {
+      message: "Response sent successfully",
     };
   }
 }

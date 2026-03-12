@@ -36,6 +36,11 @@ export class AppUser extends Model {
     allowNull: true,
   })
   phone?: string;
+  @Column({
+    type: DataType.STRING(50),
+    allowNull: true,
+  })
+  landLinePhone?: string;
 
   @Column({
     type: DataType.STRING(255),
