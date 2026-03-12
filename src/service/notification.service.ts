@@ -4,6 +4,7 @@ import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
 import { notificationRepository } from "../repositories/notification.repository";
+import { twilioService } from "./twilioService";
 
 interface NotificationFilters {
   page?: number;
@@ -230,6 +231,16 @@ class NotificationService {
       }).catch((err) => console.error("FCM push error:", err));
     }
 
+    // Send Twilio SMS if it's a patient and they have a phone number
+    if (data.recipientType === "patient") {
+      const patient = await Patient.findByPk(data.recipientId);
+      if (patient && patient.phone) {
+        // Strip out the long body or just send title + short body
+        const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
+        twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error("Twilio SMS err:", err));
+      }
+    }
+
     return notification;
   }
 
@@ -308,6 +319,27 @@ class NotificationService {
         severity: data.severity || "low",
       }).catch((err) => console.error("FCM multicast error:", err));
     }
+
+    // Send Twilio SMS to all patients with phone numbers
+    const patientsWithPhones = await Patient.findAll({
+      where: whereClause,
+      attributes: ["id", "fullName", "phone"]
+    });
+
+    patientsWithPhones.forEach(async (patient) => {
+      if (patient.phone) {
+        let finalMessage = data.message;
+        const patientName = patient.fullName || "";
+        if (patientName) {
+           const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+           if (greeting) {
+             finalMessage = `${greeting}\n\n${data.message}`;
+           }
+        }
+        const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
+        twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error("Twilio SMS bulk err:", err));
+      }
+    });
 
     return {
       message: `Notifications sent to ${notifications.length} patients`,
