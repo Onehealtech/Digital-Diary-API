@@ -98,4 +98,10 @@ router.delete(
   notificationController.deleteNotification
 );
 
+router.post(
+  "/notifications/:id/respond",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR , UserRole.PATIENT]),
+  notificationController.respondToNotification
+);
+
 export default router;

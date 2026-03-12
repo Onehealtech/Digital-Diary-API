@@ -161,3 +161,60 @@ export const sendOTPEmail = async (
     throw new Error("Failed to send OTP email");
   }
 };
+
+/**
+ * Send email when patient rejects an appointment
+ */
+export const sendAppointmentRejectionEmail = async (
+  staffEmail: string,
+  staffName: string,
+  patientName: string,
+  appointmentType: string,
+  appointmentDate: string,
+  rejectReason: string
+): Promise<void> => {
+  const mailOptions = {
+    from: `"OneHeal Alerts" <${process.env.SMTP_USER}>`,
+    to: staffEmail,
+    subject: `Appointment Rejected - ${patientName}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #dc3545; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .details { background: white; padding: 20px; border-left: 4px solid #dc3545; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>⚠️ Appointment Rejected</h2>
+          </div>
+          <div class="content">
+            <p>Hello Dr./Assistant <strong>${staffName}</strong>,</p>
+            <p>Your patient <strong>${patientName}</strong> has rejected an upcoming appointment/reminder.</p>
+            <div class="details">
+              <p><strong>Type:</strong> ${appointmentType}</p>
+              <p><strong>Original Date:</strong> ${appointmentDate}</p>
+              <p><strong>Reason Provided:</strong> ${rejectReason}</p>
+            </div>
+            <p>Please log in to the OneHeal dashboard to review and manage this alert.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Rejection email sent to ${staffEmail}`);
+  } catch (error) {
+    console.error(`❌ Failed to send rejection email to ${staffEmail}:`, error);
+    throw new Error("Failed to send rejection email");
+  }
+};

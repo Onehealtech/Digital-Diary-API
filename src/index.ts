@@ -12,6 +12,7 @@ import routes from './routes';
 import bodyParser from "body-parser";
 import { initializeDatabase } from './config/Dbconnetion';
 import { fcmService } from './service/fcm.service';
+import { reminderCronService } from './service/reminderCron.service';
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
@@ -94,6 +95,9 @@ const startServer = async () => {
 
     // Initialize Firebase Admin SDK for push notifications
     fcmService.initialize();
+
+    // Start background jobs/cron intervals
+    reminderCronService.start();
 
     // Start Express server
     app.listen(PORT, () => {

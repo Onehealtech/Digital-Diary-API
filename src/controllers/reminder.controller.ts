@@ -1,7 +1,11 @@
 import { Response } from "express";
 import { Reminder } from "../models/Reminder";
 import { Patient } from "../models/Patient";
+import { AppUser } from "../models/Appuser";
+import { Notification } from "../models/Notification";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { twilioService } from "../service/twilioService";
+import { sendAppointmentRejectionEmail } from "../service/emailService";
 
 /**
  * POST /api/v1/clinic/create-reminder
@@ -67,7 +71,14 @@ export const createReminder = async (
             type,
             status: "PENDING",
             createdBy: req.user!.id,
+            reminderCount: 1
         });
+
+        // Send Twilio SMS
+        if (patient.phone) {
+            const smsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${new Date(reminderDate).toLocaleString()}\n${message}`;
+            twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS reminder err:", err));
+        }
 
         res.status(201).json({
             success: true,
@@ -278,5 +289,143 @@ export const getDashboardReminders = async (
             success: false,
             message: error.message || "Failed to retrieve reminders",
         });
+    }
+};
+
+/**
+ * PATCH /api/v1/patient/reminders/:id/respond
+ * Patient responds to Reminder (ACCEPT/REJECT)
+ */
+export const respondToReminder = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const patientId = req.user!.id;
+        const { status, rejectReason } = req.body;
+
+        if (!status || !["ACCEPTED", "REJECTED"].includes(status)) {
+             res.status(400).json({ success: false, message: "Valid status (ACCEPTED/REJECTED) is required" });
+             return;
+        }
+
+        const reminder = await Reminder.findOne({
+            where: { id, patientId },
+            include: [{ model: Patient }]
+        });
+
+        if (!reminder) {
+            res.status(404).json({ success: false, message: "Reminder not found" });
+            return;
+        }
+
+        if (reminder.status === "CLOSED" || reminder.status === "EXPIRED") {
+             res.status(400).json({ success: false, message: "Cannot respond to this reminder anymore" });
+             return;
+        }
+
+        reminder.status = status as "ACCEPTED" | "REJECTED";
+        if (status === "REJECTED" && rejectReason) {
+            reminder.rejectReason = rejectReason;
+        }
+        await reminder.save();
+
+        // If rejected, notify doctor/assistant
+        if (status === "REJECTED") {
+            const creator = await AppUser.findByPk(reminder.createdBy);
+            if (creator) {
+                // In-app Notification
+                await Notification.create({
+                    senderId: patientId, // patient sending to staff
+                    recipientId: creator.id,
+                    recipientType: "staff",
+                    type: "alert",
+                    severity: "medium",
+                    title: "Appointment Rejected",
+                    message: `Patient ${reminder.patient?.fullName || "A patient"} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
+                    relatedTaskId: reminder.id,
+                    deliveryMethod: "in-app",
+                    delivered: true,
+                });
+
+                // Email Notification
+                if (creator.email) {
+                    await sendAppointmentRejectionEmail(
+                        creator.email,
+                        creator.fullName,
+                        reminder.patient?.fullName || "Unknown",
+                        reminder.type,
+                        new Date(reminder.reminderDate).toLocaleString(),
+                        rejectReason || "No reason given"
+                    ).catch(err => console.error("Rejection Email Error:", err));
+                }
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Reminder ${status.toLowerCase()} successfully`,
+            data: reminder,
+        });
+    } catch (error: any) {
+        console.error("Respond reminder error:", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to respond to reminder" });
+    }
+};
+
+/**
+ * POST /api/v1/clinic/reminders/:id/resend
+ * Doctor/Assistant resends the same reminder. Max 2 times total (original + 1 resend)
+ */
+export const resendReminder = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const userId = req.user!.id;
+
+        const reminder = await Reminder.findOne({
+            where: { id, createdBy: userId },
+            include: [{ model: Patient }]
+        });
+
+        if (!reminder) {
+            res.status(404).json({ success: false, message: "Reminder not found" });
+            return;
+        }
+
+        if (reminder.status === "ACCEPTED" || reminder.status === "CLOSED" || reminder.status === "EXPIRED") {
+             res.status(400).json({ success: false, message: `Cannot resend a reminder that is ${reminder.status}` });
+             return;
+        }
+
+        if (reminder.reminderCount >= 2) {
+            // Already sent twice. Auto-close it now.
+            reminder.status = "CLOSED";
+            await reminder.save();
+             res.status(400).json({ success: false, message: "Max resend limit reached. Reminder has been closed." });
+             return;
+        }
+
+        // Resend
+        reminder.reminderCount += 1;
+        await reminder.save();
+
+        if (reminder.patient?.phone) {
+            const smsContent = `[RESEND] OneHeal Appointment/Reminder: ${reminder.type}\nDate: ${new Date(reminder.reminderDate).toLocaleString()}\n${reminder.message}`;
+            twilioService.sendSMS(reminder.patient.phone, smsContent).catch(err => console.error("Twilio SMS resend err:", err));
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Reminder resent successfully",
+            data: reminder,
+        });
+
+    } catch (error: any) {
+         console.error("Resend reminder error:", error);
+         res.status(500).json({ success: false, message: error.message || "Failed to resend reminder" });
     }
 };

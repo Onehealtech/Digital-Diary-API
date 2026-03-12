@@ -7,9 +7,13 @@ import { redisConnection } from "./config/redis";
 import { initializeDatabase } from "./config/Dbconnetion";
 import { visionScanService } from "./modules/visionScan/visionScan.service";
 import { VISION_SCAN_QUEUE_NAME, VisionScanJobData } from "./modules/visionScan/visionScan.queue";
+import { reminderCronService } from "./service/reminderCron.service";
 
 async function start() {
     await initializeDatabase();
+    
+    // Start custom cron services
+    reminderCronService.start();
 
     const worker = new Worker<VisionScanJobData>(
         VISION_SCAN_QUEUE_NAME,

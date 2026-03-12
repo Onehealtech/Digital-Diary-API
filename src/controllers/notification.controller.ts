@@ -380,6 +380,40 @@ class NotificationController {
       return sendError(res, error.message || "Translation failed");
     }
   }
+  /**
+ * POST /api/v1/notifications/:id/respond
+ * Patient responds to a notification
+ */
+  async respondToNotification(req: AuthRequest, res: Response) {
+    try {
+      const notificationId = req.params.id;
+      const patientId = req.user?.id;
+
+      if (!patientId) {
+        return sendError(res, "Only patients can respond to notifications", 403);
+      }
+
+      const { message } = req.body;
+
+      if (!message) {
+        return sendError(res, "Response message is required", 400);
+      }
+
+      const result = await notificationService.respondToNotification(
+        notificationId,
+        patientId,
+        message
+      );
+
+      return sendResponse(res, result, "Response sent successfully");
+    } catch (error: any) {
+      return sendError(
+        res,
+        error.message,
+        error.message.includes("not found") ? 404 : 500
+      );
+    }
+  }
 }
 
 export const notificationController = new NotificationController();

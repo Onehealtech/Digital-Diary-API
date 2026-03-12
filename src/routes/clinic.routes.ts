@@ -1,6 +1,6 @@
 import express from "express";
 import * as clinicController from "../controllers/clinic.controller";
-import { createReminder, getPatientRemindersforadmin } from "../controllers/reminder.controller";
+import { createReminder, getPatientRemindersforadmin, resendReminder } from "../controllers/reminder.controller";
 import { authCheck } from "../middleware/authMiddleware";
 import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
@@ -24,5 +24,12 @@ router.post(
 );
 
 router.get("/patients/:patientId", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), getPatientRemindersforadmin);
+
+// Doctor and Assistant can resend an existing reminder
+router.post(
+    "/reminders/:id/resend",
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    resendReminder
+);
 
 export default router;

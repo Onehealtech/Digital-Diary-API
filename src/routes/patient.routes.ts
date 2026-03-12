@@ -24,6 +24,7 @@ import {
 import {
     getPatientReminders,
     markReminderAsRead,
+    respondToReminder
 } from "../controllers/reminder.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
@@ -46,6 +47,7 @@ router.get("/profile", patientAuthCheck, getProfile);
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", patientAuthCheck, getPatientReminders);
 router.patch("/reminders/:id/read", patientAuthCheck, markReminderAsRead);
+router.patch("/reminders/:id/respond", patientAuthCheck, respondToReminder);
 
 // Patient FCM token (Accessed by Patients)
 router.put("/fcm-token", patientAuthCheck, updateFcmToken);
