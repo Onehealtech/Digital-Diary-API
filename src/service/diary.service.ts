@@ -180,53 +180,66 @@ export class DiaryService {
     return diary;
   }
 
-  async getAllSoldDiaries(params: {
-    page?: number;
-    limit?: number;
-    vendorId?: string;
-    search?: string;
-  }) {
-    const page = params.page || 1;
-    const limit = params.limit || 50;
-    const offset = (page - 1) * limit;
+async getAllSoldDiaries(params: {
+  page?: number;
+  limit?: number;
+  vendorId?: string;
+  search?: string;
+}) {
+  const page = params.page || 1;
+  const limit = params.limit || 50;
+  const offset = (page - 1) * limit;
 
-    const where: any = {};
+  const where: any = {};
 
-    if (params.vendorId) {
-      where.vendorId = params.vendorId;
-    }
-
-    const diaries = await Diary.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [["createdAt", "DESC"]],
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-        },
-        {
-          model: AppUser,
-          as: "doctor",
-          attributes: ["id", "fullName", "email"],
-        },
-        {
-          model: AppUser,
-          as: "vendor",
-          attributes: ["id", "fullName", "email"],
-        },
-      ],
-    });
-
-    return {
-      data: diaries.rows,
-      total: diaries.count,
-      page,
-      limit,
-      totalPages: Math.ceil(diaries.count / limit),
-    };
+  if (params.vendorId) {
+    where.vendorId = params.vendorId;
   }
+
+  const diaries = await Diary.findAndCountAll({
+    where,
+    limit,
+    offset,
+    order: [["createdAt", "DESC"]],
+    include: [
+      {
+        model: Patient,
+        as: "patient",
+      },
+      {
+        model: AppUser,
+        as: "doctor",
+        attributes: ["id", "fullName", "email"],
+      },
+    ],
+  });
+
+  const rows = await Promise.all(
+    diaries.rows.map(async (diary: any) => {
+      let vendor = null;
+
+      if (diary.vendorId) {
+        vendor = await AppUser.findOne({
+          where: { id: diary.vendorId },
+          attributes: ["id", "fullName", "email"],
+        });
+      }
+
+      return {
+        ...diary.toJSON(),
+        vendor,
+      };
+    })
+  );
+
+  return {
+    data: rows,
+    total: diaries.count,
+    page,
+    limit,
+    totalPages: Math.ceil(diaries.count / limit),
+  };
+}
 
 
   /**

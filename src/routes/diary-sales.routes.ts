@@ -32,17 +32,17 @@ router.get(
   getMySales
 );
 
-// POST /api/v1/diary-sales/request — Request diaries from SuperAdmin (Vendor or Doctor)
+// POST /api/v1/diary-sales/request — Request diaries from SuperAdmin (Vendor, Doctor, or Assistant)
 router.post(
   "/request",
-  authCheck([UserRole.VENDOR, UserRole.DOCTOR]),
+  authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   requestDiaries
 );
 
 // GET /api/v1/diary-sales/requests — Get my diary requests
 router.get(
   "/requests",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   getMyDiaryRequests
 );
 

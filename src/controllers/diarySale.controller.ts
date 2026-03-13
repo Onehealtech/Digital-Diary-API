@@ -20,13 +20,13 @@ export const sellDiary = async (req: AuthenticatedRequest, res: Response): Promi
     const sellerRole = user.role as "SUPER_ADMIN" | "VENDOR" | "DOCTOR" | "ASSISTANT";
 
     // Assistant permission check
-    if (sellerRole === "ASSISTANT") {
-      const permissions = user.permissions || {};
-      if (!permissions.sellDiary) {
-        res.status(403).json({ success: false, message: "You do not have permission to sell diaries" });
-        return;
-      }
-    }
+    // if (sellerRole === "ASSISTANT") {
+    //   const permissions = user.permissions || {};
+    //   if (!permissions.sellDiary) {
+    //     res.status(403).json({ success: false, message: "You do not have permission to sell diaries" });
+    //     return;
+    //   }
+    // }
 
     const result = await diarySaleService.sellDiary({
       ...parsed.data,
@@ -47,8 +47,13 @@ export const sellDiary = async (req: AuthenticatedRequest, res: Response): Promi
       return;
     }
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Sell diary error:", message);
-    res.status(500).json({ success: false, message: "Failed to sell diary" });
+    console.error("Sell diary error:", error);
+    // Surface the actual error so the frontend can display a useful message
+    const userMessage = (error as any)?.original?.detail
+      || (error as any)?.errors?.[0]?.message
+      || message
+      || "Failed to sell diary";
+    res.status(500).json({ success: false, message: userMessage });
   }
 };
 

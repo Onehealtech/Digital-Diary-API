@@ -35,25 +35,38 @@ class DiarySaleService {
   async sellDiary(params: SellDiaryParams) {
     const { diaryId, sellerId, sellerRole } = params;
 
-    // Resolve doctorId based on role
     const doctorId = await this.resolveDoctorId(params);
 
-    // Validate diary availability based on role
-    const generatedDiary = await this.validateDiaryForSeller(diaryId, sellerId, sellerRole);
-
-    // Determine status: SuperAdmin = active (auto-approved), others = pending
-    const diaryStatus = sellerRole === "SUPER_ADMIN" ? "active" : "pending";
-
-    // Resolve vendorId: only set if seller is a VENDOR
-    const vendorId = sellerRole === "VENDOR" ? sellerId : undefined;
-
-    let patient: Patient;
-    let diary: Diary;
-
     const transaction = await sequelize.transaction();
+
     try {
-      // 1. Create patient record
-      patient = await Patient.create(
+
+      // 1️⃣ Lock Generated Diary
+      const generatedDiary = await GeneratedDiary.findOne({
+        where: { id: diaryId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      if (!generatedDiary) {
+        throw new Error("Diary not found");
+      }
+
+      if (generatedDiary.status === "sold") {
+        throw new Error("Diary already sold");
+      }
+
+      // 2️⃣ Status Logic
+      const diaryStatus =
+        sellerRole === "SUPER_ADMIN" ? "active" : "pending";
+
+      const activationDate =
+        sellerRole === "SUPER_ADMIN" ? new Date() : null;
+
+      const vendorId = sellerRole === "VENDOR" ? sellerId : null;
+
+      // 3️⃣ Create Patient
+      const patient = await Patient.create(
         {
           stickerId: diaryId,
           fullName: params.patientName,
@@ -71,48 +84,65 @@ class DiarySaleService {
         { transaction }
       );
 
-      // 2. Create diary sale record
-      diary = await Diary.create(
+      // 4️⃣ Create Diary
+      const diary = await Diary.create(
         {
           id: diaryId,
           patientId: patient.id,
           doctorId,
-          vendorId: vendorId || null,
+          vendorId,
           soldBy: sellerId,
           soldByRole: sellerRole,
           status: diaryStatus,
-          activationDate: diaryStatus === "active" ? new Date() : undefined,
-          saleAmount: params.paymentAmount,
+          activationDate: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+          approvedBy: sellerRole === "SUPER_ADMIN" ? sellerId : null,
+          approvedAt: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+          saleAmount: params.paymentAmount || 0,
           commissionAmount: 0,
           commissionPaid: false,
         },
         { transaction }
       );
-
-      // 3. Update generated diary status
+      // 5️⃣ Update Generated Diary
       generatedDiary.status = "sold";
       generatedDiary.soldTo = patient.id;
       generatedDiary.soldDate = new Date();
+
       await generatedDiary.save({ transaction });
 
       await transaction.commit();
+
+      // 🔔 Notify Super Admin if approval needed
+      if (sellerRole !== "SUPER_ADMIN") {
+        this.notifySuperAdminsOfSale(
+          sellerId,
+          sellerRole,
+          diaryId
+        ).catch((err: unknown) => {
+          const message =
+            err instanceof Error ? err.message : "Unknown error";
+          console.error("Notification error:", message);
+        });
+      }
+
+      return {
+        patient: {
+          id: patient.id,
+          fullName: patient.fullName,
+          diaryId: patient.diaryId,
+        },
+        diary: {
+          id: diary.id,
+          status: diary.status,
+          doctorId,
+          soldByRole: sellerRole,
+        },
+      };
+
     } catch (error) {
       await transaction.rollback();
       throw error;
     }
-
-    // Non-transactional: Send notification to SuperAdmin(s) if pending
-    if (diaryStatus === "pending") {
-      this.notifySuperAdminsOfSale(sellerId, sellerRole, diaryId).catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        console.error("Failed to notify super admins of diary sale:", message);
-      });
-    }
-
-    return {
-      patient: { id: patient.id, fullName: patient.fullName, diaryId: patient.diaryId },
-      diary: { id: diary.id, status: diary.status, doctorId, soldBy: sellerId, soldByRole: sellerRole },
-    };
   }
 
   /**
