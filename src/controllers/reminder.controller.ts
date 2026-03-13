@@ -355,7 +355,7 @@ export const respondToReminder = async (
                     message: `Patient ${reminder.patient?.fullName || "A patient"} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
                     relatedTaskId: reminder.id,
                     deliveryMethod: "in-app",
-                }); 
+                });
 
                 // Email Notification
                 if (creator.email) {
@@ -447,7 +447,22 @@ export const resendReminder = async (
         reminder.status = "PENDING"; // Reset so patient sees the new appointment with action buttons
 
         await reminder.save();
-
+        // 🔔 Create in-app notification
+        if (reminder.patient) {
+            await notificationService.createNotification({
+                senderId: userId,
+                recipientId: reminder.patient.id,
+                recipientType: "patient",
+                type: "reminder",
+                severity: "medium",
+                title: "Appointment Reminder Updated",
+                message: `Your ${reminder.type} appointment has been rescheduled to ${new Date(
+                    reminder.newReminderDate || reminder.reminderDate
+                ).toLocaleString()}.`,
+                relatedTaskId: reminder.id,
+                deliveryMethod: "in-app",
+            });
+        }
         // SMS
         if (reminder.patient?.phone) {
 

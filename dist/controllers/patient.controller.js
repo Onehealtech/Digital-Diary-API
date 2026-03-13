@@ -24,7 +24,7 @@ const createPatient = async (req, res) => {
             doctorId,
             diaryId,
             vendorId,
-            caseType: "PERI_OPERATIVE",
+            caseType: "PERI OPERATIVE",
         });
         (0, activityLogger_1.logActivity)({
             req,
