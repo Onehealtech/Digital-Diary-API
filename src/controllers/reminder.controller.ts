@@ -74,6 +74,7 @@ export const createReminder = async (
             createdBy: req.user!.id,
             reminderCount: 1
         });
+        
         await notificationService.createNotification({
             senderId: req.user!.id,
             recipientId: patient.id,

@@ -65,6 +65,17 @@ const createReminder = async (req, res) => {
             createdBy: req.user.id,
             reminderCount: 1
         });
+        await notification_service_1.notificationService.createNotification({
+            senderId: req.user.id,
+            recipientId: patient.id,
+            recipientType: "patient",
+            type: "reminder",
+            severity: "medium",
+            title: "New Appointment Reminder",
+            message: `You have a ${type} reminder scheduled on ${new Date(reminderDate).toLocaleString()}.`,
+            relatedTaskId: reminder.id,
+            deliveryMethod: "in-app",
+        });
         // Send Twilio SMS
         if (patient.phone) {
             const smsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${new Date(reminderDate).toLocaleString()}\n${message}`;
