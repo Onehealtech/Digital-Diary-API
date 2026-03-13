@@ -39,9 +39,27 @@ export class VendorProfile extends Model {
 
   @Column({
     type: DataType.STRING,
-    allowNull: false,
+    allowNull: true,
   })
-  location!: string;
+  location?: string;
+
+  @Column({
+    type: DataType.STRING(500),
+    allowNull: true,
+  })
+  address?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  city?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  state?: string;
 
   @Column({
     type: DataType.STRING,

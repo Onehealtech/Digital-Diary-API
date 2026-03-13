@@ -28,7 +28,7 @@ router.get(
 // GET /api/v1/generated-diaries/:id - Get diary by ID
 router.get(
   "/generated-diaries/:id",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   diaryController.getDiaryById.bind(diaryController)
 );
 

@@ -18,6 +18,9 @@ class DoctorOnboardRequestRepository {
     hospital?: string;
     specialization?: string;
     license?: string;
+    address?: string;
+    city?: string;
+    state?: string;
     commissionType?: string;
     commissionRate?: number;
     bankDetails?: Record<string, unknown>;

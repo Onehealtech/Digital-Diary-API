@@ -18,18 +18,19 @@ import { UserRole } from "../utils/constants";
 
 const router = Router();
 
-// ─── Any authenticated user ────────────────────────────────────────
-router.get("/me", authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]), getMyWallet);
-router.get("/me/ledger", authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]), getMyLedger);
+// ─── Any seller role (wallet holders) ─────────────────────────────
+const sellerRoles = [UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT];
+router.get("/me", authCheck(sellerRoles), getMyWallet);
+router.get("/me/ledger", authCheck(sellerRoles), getMyLedger);
 
 // ─── SuperAdmin only ───────────────────────────────────────────────
 router.get("/all", authCheck([UserRole.SUPER_ADMIN]), getAllWallets);
 router.get("/:userId", authCheck([UserRole.SUPER_ADMIN]), getUserWallet);
 router.post("/:userId/adjust", authCheck([UserRole.SUPER_ADMIN]), adjustWallet);
-router.post("/:userId/payout", authCheck([UserRole.VENDOR]), requestPayout);
+router.post("/:userId/payout", authCheck([UserRole.VENDOR, UserRole.DOCTOR]), requestPayout);
 router.post("/:userId/reconcile", authCheck([UserRole.SUPER_ADMIN]), reconcile);
-router.post("/create-payout-order", authCheck([UserRole.VENDOR]), createPayoutOrder);
-router.post("/record-advance", authCheck([UserRole.VENDOR]), recordAdvance);
+router.post("/create-payout-order", authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]), createPayoutOrder);
+router.post("/record-advance", authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]), recordAdvance);
 
 export default router;
 

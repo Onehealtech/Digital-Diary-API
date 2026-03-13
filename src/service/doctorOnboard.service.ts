@@ -15,6 +15,9 @@ interface SubmitRequestData {
   hospital?: string;
   specialization?: string;
   license?: string;
+  address?: string;
+  city?: string;
+  state?: string;
   commissionType?: string;
   commissionRate?: number;
   bank?: Record<string, unknown>;
@@ -47,6 +50,9 @@ class DoctorOnboardService {
       hospital: data.hospital,
       specialization: data.specialization,
       license: data.license,
+      address: data.address,
+      city: data.city,
+      state: data.state,
       commissionType: data.commissionType,
       commissionRate: data.commissionRate,
       bankDetails: data.bank,
@@ -152,6 +158,9 @@ class DoctorOnboardService {
           license: request.license,
           hospital: request.hospital,
           specialization: request.specialization,
+          address: request.address,
+          city: request.city,
+          state: request.state,
           commissionType: request.commissionType,
           commissionRate: request.commissionRate,
         },

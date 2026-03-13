@@ -23,12 +23,24 @@ export class DiaryRequest extends Model {
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  vendorId!: string;
+  vendorId?: string;
 
-  @BelongsTo(() => AppUser)
-  vendor!: AppUser;
+  @BelongsTo(() => AppUser, { foreignKey: "vendorId", as: "vendor" })
+  vendor?: AppUser;
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  requesterId?: string;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+  })
+  requesterRole?: "VENDOR" | "DOCTOR";
 
   @Column({
     type: DataType.INTEGER,

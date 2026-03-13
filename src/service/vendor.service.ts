@@ -85,7 +85,9 @@ export class VendorService {
     phone: string;
     password: string;
     businessName: string;
-    location: string;
+    address: string;
+    city: string;
+    state: string;
     gst: string;
     bankDetails: {
       accountNumber: string;
@@ -111,13 +113,18 @@ export class VendorService {
       phone: data.phone,
       password: data.password, // Will be hashed by BeforeCreate hook
       role: "VENDOR",
+      address: data.address,
+      city: data.city,
+      state: data.state,
     });
 
     // Create VendorProfile
     const vendorProfile = await VendorProfile.create({
       vendorId: vendor.id,
       businessName: data.businessName,
-      location: data.location,
+      address: data.address,
+      city: data.city,
+      state: data.state,
       gst: data.gst,
       bankDetails: data.bankDetails,
       commissionRate: data.commissionRate || 50,
@@ -136,7 +143,9 @@ export class VendorService {
       fullName?: string;
       phone?: string;
       businessName?: string;
-      location?: string;
+      address?: string;
+      city?: string;
+      state?: string;
       bankDetails?: any;
       commissionRate?: number;
       status?: string;
@@ -153,6 +162,9 @@ export class VendorService {
     // Update AppUser fields
     if (data.fullName) vendor.fullName = data.fullName;
     if (data.phone) vendor.phone = data.phone;
+    if (data.address) vendor.address = data.address;
+    if (data.city) vendor.city = data.city;
+    if (data.state) vendor.state = data.state;
     await vendor.save();
 
     // Update VendorProfile
@@ -162,7 +174,9 @@ export class VendorService {
 
     if (vendorProfile) {
       if (data.businessName) vendorProfile.businessName = data.businessName;
-      if (data.location) vendorProfile.location = data.location;
+      if (data.address) vendorProfile.address = data.address;
+      if (data.city) vendorProfile.city = data.city;
+      if (data.state) vendorProfile.state = data.state;
       if (data.bankDetails) vendorProfile.bankDetails = data.bankDetails;
       if (data.commissionRate !== undefined)
         vendorProfile.commissionRate = data.commissionRate;

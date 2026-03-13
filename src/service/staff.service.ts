@@ -560,6 +560,59 @@ async getVendorDoctors(
     };
   }
   /**
+   * Toggle a user's active/inactive status (SUPER_ADMIN, DOCTOR, or VENDOR).
+   * Prevents self-deactivation.
+   */
+  async toggleUserStatus(userId: string, toggledByUserId: string) {
+    if (userId === toggledByUserId) {
+      throw new Error("You cannot deactivate your own account");
+    }
+
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const newStatus = !user.isActive;
+    await user.update({ isActive: newStatus });
+
+    try {
+      await AuditLog.create({
+        userId: toggledByUserId,
+        userRole: "super_admin",
+        action: newStatus ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetEmail: user.email,
+          targetRole: user.role,
+          newStatus: newStatus ? "active" : "inactive",
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    return {
+      message: `${user.role} user ${newStatus ? "activated" : "deactivated"} successfully.`,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isActive: newStatus,
+      },
+    };
+  }
+
+  /**
    * Soft-delete a user (SUPER_ADMIN, DOCTOR, or VENDOR).
    * Prevents self-archiving. Uses Sequelize paranoid destroy.
    */
