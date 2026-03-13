@@ -74,6 +74,17 @@ export const createReminder = async (
             createdBy: req.user!.id,
             reminderCount: 1
         });
+        await notificationService.createNotification({
+            senderId: req.user!.id,
+            recipientId: patient.id,
+            recipientType: "patient",
+            type: "reminder",
+            severity: "medium",
+            title: "New Appointment Reminder",
+            message: `You have a ${type} reminder scheduled on ${new Date(reminderDate).toLocaleString()}.`,
+            relatedTaskId: reminder.id,
+            deliveryMethod: "in-app",
+        });
 
         // Send Twilio SMS
         if (patient.phone) {
