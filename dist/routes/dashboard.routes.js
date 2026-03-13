@@ -34,7 +34,7 @@ const permissionMiddleware_1 = require("../middleware/permissionMiddleware");
 const constants_1 = require("../utils/constants");
 const router = express_1.default.Router();
 // Doctor, Assistant, and Vendor can view patients
-router.get("/patients", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), (0, permissionMiddleware_1.requirePermission)('viewPatients'), dashboardController.getPatients);
+router.get("/patients", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR, constants_1.UserRole.SUPER_ADMIN]), (0, permissionMiddleware_1.requirePermission)('viewPatients'), dashboardController.getPatients);
 // Doctor and Assistant can view their created reminders
 router.get("/reminders", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), reminder_controller_1.getDashboardReminders);
 // Super Admin dashboard statistics

@@ -15,98 +15,125 @@ import { UserRole } from "../utils/constants";
  * - Vendor: all patients (works on behalf of pharmacist)
  */
 export const getPatients = async (
-    req: AuthenticatedRequest,
-    res: Response
+  req: AuthenticatedRequest,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { page = 1, limit = 10, status, search } = req.query;
+  try {
+    const { page = 1, limit = 10, status, search } = req.query;
 
-        const offset = (Number(page) - 1) * Number(limit);
+    const offset = (Number(page) - 1) * Number(limit);
 
-        let whereClause: any = {};
+    let whereClause: any = {};
 
-        // Determine which patients to show based on role
-        if (req.user!.role === UserRole.DOCTOR) {
-            // Doctor sees their own patients
-            whereClause.doctorId = req.user!.id;
-        } else if (req.user!.role === UserRole.ASSISTANT) {
-            // Assistant sees parent Doctor's patients
-            if (!req.user!.parentId) {
-                res.status(400).json({
-                    success: false,
-                    message: "Assistant is not linked to a Doctor",
-                });
-                return;
-            }
-            whereClause.doctorId = req.user!.parentId;
-            // If assistant has "selected" patient access, filter to assigned patients only
-            if (req.user!.patientAccessMode === "selected") {
-                const assigned: string[] = req.user!.assignedPatientIds || [];
-                if (assigned.length > 0) {
-                    whereClause.id = { [Op.in]: assigned };
-                } else {
-                    // No patients assigned — return empty
-                    whereClause.id = null;
-                }
-            }
-        } else if (req.user!.role === UserRole.VENDOR) {
-            // Vendor sees all patients (acts on behalf of pharmacist)
-            // NOTE: Can be scoped later with a VendorDoctor mapping table
-        } else {
-            res.status(403).json({
-                success: false,
-                message: "Unauthorized access",
-            });
-            return;
-        }
+    const role = req.user!.role;
 
-        // Add status filter if provided
-        if (status) {
-            whereClause.status = status;
-        }
-
-        // Add search filter if provided
-        if (search) {
-            whereClause.fullName = {
-                [Op.iLike]: `%${search}%`,
-            };
-        }
-
-        // Fetch patients with pagination
-        const { rows: patients, count: total } = await Patient.findAndCountAll({
-            where: whereClause,
-            include: [
-                {
-                    model: AppUser,
-                    as: "doctor",
-                    attributes: ["id", "fullName", "email"],
-                },
-            ],
-            limit: Number(limit),
-            offset,
-            order: [["createdAt", "DESC"]],
-        });
-
-        res.status(200).json({
-            success: true,
-            message: "Patients retrieved successfully",
-            data: {
-                patients,
-                pagination: {
-                    total,
-                    page: Number(page),
-                    limit: Number(limit),
-                    totalPages: Math.ceil(total / Number(limit)),
-                },
-            },
-        });
-    } catch (error: any) {
-        console.error("Get patients error:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Failed to retrieve patients",
-        });
+    /**
+     * SUPER ADMIN → all patients
+     */
+    if (role === UserRole.SUPER_ADMIN) {
+      // no filter
     }
+
+    /**
+     * DOCTOR → own patients
+     */
+    else if (role === UserRole.DOCTOR) {
+      whereClause.doctorId = req.user!.id;
+    }
+
+    /**
+     * ASSISTANT → doctor's patients
+     */
+    else if (role === UserRole.ASSISTANT) {
+      if (!req.user!.parentId) {
+        res.status(400).json({
+          success: false,
+          message: "Assistant is not linked to a Doctor",
+        });
+        return;
+      }
+
+      whereClause.doctorId = req.user!.parentId;
+
+      if (req.user!.patientAccessMode === "selected") {
+        const assigned: string[] = req.user!.assignedPatientIds || [];
+
+        if (assigned.length > 0) {
+          whereClause.id = { [Op.in]: assigned };
+        } else {
+          whereClause.id = null;
+        }
+      }
+    }
+
+    /**
+     * VENDOR → all patients
+     */
+    else if (role === UserRole.VENDOR) {
+      // no filter
+    }
+
+    else {
+      res.status(403).json({
+        success: false,
+        message: "Unauthorized access",
+      });
+      return;
+    }
+
+    /**
+     * STATUS FILTER
+     */
+    if (status) {
+      whereClause.status = status;
+    }
+
+    /**
+     * SEARCH FILTER
+     */
+    if (search) {
+      whereClause.fullName = {
+        [Op.iLike]: `%${search}%`,
+      };
+    }
+
+    /**
+     * FETCH DATA
+     */
+    const { rows: patients, count: total } = await Patient.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: AppUser,
+          as: "doctor",
+          attributes: ["id", "fullName", "email"],
+        },
+      ],
+      limit: Number(limit),
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Patients retrieved successfully",
+      data: {
+        patients,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Get patients error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to retrieve patients",
+    });
+  }
 };
 
 /**
@@ -221,3 +248,4 @@ export const getAssistantDashboard = async (
         sendError(res, error.message);
     }
 };
+

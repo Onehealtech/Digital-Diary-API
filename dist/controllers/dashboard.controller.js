@@ -19,13 +19,23 @@ const getPatients = async (req, res) => {
         const { page = 1, limit = 10, status, search } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
         let whereClause = {};
-        // Determine which patients to show based on role
-        if (req.user.role === constants_1.UserRole.DOCTOR) {
-            // Doctor sees their own patients
+        const role = req.user.role;
+        /**
+         * SUPER ADMIN → all patients
+         */
+        if (role === constants_1.UserRole.SUPER_ADMIN) {
+            // no filter
+        }
+        /**
+         * DOCTOR → own patients
+         */
+        else if (role === constants_1.UserRole.DOCTOR) {
             whereClause.doctorId = req.user.id;
         }
-        else if (req.user.role === constants_1.UserRole.ASSISTANT) {
-            // Assistant sees parent Doctor's patients
+        /**
+         * ASSISTANT → doctor's patients
+         */
+        else if (role === constants_1.UserRole.ASSISTANT) {
             if (!req.user.parentId) {
                 res.status(400).json({
                     success: false,
@@ -34,21 +44,21 @@ const getPatients = async (req, res) => {
                 return;
             }
             whereClause.doctorId = req.user.parentId;
-            // If assistant has "selected" patient access, filter to assigned patients only
             if (req.user.patientAccessMode === "selected") {
                 const assigned = req.user.assignedPatientIds || [];
                 if (assigned.length > 0) {
                     whereClause.id = { [sequelize_1.Op.in]: assigned };
                 }
                 else {
-                    // No patients assigned — return empty
                     whereClause.id = null;
                 }
             }
         }
-        else if (req.user.role === constants_1.UserRole.VENDOR) {
-            // Vendor sees all patients (acts on behalf of pharmacist)
-            // NOTE: Can be scoped later with a VendorDoctor mapping table
+        /**
+         * VENDOR → all patients
+         */
+        else if (role === constants_1.UserRole.VENDOR) {
+            // no filter
         }
         else {
             res.status(403).json({
@@ -57,17 +67,23 @@ const getPatients = async (req, res) => {
             });
             return;
         }
-        // Add status filter if provided
+        /**
+         * STATUS FILTER
+         */
         if (status) {
             whereClause.status = status;
         }
-        // Add search filter if provided
+        /**
+         * SEARCH FILTER
+         */
         if (search) {
             whereClause.fullName = {
                 [sequelize_1.Op.iLike]: `%${search}%`,
             };
         }
-        // Fetch patients with pagination
+        /**
+         * FETCH DATA
+         */
         const { rows: patients, count: total } = await Patient_1.Patient.findAndCountAll({
             where: whereClause,
             include: [

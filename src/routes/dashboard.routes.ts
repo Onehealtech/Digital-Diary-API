@@ -10,7 +10,7 @@ const router = express.Router();
 // Doctor, Assistant, and Vendor can view patients
 router.get(
     "/patients",
-    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR , UserRole.SUPER_ADMIN]),
     requirePermission('viewPatients'),
     dashboardController.getPatients
 );
@@ -59,5 +59,6 @@ router.get(
     authCheck([UserRole.ASSISTANT]),
     dashboardController.getAssistantDashboard
 );
+
 
 export default router;

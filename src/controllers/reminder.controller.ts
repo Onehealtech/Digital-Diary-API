@@ -6,6 +6,7 @@ import { Notification } from "../models/Notification";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { twilioService } from "../service/twilioService";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
+import { notificationService } from "../service/notification.service";
 
 /**
  * POST /api/v1/clinic/create-reminder
@@ -344,8 +345,8 @@ export const respondToReminder = async (
             if (creator) {
 
                 // In-app Notification
-                await Notification.create({
-                    senderId: creator.id, // must exist in app-users
+                await notificationService.createNotification({
+                    senderId: creator.id,
                     recipientId: creator.id,
                     recipientType: "staff",
                     type: "alert",
@@ -354,8 +355,7 @@ export const respondToReminder = async (
                     message: `Patient ${reminder.patient?.fullName || "A patient"} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
                     relatedTaskId: reminder.id,
                     deliveryMethod: "in-app",
-                    delivered: true,
-                });
+                }); 
 
                 // Email Notification
                 if (creator.email) {
@@ -444,6 +444,7 @@ export const resendReminder = async (
         }
 
         reminder.reminderCount += 1;
+        reminder.status = "PENDING"; // Reset so patient sees the new appointment with action buttons
 
         await reminder.save();
 

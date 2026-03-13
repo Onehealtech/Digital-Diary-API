@@ -4,9 +4,9 @@ exports.resendReminder = exports.respondToReminder = exports.getDashboardReminde
 const Reminder_1 = require("../models/Reminder");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
-const Notification_1 = require("../models/Notification");
 const twilioService_1 = require("../service/twilioService");
 const emailService_1 = require("../service/emailService");
+const notification_service_1 = require("../service/notification.service");
 /**
  * POST /api/v1/clinic/create-reminder
  * Doctor or Assistant creates a reminder for a patient
@@ -295,7 +295,7 @@ const respondToReminder = async (req, res) => {
             const creator = reminder.getDataValue("creator");
             if (creator) {
                 // In-app Notification
-                await Notification_1.Notification.create({
+                await notification_service_1.notificationService.createNotification({
                     senderId: creator.id,
                     recipientId: creator.id,
                     recipientType: "staff",
@@ -305,7 +305,6 @@ const respondToReminder = async (req, res) => {
                     message: `Patient ${reminder.patient?.fullName || "A patient"} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
                     relatedTaskId: reminder.id,
                     deliveryMethod: "in-app",
-                    delivered: true,
                 });
                 // Email Notification
                 if (creator.email) {
@@ -371,6 +370,7 @@ const resendReminder = async (req, res) => {
             reminder.newReminderMessage = newReminderMessage;
         }
         reminder.reminderCount += 1;
+        reminder.status = "PENDING"; // Reset so patient sees the new appointment with action buttons
         await reminder.save();
         // SMS
         if (reminder.patient?.phone) {
