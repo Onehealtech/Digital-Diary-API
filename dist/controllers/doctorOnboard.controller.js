@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getVendorDoctors = exports.removeDoctorFromVendor = exports.assignDoctorToVendor = exports.rejectRequest = exports.approveRequest = exports.getRequestById = exports.getAllRequests = exports.getMyRequests = exports.submitRequest = void 0;
+exports.getVendorDoctors = exports.removeDoctorFromVendor = exports.assignDoctorToVendor = exports.rejectRequest = exports.approveRequest = exports.checkDuplicateDoctor = exports.getRequestById = exports.getAllRequests = exports.getMyRequests = exports.submitRequest = void 0;
 const AppError_1 = require("../utils/AppError");
 const doctorOnboard_service_1 = require("../service/doctorOnboard.service");
 const activityLogger_1 = require("../utils/activityLogger");
@@ -92,6 +92,25 @@ const getRequestById = async (req, res) => {
     }
 };
 exports.getRequestById = getRequestById;
+/**
+ * SuperAdmin checks for duplicate doctors matching a request
+ */
+const checkDuplicateDoctor = async (req, res) => {
+    try {
+        const requestId = req.params.id;
+        const result = await doctorOnboard_service_1.doctorOnboardService.checkDuplicateDoctor(requestId);
+        res.status(200).json({ success: true, data: result });
+    }
+    catch (error) {
+        if (error instanceof AppError_1.AppError) {
+            res.status(error.statusCode).json({ success: false, message: error.message });
+            return;
+        }
+        console.error("Check duplicate doctor error:", error);
+        res.status(500).json({ success: false, message: "Failed to check for duplicate doctors" });
+    }
+};
+exports.checkDuplicateDoctor = checkDuplicateDoctor;
 /**
  * SuperAdmin approves a doctor onboard request
  */

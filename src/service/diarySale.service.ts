@@ -291,7 +291,8 @@ class DiarySaleService {
     const page = params.page || 1;
     const limit = params.limit || 20;
     const offset = (page - 1) * limit;
-
+    console.log( userId,role , "aaa");
+    
     const where: Record<string, unknown> = {};
 
     if (role === "SUPER_ADMIN") {
@@ -316,7 +317,7 @@ class DiarySaleService {
       include: [
         { model: Patient, as: "patient" },
         { model: AppUser, as: "doctor", attributes: ["id", "fullName", "email"] },
-        { model: AppUser, as: "vendor", attributes: ["id", "fullName", "email"] },
+        // { model: AppUser, as: "vendor", attributes: ["id", "fullName", "email"] },
       ],
       limit,
       offset,

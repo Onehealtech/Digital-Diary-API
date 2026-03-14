@@ -167,15 +167,23 @@ class DiaryService {
                     as: "doctor",
                     attributes: ["id", "fullName", "email"],
                 },
-                {
-                    model: Appuser_1.AppUser,
-                    as: "vendor",
-                    attributes: ["id", "fullName", "email"],
-                },
             ],
         });
+        const rows = await Promise.all(diaries.rows.map(async (diary) => {
+            let vendor = null;
+            if (diary.vendorId) {
+                vendor = await Appuser_1.AppUser.findOne({
+                    where: { id: diary.vendorId },
+                    attributes: ["id", "fullName", "email"],
+                });
+            }
+            return {
+                ...diary.toJSON(),
+                vendor,
+            };
+        }));
         return {
-            data: diaries.rows,
+            data: rows,
             total: diaries.count,
             page,
             limit,
@@ -228,18 +236,21 @@ class DiaryService {
         //   diary.commissionPaid = true;
         //   await diary.save();
         // }
-        // Create notification for vendor
-        await Notification_1.Notification.create({
-            recipientId: diary.vendorId,
-            recipientType: "staff",
-            senderId: superAdminId,
-            type: "info",
-            severity: "low",
-            title: "Diary Sale Approved",
-            message: `Your diary sale (${diaryId}) has been approved. Commission ₹${diary.commissionAmount} credited to your wallet.`,
-            read: false,
-            delivered: true,
-        });
+        // Create notification for the seller (soldBy or vendorId for backward compat)
+        const approvalRecipientId = diary.soldBy || diary.vendorId;
+        if (approvalRecipientId) {
+            await Notification_1.Notification.create({
+                recipientId: approvalRecipientId,
+                recipientType: "staff",
+                senderId: superAdminId,
+                type: "info",
+                severity: "low",
+                title: "Diary Sale Approved",
+                message: `Your diary sale (${diaryId}) has been approved and activated.`,
+                read: false,
+                delivered: true,
+            });
+        }
         return diary;
     }
     /**
@@ -259,18 +270,21 @@ class DiaryService {
         await diary.save();
         // Reset generated diary to assigned status
         await GeneratedDiary_1.GeneratedDiary.update({ status: "assigned", soldTo: undefined, soldDate: undefined }, { where: { id: diaryId } });
-        // Create notification for vendor
-        await Notification_1.Notification.create({
-            recipientId: diary.vendorId,
-            recipientType: "staff",
-            senderId: superAdminId,
-            type: "alert",
-            severity: "medium",
-            title: "Diary Sale Rejected",
-            message: `Your diary sale (${diaryId}) has been rejected. Reason: ${reason}`,
-            read: false,
-            delivered: true,
-        });
+        // Create notification for the seller (soldBy or vendorId for backward compat)
+        const rejectionRecipientId = diary.soldBy || diary.vendorId;
+        if (rejectionRecipientId) {
+            await Notification_1.Notification.create({
+                recipientId: rejectionRecipientId,
+                recipientType: "staff",
+                senderId: superAdminId,
+                type: "alert",
+                severity: "medium",
+                title: "Diary Sale Rejected",
+                message: `Your diary sale (${diaryId}) has been rejected. Reason: ${reason}`,
+                read: false,
+                delivered: true,
+            });
+        }
         return diary;
     }
     /**
@@ -393,11 +407,16 @@ class DiaryService {
             where: { status: "unassigned" },
             limit: request.quantity,
         });
+        // Resolve who to assign diaries to (requesterId for new requests, vendorId for legacy)
+        const assignToUserId = request.requesterId || request.vendorId;
+        if (!assignToUserId) {
+            throw new Error("Cannot determine who to assign diaries to");
+        }
         let diaryIds = [];
         if (availableDiaries.length >= request.quantity) {
             // Assign existing diaries
             diaryIds = availableDiaries.map((d) => d.id);
-            await this.bulkAssignDiaries(diaryIds, request.vendorId);
+            await this.bulkAssignDiaries(diaryIds, assignToUserId);
         }
         else {
             // Generate new diaries if not enough available
@@ -406,9 +425,9 @@ class DiaryService {
             const newDiaryIds = generated.diaries.map((d) => d.id);
             // Assign all diaries
             if (availableDiaries.length > 0) {
-                await this.bulkAssignDiaries(availableDiaries.map((d) => d.id), request.vendorId);
+                await this.bulkAssignDiaries(availableDiaries.map((d) => d.id), assignToUserId);
             }
-            await this.bulkAssignDiaries(newDiaryIds, request.vendorId);
+            await this.bulkAssignDiaries(newDiaryIds, assignToUserId);
             diaryIds = [...availableDiaries.map((d) => d.id), ...newDiaryIds];
         }
         // Update request
@@ -417,9 +436,9 @@ class DiaryService {
         request.fulfilledBy = superAdminId;
         request.assignedDiaryIds = diaryIds;
         await request.save();
-        // Notify vendor
+        // Notify requester
         await Notification_1.Notification.create({
-            recipientId: request.vendorId,
+            recipientId: assignToUserId,
             recipientType: "staff",
             senderId: superAdminId,
             type: "info",
@@ -445,18 +464,21 @@ class DiaryService {
         request.status = "rejected";
         request.rejectionReason = reason;
         await request.save();
-        // Notify vendor
-        await Notification_1.Notification.create({
-            recipientId: request.vendorId,
-            recipientType: "staff",
-            senderId: superAdminId,
-            type: "alert",
-            severity: "medium",
-            title: "Diary Request Rejected",
-            message: `Your request for ${request.quantity} diaries has been rejected. Reason: ${reason}`,
-            read: false,
-            delivered: true,
-        });
+        // Notify requester
+        const rejectRecipientId = request.requesterId || request.vendorId;
+        if (rejectRecipientId) {
+            await Notification_1.Notification.create({
+                recipientId: rejectRecipientId,
+                recipientType: "staff",
+                senderId: superAdminId,
+                type: "alert",
+                severity: "medium",
+                title: "Diary Request Rejected",
+                message: `Your request for ${request.quantity} diaries has been rejected. Reason: ${reason}`,
+                read: false,
+                delivered: true,
+            });
+        }
         return request;
     }
 }

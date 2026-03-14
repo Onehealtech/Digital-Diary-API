@@ -1,0 +1,372 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.diarySaleService = void 0;
+const Dbconnetion_1 = require("../config/Dbconnetion");
+const Appuser_1 = require("../models/Appuser");
+const Diary_1 = require("../models/Diary");
+const DiaryRequest_1 = require("../models/DiaryRequest");
+const GeneratedDiary_1 = require("../models/GeneratedDiary");
+const Notification_1 = require("../models/Notification");
+const Patient_1 = require("../models/Patient");
+const AppError_1 = require("../utils/AppError");
+const constants_1 = require("../utils/constants");
+const sequelize_1 = require("sequelize");
+class DiarySaleService {
+    /**
+     * Sell a diary — role-aware logic for all 4 roles.
+     *
+     * - SUPER_ADMIN: any available diary, auto-approved
+     * - VENDOR: diary assigned to them, pending approval
+     * - DOCTOR: diary assigned to them, pending approval
+     * - ASSISTANT: diary assigned to parent doctor, pending approval (requires sellDiary permission)
+     */
+    async sellDiary(params) {
+        const { diaryId, sellerId, sellerRole } = params;
+        const doctorId = await this.resolveDoctorId(params);
+        const transaction = await Dbconnetion_1.sequelize.transaction();
+        try {
+            // 1️⃣ Lock Generated Diary
+            const generatedDiary = await GeneratedDiary_1.GeneratedDiary.findOne({
+                where: { id: diaryId },
+                transaction,
+                lock: transaction.LOCK.UPDATE,
+            });
+            if (!generatedDiary) {
+                throw new Error("Diary not found");
+            }
+            if (generatedDiary.status === "sold") {
+                throw new Error("Diary already sold");
+            }
+            // 2️⃣ Status Logic
+            const diaryStatus = sellerRole === "SUPER_ADMIN" ? "active" : "pending";
+            const activationDate = sellerRole === "SUPER_ADMIN" ? new Date() : null;
+            const vendorId = sellerRole === "VENDOR" ? sellerId : null;
+            // 3️⃣ Create Patient
+            const patient = await Patient_1.Patient.create({
+                stickerId: diaryId,
+                fullName: params.patientName,
+                age: params.age,
+                gender: params.gender,
+                phone: params.phone,
+                address: params.address,
+                diaryId,
+                vendorId,
+                doctorId,
+                caseType: params.caseType || "PERI_OPERATIVE",
+                status: "ACTIVE",
+                registeredDate: new Date(),
+            }, { transaction });
+            // 4️⃣ Create Diary
+            const diary = await Diary_1.Diary.create({
+                id: diaryId,
+                patientId: patient.id,
+                doctorId,
+                vendorId,
+                soldBy: sellerId,
+                soldByRole: sellerRole,
+                status: diaryStatus,
+                activationDate: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+                approvedBy: sellerRole === "SUPER_ADMIN" ? sellerId : null,
+                approvedAt: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+                saleAmount: params.paymentAmount || 0,
+                commissionAmount: 0,
+                commissionPaid: false,
+            }, { transaction });
+            // 5️⃣ Update Generated Diary
+            generatedDiary.status = "sold";
+            generatedDiary.soldTo = patient.id;
+            generatedDiary.soldDate = new Date();
+            await generatedDiary.save({ transaction });
+            await transaction.commit();
+            // 🔔 Notify Super Admin if approval needed
+            if (sellerRole !== "SUPER_ADMIN") {
+                this.notifySuperAdminsOfSale(sellerId, sellerRole, diaryId).catch((err) => {
+                    const message = err instanceof Error ? err.message : "Unknown error";
+                    console.error("Notification error:", message);
+                });
+            }
+            return {
+                patient: {
+                    id: patient.id,
+                    fullName: patient.fullName,
+                    diaryId: patient.diaryId,
+                },
+                diary: {
+                    id: diary.id,
+                    status: diary.status,
+                    doctorId,
+                    soldByRole: sellerRole,
+                },
+            };
+        }
+        catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+    /**
+     * Resolve the doctorId based on seller role:
+     * - DOCTOR: self
+     * - ASSISTANT: parentId (their parent doctor)
+     * - VENDOR/SUPER_ADMIN: from request body (required)
+     */
+    async resolveDoctorId(params) {
+        const { sellerId, sellerRole, doctorId } = params;
+        if (sellerRole === "DOCTOR") {
+            return sellerId;
+        }
+        if (sellerRole === "ASSISTANT") {
+            const assistant = await Appuser_1.AppUser.findByPk(sellerId, { attributes: ["id", "parentId"] });
+            if (!assistant?.parentId) {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Assistant has no parent doctor assigned");
+            }
+            return assistant.parentId;
+        }
+        // VENDOR or SUPER_ADMIN must provide doctorId
+        if (!doctorId) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Doctor ID is required for this role");
+        }
+        const doctor = await Appuser_1.AppUser.findOne({ where: { id: doctorId, role: "DOCTOR" } });
+        if (!doctor) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.NOT_FOUND, "Doctor not found");
+        }
+        return doctorId;
+    }
+    /**
+     * Validate diary availability based on seller role:
+     * - SUPER_ADMIN: any diary with status unassigned or assigned
+     * - VENDOR: diary assigned to them with status assigned
+     * - DOCTOR: diary assigned to them with status assigned
+     * - ASSISTANT: diary assigned to parent doctor with status assigned
+     */
+    async validateDiaryForSeller(diaryId, sellerId, sellerRole) {
+        const diary = await GeneratedDiary_1.GeneratedDiary.findByPk(diaryId);
+        if (!diary) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.NOT_FOUND, "Diary not found");
+        }
+        if (diary.status === "sold" || diary.status === "active") {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Diary is already sold or active");
+        }
+        if (sellerRole === "SUPER_ADMIN") {
+            // SuperAdmin can sell any unassigned or assigned diary
+            if (diary.status !== "unassigned" && diary.status !== "assigned") {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Diary is not available for sale");
+            }
+            return diary;
+        }
+        // VENDOR or DOCTOR: diary must be assigned to them
+        if (sellerRole === "VENDOR" || sellerRole === "DOCTOR") {
+            if (diary.status !== "assigned" || diary.assignedTo !== sellerId) {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.FORBIDDEN, "Diary is not assigned to you");
+            }
+            return diary;
+        }
+        // ASSISTANT: diary must be assigned to parent doctor
+        if (sellerRole === "ASSISTANT") {
+            const assistant = await Appuser_1.AppUser.findByPk(sellerId, { attributes: ["id", "parentId"] });
+            if (!assistant?.parentId) {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Assistant has no parent doctor assigned");
+            }
+            if (diary.status !== "assigned" || diary.assignedTo !== assistant.parentId) {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.FORBIDDEN, "Diary is not assigned to your doctor");
+            }
+            return diary;
+        }
+        throw new AppError_1.AppError(constants_1.HTTP_STATUS.FORBIDDEN, "You are not authorized to sell diaries");
+    }
+    /**
+     * Get inventory for the current user based on role
+     */
+    async getInventory(userId, role, params) {
+        const page = params.page || 1;
+        const limit = params.limit || 50;
+        const offset = (page - 1) * limit;
+        const where = { status: "assigned" };
+        if (role === "SUPER_ADMIN") {
+            // SuperAdmin sees all unassigned + assigned diaries
+            where.status = { [sequelize_1.Op.in]: ["unassigned", "assigned"] };
+            delete where.assignedTo;
+        }
+        else if (role === "VENDOR" || role === "DOCTOR") {
+            where.assignedTo = userId;
+        }
+        else if (role === "ASSISTANT") {
+            const assistant = await Appuser_1.AppUser.findByPk(userId, { attributes: ["id", "parentId"] });
+            if (!assistant?.parentId) {
+                throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Assistant has no parent doctor assigned");
+            }
+            where.assignedTo = assistant.parentId;
+        }
+        if (params.search) {
+            where.id = { [sequelize_1.Op.iLike]: `%${params.search}%` };
+        }
+        const diaries = await GeneratedDiary_1.GeneratedDiary.findAndCountAll({
+            where,
+            limit,
+            offset,
+            order: [["generatedDate", "DESC"]],
+        });
+        return {
+            data: diaries.rows,
+            total: diaries.count,
+            page,
+            limit,
+            totalPages: Math.ceil(diaries.count / limit),
+        };
+    }
+    /**
+     * Get sales history for the current user based on role
+     */
+    async getSales(userId, role, params) {
+        const page = params.page || 1;
+        const limit = params.limit || 20;
+        const offset = (page - 1) * limit;
+        console.log(userId, role, "aaa");
+        const where = {};
+        if (role === "SUPER_ADMIN") {
+            // SuperAdmin sees only their own sales (soldBy = self)
+            where.soldBy = userId;
+        }
+        else if (role === "VENDOR") {
+            where.vendorId = userId;
+        }
+        else if (role === "DOCTOR") {
+            where.soldBy = userId;
+            where.soldByRole = "DOCTOR";
+        }
+        else if (role === "ASSISTANT") {
+            where.soldBy = userId;
+            where.soldByRole = "ASSISTANT";
+        }
+        if (params.status) {
+            where.status = params.status;
+        }
+        const diaries = await Diary_1.Diary.findAndCountAll({
+            where,
+            include: [
+                { model: Patient_1.Patient, as: "patient" },
+                { model: Appuser_1.AppUser, as: "doctor", attributes: ["id", "fullName", "email"] },
+                // { model: AppUser, as: "vendor", attributes: ["id", "fullName", "email"] },
+            ],
+            limit,
+            offset,
+            order: [["createdAt", "DESC"]],
+        });
+        return {
+            data: diaries.rows,
+            total: diaries.count,
+            page,
+            limit,
+            totalPages: Math.ceil(diaries.count / limit),
+        };
+    }
+    /**
+     * Request diaries (Vendor or Doctor)
+     */
+    async requestDiaries(userId, role, quantity, message, diaryType) {
+        const request = await DiaryRequest_1.DiaryRequest.create({
+            vendorId: role === "VENDOR" ? userId : undefined,
+            requesterId: userId,
+            requesterRole: role,
+            quantity,
+            message,
+            dairyType: diaryType,
+            status: "pending",
+            requestDate: new Date(),
+        });
+        // Notify super admins
+        const superAdmins = await Appuser_1.AppUser.findAll({ where: { role: "SUPER_ADMIN" } });
+        const requester = await Appuser_1.AppUser.findByPk(userId, { attributes: ["fullName"] });
+        for (const admin of superAdmins) {
+            Notification_1.Notification.create({
+                recipientId: admin.id,
+                recipientType: "staff",
+                senderId: userId,
+                type: "info",
+                severity: "medium",
+                title: "New Diary Request",
+                message: `${role} ${requester?.fullName || "Unknown"} has requested ${quantity} diaries.`,
+                read: false,
+                delivered: true,
+            }).catch((err) => {
+                const msg = err instanceof Error ? err.message : "Unknown error";
+                console.error("Failed to create diary request notification:", msg);
+            });
+        }
+        return request;
+    }
+    /**
+     * Get diary requests for the current user
+     */
+    async getMyDiaryRequests(userId, role, params) {
+        const page = params.page || 1;
+        const limit = params.limit || 20;
+        const offset = (page - 1) * limit;
+        const where = {};
+        if (role === "VENDOR") {
+            where.vendorId = userId;
+        }
+        else if (role === "DOCTOR") {
+            where.requesterId = userId;
+            where.requesterRole = "DOCTOR";
+        }
+        if (params.status) {
+            where.status = params.status;
+        }
+        const requests = await DiaryRequest_1.DiaryRequest.findAndCountAll({
+            where,
+            limit,
+            offset,
+            order: [["requestDate", "DESC"]],
+        });
+        return {
+            data: requests.rows,
+            total: requests.count,
+            page,
+            limit,
+            totalPages: Math.ceil(requests.count / limit),
+        };
+    }
+    /**
+     * Mark a diary sale as fund transferred.
+     * Checks that the diary was sold by the requesting user (via soldBy or vendorId).
+     */
+    async markFundTransferred(diaryId, userId) {
+        const diary = await Diary_1.Diary.findOne({
+            where: {
+                id: diaryId,
+                [sequelize_1.Op.or]: [{ soldBy: userId }, { vendorId: userId }],
+            },
+        });
+        if (!diary) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.NOT_FOUND, "Sale record not found");
+        }
+        if (diary.fundTransferred) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.BAD_REQUEST, "Funds already transferred for this sale");
+        }
+        diary.fundTransferred = true;
+        await diary.save();
+        return { message: "Sale marked as fund transferred", diaryId };
+    }
+    /**
+     * Fire-and-forget notification to SuperAdmins about a new pending sale
+     */
+    async notifySuperAdminsOfSale(sellerId, sellerRole, diaryId) {
+        const superAdmins = await Appuser_1.AppUser.findAll({ where: { role: "SUPER_ADMIN" } });
+        const seller = await Appuser_1.AppUser.findByPk(sellerId, { attributes: ["fullName"] });
+        for (const admin of superAdmins) {
+            await Notification_1.Notification.create({
+                recipientId: admin.id,
+                recipientType: "staff",
+                senderId: sellerId,
+                type: "info",
+                severity: "medium",
+                title: "New Diary Sale Pending Approval",
+                message: `${sellerRole} ${seller?.fullName || "Unknown"} sold diary ${diaryId}. Awaiting your approval.`,
+                read: false,
+                delivered: true,
+            });
+        }
+    }
+}
+exports.diarySaleService = new DiarySaleService();

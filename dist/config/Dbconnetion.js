@@ -129,6 +129,61 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ Patient deactivation migration warning:', err instanceof Error ? err.message : err);
         });
+        // Ensure app-users table has all model-defined columns
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'license') THEN
+          ALTER TABLE "app-users" ADD COLUMN "license" VARCHAR(255);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'hospital') THEN
+          ALTER TABLE "app-users" ADD COLUMN "hospital" VARCHAR(255);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'specialization') THEN
+          ALTER TABLE "app-users" ADD COLUMN "specialization" VARCHAR(255);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'landLinePhone') THEN
+          ALTER TABLE "app-users" ADD COLUMN "landLinePhone" VARCHAR(50);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'address') THEN
+          ALTER TABLE "app-users" ADD COLUMN "address" VARCHAR(500);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'city') THEN
+          ALTER TABLE "app-users" ADD COLUMN "city" VARCHAR(100);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'state') THEN
+          ALTER TABLE "app-users" ADD COLUMN "state" VARCHAR(100);
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ app-users column migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Ensure diaries table has seller tracking columns
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'diaries' AND column_name = 'soldBy') THEN
+          ALTER TABLE "diaries" ADD COLUMN "soldBy" UUID;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'diaries' AND column_name = 'soldByRole') THEN
+          ALTER TABLE "diaries" ADD COLUMN "soldByRole" VARCHAR(20);
+        END IF;
+
+        -- Make vendorId nullable (was NOT NULL for vendor-only sales)
+        ALTER TABLE "diaries" ALTER COLUMN "vendorId" DROP NOT NULL;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ diaries seller tracking migration warning:', err instanceof Error ? err.message : err);
+        });
         console.log('✅ Database models synchronized');
     }
     catch (error) {

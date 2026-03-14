@@ -92,7 +92,8 @@ export const getMySales = async (req: AuthenticatedRequest, res: Response): Prom
   try {
     const user = req.user!;
     const { page, limit, status } = req.query;
-
+    console.log(user,"user");
+    
     const result = await diarySaleService.getSales(user.id, user.role, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
