@@ -419,6 +419,32 @@ class DiarySaleService {
   }
 
   /**
+   * Mark a diary sale as fund transferred.
+   * Checks that the diary was sold by the requesting user (via soldBy or vendorId).
+   */
+  async markFundTransferred(diaryId: string, userId: string) {
+    const diary = await Diary.findOne({
+      where: {
+        id: diaryId,
+        [Op.or]: [{ soldBy: userId }, { vendorId: userId }],
+      },
+    });
+
+    if (!diary) {
+      throw new AppError(HTTP_STATUS.NOT_FOUND, "Sale record not found");
+    }
+
+    if (diary.fundTransferred) {
+      throw new AppError(HTTP_STATUS.BAD_REQUEST, "Funds already transferred for this sale");
+    }
+
+    diary.fundTransferred = true;
+    await diary.save();
+
+    return { message: "Sale marked as fund transferred", diaryId };
+  }
+
+  /**
    * Fire-and-forget notification to SuperAdmins about a new pending sale
    */
   private async notifySuperAdminsOfSale(

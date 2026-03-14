@@ -176,3 +176,31 @@ export const getMyDiaryRequests = async (req: AuthenticatedRequest, res: Respons
     res.status(500).json({ success: false, message: "Failed to fetch diary requests" });
   }
 };
+
+/**
+ * PUT /api/v1/diary-sales/:diaryId/mark-transferred
+ * Mark a diary sale as fund transferred
+ */
+export const markFundTransferred = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const diaryId = req.params.diaryId as string;
+
+    if (!diaryId) {
+      res.status(400).json({ success: false, message: "Diary ID is required" });
+      return;
+    }
+
+    const userId = req.user!.id;
+    const result = await diarySaleService.markFundTransferred(diaryId, userId);
+
+    res.status(200).json({ success: true, message: result.message, data: result });
+  } catch (error: unknown) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Mark fund transferred error:", message);
+    res.status(500).json({ success: false, message: "Failed to mark fund as transferred" });
+  }
+};

@@ -30,9 +30,9 @@ export const createStaffSchema = z.object({
     required_error: "Role is required",
     invalid_type_error: "Invalid role",
   }),
-  hospital: z.string().max(100).optional(),
-  specialization: z.string().max(100).optional(),
-  license: z.string().max(30).optional(),
+  hospital: z.string().max(100).optional().transform(v => v?.trim() || undefined),
+  specialization: z.string().max(100).optional().transform(v => v?.trim() || undefined),
+  license: z.string().max(30).optional().transform(v => v?.trim() || undefined),
   GST: z
     .string()
     .regex(
@@ -40,9 +40,10 @@ export const createStaffSchema = z.object({
       "Invalid GST format"
     )
     .optional(),
-  address: z.string().max(500, "Address must be 500 characters or less").optional(),
-  city: z.string().max(100, "City must be 100 characters or less").optional(),
-  state: z.string().max(100, "State must be 100 characters or less").optional(),
+  address: z.string().max(500, "Address must be 500 characters or less").optional().transform(v => v?.trim() || undefined),
+  city: z.string().max(100, "City must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  state: z.string().max(100, "State must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  landLinePhone: z.string().max(15).optional().transform(v => v?.trim() || undefined),
   commissionType: z.enum(["FIXED", "PERCENTAGE"]).optional(),
   commissionRate: z.number().min(0).optional(),
   bank: z.record(z.unknown()).optional(),

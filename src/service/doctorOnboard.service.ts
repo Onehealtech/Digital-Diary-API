@@ -5,6 +5,7 @@ import { HTTP_STATUS } from "../utils/constants";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "./emailService";
 import { createCashfreeVendor } from "./cashfree-vendor.service";
+import { createWallet } from "./wallet.service";
 import { doctorOnboardRequestRepository } from "../repositories/doctorOnboardRequest.repository";
 import { vendorDoctorRepository } from "../repositories/vendorDoctor.repository";
 
@@ -207,6 +208,12 @@ class DoctorOnboardService {
       console.error(`Cashfree registration failed for ${request.email}:`, message);
     }
 
+    // Create wallet for the new doctor (non-blocking)
+    createWallet(newDoctor.id, "DOCTOR").catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Failed to create wallet for doctor ${newDoctor.id}:`, message);
+    });
+
     // Send password email (non-blocking)
     sendPasswordEmail(request.email, plainPassword, "DOCTOR", request.fullName).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -222,6 +229,46 @@ class DoctorOnboardService {
       },
       requestId: request.id,
       vendorId: request.vendorId,
+    };
+  }
+
+  /**
+   * Check for duplicate doctors matching a request's phone or license
+   */
+  async checkDuplicateDoctor(requestId: string) {
+    const request = await doctorOnboardRequestRepository.findById(requestId);
+    if (!request) {
+      throw new AppError(HTTP_STATUS.NOT_FOUND, "Doctor onboard request not found");
+    }
+
+    const matches = await doctorOnboardRequestRepository.findDuplicateDoctors(
+      request.phone,
+      request.license
+    );
+
+    const taggedMatches = matches.map((doc) => {
+      const matchedOn: string[] = [];
+      if (request.phone && doc.phone === request.phone.trim()) {
+        matchedOn.push("phone");
+      }
+      if (
+        request.license &&
+        doc.license?.toLowerCase() === request.license.trim().toLowerCase()
+      ) {
+        matchedOn.push("license");
+      }
+      return { ...doc.toJSON(), matchedOn };
+    });
+
+    return {
+      requestId,
+      requestDoctor: {
+        fullName: request.fullName,
+        phone: request.phone,
+        license: request.license,
+      },
+      duplicatesFound: taggedMatches.length,
+      duplicates: taggedMatches,
     };
   }
 

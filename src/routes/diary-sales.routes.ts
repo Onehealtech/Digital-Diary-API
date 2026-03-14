@@ -7,6 +7,7 @@ import {
   getMySales,
   requestDiaries,
   getMyDiaryRequests,
+  markFundTransferred,
 } from "../controllers/diarySale.controller";
 
 const router = Router();
@@ -37,6 +38,13 @@ router.post(
   "/request",
   authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   requestDiaries
+);
+
+// PUT /api/v1/diary-sales/:diaryId/mark-transferred — Mark fund as transferred
+router.put(
+  "/:diaryId/mark-transferred",
+  authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
+  markFundTransferred
 );
 
 // GET /api/v1/diary-sales/requests — Get my diary requests

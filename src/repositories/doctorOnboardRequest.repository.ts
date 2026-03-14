@@ -93,6 +93,34 @@ class DoctorOnboardRequestRepository {
     });
   }
 
+  /**
+   * Find existing doctors matching by phone or license number
+   */
+  async findDuplicateDoctors(phone?: string, license?: string): Promise<AppUser[]> {
+    const conditions: Record<string, unknown>[] = [];
+
+    if (phone && phone.trim()) {
+      conditions.push({ phone: phone.trim() });
+    }
+    if (license && license.trim()) {
+      conditions.push({ license: { [Op.iLike]: license.trim() } });
+    }
+
+    if (conditions.length === 0) return [];
+
+    return AppUser.findAll({
+      where: {
+        role: "DOCTOR",
+        [Op.or]: conditions,
+      },
+      attributes: [
+        "id", "fullName", "email", "phone", "license", "hospital",
+        "specialization", "city", "state", "isActive", "createdAt",
+      ],
+      paranoid: false,
+    });
+  }
+
   async updateStatus(
     id: string,
     data: {

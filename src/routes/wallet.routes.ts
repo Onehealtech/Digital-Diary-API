@@ -27,7 +27,7 @@ router.get("/me/ledger", authCheck(sellerRoles), getMyLedger);
 router.get("/all", authCheck([UserRole.SUPER_ADMIN]), getAllWallets);
 router.get("/:userId", authCheck([UserRole.SUPER_ADMIN]), getUserWallet);
 router.post("/:userId/adjust", authCheck([UserRole.SUPER_ADMIN]), adjustWallet);
-router.post("/:userId/payout", authCheck([UserRole.VENDOR, UserRole.DOCTOR]), requestPayout);
+router.post("/:userId/payout", authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]), requestPayout);
 router.post("/:userId/reconcile", authCheck([UserRole.SUPER_ADMIN]), reconcile);
 router.post("/create-payout-order", authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]), createPayoutOrder);
 router.post("/record-advance", authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]), recordAdvance);

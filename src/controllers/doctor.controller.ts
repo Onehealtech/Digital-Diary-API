@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AppUser } from "../models/Appuser";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "../service/emailService";
+import { createWallet } from "../service/wallet.service";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { logActivity } from "../utils/activityLogger";
 
@@ -65,6 +66,12 @@ export const createAssistant = async (
 
         // Send password email
         await sendPasswordEmail(email, plainPassword, "ASSISTANT", fullName);
+
+        // Create wallet for the assistant (uses DOCTOR wallet type)
+        createWallet(newAssistant.id, "DOCTOR").catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : "Unknown error";
+            console.error(`Failed to create wallet for assistant ${newAssistant.id}:`, message);
+        });
 
         logActivity({
             req,

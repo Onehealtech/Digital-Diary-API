@@ -82,7 +82,8 @@ export const createStaff = async (
             state,
             landLinePhone,
         });
-        if (role == UserRole.VENDOR) {
+        // Create wallet for VENDOR and DOCTOR roles
+        if (role === UserRole.VENDOR || role === UserRole.DOCTOR) {
             const walletType = walletTypeMap[role];
             if (walletType) {
                 await createWallet(newUser.id, walletType);
