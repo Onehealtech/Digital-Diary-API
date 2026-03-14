@@ -67,6 +67,31 @@ class DoctorOnboardRequestRepository {
             where: { email: email.toLowerCase(), status: "PENDING" },
         });
     }
+    /**
+     * Find existing doctors matching by phone or license number
+     */
+    async findDuplicateDoctors(phone, license) {
+        const conditions = [];
+        if (phone && phone.trim()) {
+            conditions.push({ phone: phone.trim() });
+        }
+        if (license && license.trim()) {
+            conditions.push({ license: { [sequelize_1.Op.iLike]: license.trim() } });
+        }
+        if (conditions.length === 0)
+            return [];
+        return Appuser_1.AppUser.findAll({
+            where: {
+                role: "DOCTOR",
+                [sequelize_1.Op.or]: conditions,
+            },
+            attributes: [
+                "id", "fullName", "email", "phone", "license", "hospital",
+                "specialization", "city", "state", "isActive", "createdAt",
+            ],
+            paranoid: false,
+        });
+    }
     async updateStatus(id, data, transaction) {
         await DoctorOnboardRequest_1.DoctorOnboardRequest.update({
             status: data.status,

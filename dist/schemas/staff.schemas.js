@@ -28,11 +28,17 @@ exports.createStaffSchema = zod_1.z.object({
         required_error: "Role is required",
         invalid_type_error: "Invalid role",
     }),
-    hospital: zod_1.z.string().max(100).optional(),
-    specialization: zod_1.z.string().max(100).optional(),
-    license: zod_1.z.string().max(30).optional(),
-    GST: zod_1.z.string().length(15, "GST must be 15 characters").optional(),
-    location: zod_1.z.string().max(200).optional(),
+    hospital: zod_1.z.string().max(100).optional().transform(v => v?.trim() || undefined),
+    specialization: zod_1.z.string().max(100).optional().transform(v => v?.trim() || undefined),
+    license: zod_1.z.string().max(30).optional().transform(v => v?.trim() || undefined),
+    GST: zod_1.z
+        .string()
+        .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GST format")
+        .optional(),
+    address: zod_1.z.string().max(500, "Address must be 500 characters or less").optional().transform(v => v?.trim() || undefined),
+    city: zod_1.z.string().max(100, "City must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+    state: zod_1.z.string().max(100, "State must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+    landLinePhone: zod_1.z.string().max(15).optional().transform(v => v?.trim() || undefined),
     commissionType: zod_1.z.enum(["FIXED", "PERCENTAGE"]).optional(),
     commissionRate: zod_1.z.number().min(0).optional(),
     bank: zod_1.z.record(zod_1.z.unknown()).optional(),
@@ -69,8 +75,12 @@ exports.createVendorSchema = zod_1.z.object({
     phone: phoneSchema,
     password: zod_1.z.string().min(6, "Password must be at least 6 characters"),
     businessName: zod_1.z.string({ required_error: "Business name is required" }).min(1),
-    location: zod_1.z.string({ required_error: "Location is required" }).min(1),
-    gst: zod_1.z.string({ required_error: "GST is required" }).length(15, "GST must be 15 characters"),
+    address: zod_1.z.string({ required_error: "Address is required" }).min(1).max(500),
+    city: zod_1.z.string({ required_error: "City is required" }).min(1).max(100),
+    state: zod_1.z.string({ required_error: "State is required" }).min(1).max(100),
+    gst: zod_1.z
+        .string({ required_error: "GST is required" })
+        .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GST format. Expected: 2-digit state code + PAN + entity code + Z + checksum"),
     bankDetails: zod_1.z.record(zod_1.z.unknown(), { required_error: "Bank details are required" }),
     commissionRate: zod_1.z.number().min(0).optional(),
 });

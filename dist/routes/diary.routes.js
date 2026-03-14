@@ -13,9 +13,9 @@ const diaryController = new diary_controller_1.DiaryController();
 // POST /api/v1/generated-diaries/generate - Generate diaries (SUPER_ADMIN only)
 router.post("/generated-diaries/generate", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.generateDiaries.bind(diaryController));
 // GET /api/v1/generated-diaries - List generated diaries
-router.get("/generated-diaries", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), diaryController.getAllGeneratedDiaries.bind(diaryController));
+router.get("/generated-diaries", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.getAllGeneratedDiaries.bind(diaryController));
 // GET /api/v1/generated-diaries/:id - Get diary by ID
-router.get("/generated-diaries/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), diaryController.getDiaryById.bind(diaryController));
+router.get("/generated-diaries/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.getDiaryById.bind(diaryController));
 // PUT /api/v1/generated-diaries/:id/assign - Assign diary to vendor
 router.post("/generated-diaries/:id/assign", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.assignDiary.bind(diaryController));
 // PUT /api/v1/generated-diaries/bulk-assign - Bulk assign diaries
@@ -29,10 +29,10 @@ router.put("/diaries/:id/approve", (0, authMiddleware_1.authCheck)([constants_1.
 // PUT /api/v1/diaries/:id/reject - Reject diary sale
 router.put("/diaries/:id/reject", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.rejectDiarySale.bind(diaryController));
 // GET /api/v1/diary-requests - List diary requests
-router.get("/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), diaryController.getAllDiaryRequests.bind(diaryController));
+router.get("/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.getAllDiaryRequests.bind(diaryController));
 router.get("/sp/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.getAllDiaryRequestsSuperAdmin.bind(diaryController));
 // POST /api/v1/diary-requests - Create diary request
-router.post("/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR]), diaryController.createDiaryRequest.bind(diaryController));
+router.post("/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.createDiaryRequest.bind(diaryController));
 // PUT /api/v1/diary-requests/:id/approve - Approve diary request
 router.put("/diary-requests/:id/approve", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.approveDiaryRequest.bind(diaryController));
 // PUT /api/v1/diary-requests/:id/reject - Reject diary request

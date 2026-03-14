@@ -9,6 +9,6 @@ const constants_1 = require("../utils/constants");
 const order_controller_1 = require("../controllers/order.controller");
 const router = express_1.default.Router();
 // Super Admin only routes
-router.post("/create", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), order_controller_1.createOrder);
+router.post("/create", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), order_controller_1.createOrder);
 router.get("/orderStatus/:orderId", order_controller_1.getOrderStatus);
 exports.default = router;

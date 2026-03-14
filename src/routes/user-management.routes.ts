@@ -31,6 +31,13 @@ router.put(
   staffController.updateUser
 );
 
+// Toggle active/inactive status
+router.put(
+  "/:id/toggle-status",
+  authCheck([UserRole.SUPER_ADMIN]),
+  staffController.toggleUserStatus
+);
+
 // Restore an archived user
 router.post(
   "/:id/restore",

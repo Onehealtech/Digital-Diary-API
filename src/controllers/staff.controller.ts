@@ -380,6 +380,39 @@ class StaffController {
     }
   }
 
+  // ==================== USER STATUS TOGGLE ====================
+
+  /**
+   * PUT /api/v1/users/:id/toggle-status
+   * Toggle a user's active/inactive status. Super Admin only. Cannot deactivate self.
+   */
+  async toggleUserStatus(req: AuthRequest, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if (role !== "SUPER_ADMIN") {
+        return sendError(res, "Only Super Admins can toggle user status", 403);
+      }
+
+      const result = await staffService.toggleUserStatus(id, userId!);
+
+      logActivity({
+        req,
+        userId: userId!,
+        userRole: role!,
+        action: result.user.isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+        details: { targetUserId: id, newStatus: result.user.isActive ? "active" : "inactive" },
+      });
+
+      return sendResponse(res, result, result.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to toggle user status";
+      return sendError(res, message, message.includes("not found") ? 404 : 400);
+    }
+  }
+
   // ==================== USER ARCHIVING (SUPER_ADMIN, DOCTOR, VENDOR) ====================
 
   /**

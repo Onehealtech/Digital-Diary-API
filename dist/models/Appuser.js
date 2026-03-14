@@ -129,6 +129,27 @@ __decorate([
 ], AppUser.prototype, "location", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(500),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], AppUser.prototype, "address", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(100),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], AppUser.prototype, "city", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(100),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], AppUser.prototype, "state", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.STRING(255),
         allowNull: true,
     }),

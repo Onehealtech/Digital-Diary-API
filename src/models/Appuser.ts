@@ -93,6 +93,25 @@ export class AppUser extends Model {
     allowNull: true,
   })
   location!: string;
+
+  @Column({
+    type: DataType.STRING(500),
+    allowNull: true,
+  })
+  address?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  city?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  state?: string;
+
   @Column({
     type: DataType.STRING(255),
     allowNull: true,
@@ -138,6 +157,7 @@ export class AppUser extends Model {
     callPatients?: boolean;
     exportData?: boolean;
     sendNotifications?: boolean;
+    sellDiary?: boolean;
   };
 
   // Assistant status: ACTIVE (working), ON_HOLD (temporarily inactive), DELETED (soft-deleted)

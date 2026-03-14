@@ -42,13 +42,15 @@ class VendorController {
      */
     async createVendor(req, res) {
         try {
-            const { fullName, email, phone, password, businessName, location, gst, bankDetails, commissionRate, } = req.body;
+            const { fullName, email, phone, password, businessName, address, city, state, gst, bankDetails, commissionRate, } = req.body;
             // Validation
             if (!fullName ||
                 !email ||
                 !password ||
                 !businessName ||
-                !location ||
+                !address ||
+                !city ||
+                !state ||
                 !gst ||
                 !bankDetails) {
                 return (0, response_1.sendError)(res, 400, "Missing required fields");
@@ -59,7 +61,9 @@ class VendorController {
                 phone,
                 password,
                 businessName,
-                location,
+                address,
+                city,
+                state,
                 gst,
                 bankDetails,
                 commissionRate,

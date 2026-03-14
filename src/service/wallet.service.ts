@@ -517,15 +517,38 @@ export const recordAdvancePayment = async (params: {
 }) => {
   return sequelize.transaction(async (t) => {
     const vendor = await AppUser.findOne({ where: { id: params.vendorId }, transaction: t });
-    if (!vendor) throw new Error("Vendor not found");
-    if (vendor.role !== "VENDOR") throw new Error("User is not a vendor");
+    if (!vendor) throw new Error("User not found");
+    const allowedRoles = ["VENDOR", "DOCTOR", "ASSISTANT"];
+    if (!allowedRoles.includes(vendor.role)) throw new Error("User role does not support advance payments");
 
-    const wallet = await Wallet.findOne({
+    let wallet = await Wallet.findOne({
       where: { userId: params.vendorId },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-    if (!wallet) throw new Error("Wallet not found");
+
+    // Auto-create wallet if it doesn't exist (for pre-existing doctors/assistants)
+    if (!wallet) {
+      const walletTypeMap: Record<string, "VENDOR" | "DOCTOR" | "PLATFORM"> = {
+        VENDOR: "VENDOR",
+        DOCTOR: "DOCTOR",
+        ASSISTANT: "DOCTOR",
+        SUPER_ADMIN: "PLATFORM",
+      };
+      const walletType = walletTypeMap[vendor.role] || "DOCTOR";
+      wallet = await Wallet.create(
+        {
+          userId: params.vendorId,
+          walletType,
+          balance: 0,
+          totalCredited: 0,
+          totalDebited: 0,
+          isActive: true,
+        } as any,
+        { transaction: t }
+      );
+    }
+
     if (!wallet.isActive) throw new Error("Wallet is inactive");
 
     const payment = new Decimal(params.amount);

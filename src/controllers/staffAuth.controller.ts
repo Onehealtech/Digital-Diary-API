@@ -26,15 +26,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             data: { email: result.email },
         });
     } catch (error: any) {
-        // Log blocked login attempts for archived/on-hold assistants
-        if (error.loginBlocked && error.assistantId) {
-            logActivity({
-                req,
-                userId: error.assistantId,
-                userRole: "ASSISTANT",
-                action: "ASSISTANT_LOGIN_BLOCKED",
-                details: { email: req.body.email, reason: error.message },
-            });
+        // Log blocked login attempts for deactivated/archived/on-hold users
+        if (error.loginBlocked) {
+            const userId = error.userId || error.assistantId;
+            if (userId) {
+                logActivity({
+                    req,
+                    userId,
+                    userRole: "UNKNOWN",
+                    action: "LOGIN_BLOCKED",
+                    details: { email: req.body.email, reason: error.message },
+                });
+            }
         }
 
         res.status(401).json({

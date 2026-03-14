@@ -81,12 +81,17 @@ class VendorService {
             phone: data.phone,
             password: data.password,
             role: "VENDOR",
+            address: data.address,
+            city: data.city,
+            state: data.state,
         });
         // Create VendorProfile
         const vendorProfile = await VendorProfile_1.VendorProfile.create({
             vendorId: vendor.id,
             businessName: data.businessName,
-            location: data.location,
+            address: data.address,
+            city: data.city,
+            state: data.state,
             gst: data.gst,
             bankDetails: data.bankDetails,
             commissionRate: data.commissionRate || 50,
@@ -109,6 +114,12 @@ class VendorService {
             vendor.fullName = data.fullName;
         if (data.phone)
             vendor.phone = data.phone;
+        if (data.address)
+            vendor.address = data.address;
+        if (data.city)
+            vendor.city = data.city;
+        if (data.state)
+            vendor.state = data.state;
         await vendor.save();
         // Update VendorProfile
         const vendorProfile = await VendorProfile_1.VendorProfile.findOne({
@@ -117,8 +128,12 @@ class VendorService {
         if (vendorProfile) {
             if (data.businessName)
                 vendorProfile.businessName = data.businessName;
-            if (data.location)
-                vendorProfile.location = data.location;
+            if (data.address)
+                vendorProfile.address = data.address;
+            if (data.city)
+                vendorProfile.city = data.city;
+            if (data.state)
+                vendorProfile.state = data.state;
             if (data.bankDetails)
                 vendorProfile.bankDetails = data.bankDetails;
             if (data.commissionRate !== undefined)

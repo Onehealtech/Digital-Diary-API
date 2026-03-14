@@ -86,6 +86,12 @@ export const authCheck = (allowedRoles: UserRole[]) => {
         return;
       }
 
+      // Force logout deactivated users (isActive = false)
+      if (user.isActive === false) {
+        responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, 'Your account has been deactivated. Please contact your administrator.');
+        return;
+      }
+
       // Force logout ON_HOLD or DELETED assistants
       if (user.role === 'ASSISTANT') {
         if (user.assistantStatus === 'ON_HOLD') {

@@ -560,6 +560,90 @@ async getVendorDoctors(
     };
   }
   /**
+   * Toggle a user's active/inactive status (SUPER_ADMIN, DOCTOR, or VENDOR).
+   * Prevents self-deactivation.
+   */
+  async toggleUserStatus(userId: string, toggledByUserId: string) {
+    if (userId === toggledByUserId) {
+      throw new Error("You cannot deactivate your own account");
+    }
+
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+    });
+
+    if (!user) {
+      // Check if it's a Patient
+      const patient = await Patient.findByPk(userId);
+      if (patient) {
+        const newStatus = patient.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+        await patient.update({ status: newStatus });
+        try {
+          await AuditLog.create({
+            userId: toggledByUserId,
+            userRole: "super_admin",
+            action: newStatus === "ACTIVE" ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+            details: {
+              targetUserId: userId,
+              targetName: patient.fullName,
+              targetRole: "PATIENT",
+              newStatus: newStatus === "ACTIVE" ? "active" : "inactive",
+            },
+            ipAddress: "system",
+          });
+        } catch {
+          // Audit log failure should not block the operation
+        }
+        return {
+          message: `PATIENT ${newStatus === "ACTIVE" ? "activated" : "deactivated"} successfully.`,
+          user: {
+            id: patient.id,
+            fullName: patient.fullName,
+            role: "PATIENT",
+            isActive: newStatus === "ACTIVE",
+          },
+        };
+      }
+      throw new Error("User not found");
+    }
+
+    const newStatus = !user.isActive;
+    await user.update({ isActive: newStatus });
+
+    try {
+      await AuditLog.create({
+        userId: toggledByUserId,
+        userRole: "super_admin",
+        action: newStatus ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetEmail: user.email,
+          targetRole: user.role,
+          newStatus: newStatus ? "active" : "inactive",
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    return {
+      message: `${user.role} user ${newStatus ? "activated" : "deactivated"} successfully.`,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isActive: newStatus,
+      },
+    };
+  }
+
+  /**
    * Soft-delete a user (SUPER_ADMIN, DOCTOR, or VENDOR).
    * Prevents self-archiving. Uses Sequelize paranoid destroy.
    */
@@ -571,7 +655,7 @@ async getVendorDoctors(
     const user = await AppUser.findOne({
       where: {
         id: userId,
-        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
       },
     });
 
@@ -612,7 +696,7 @@ async getVendorDoctors(
     const offset = (page - 1) * limit;
 
     const whereClause: any = {
-      role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+      role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
       deletedAt: { [Op.ne]: null },
     };
 
@@ -656,7 +740,7 @@ async getVendorDoctors(
     const user = await AppUser.findOne({
       where: {
         id: userId,
-        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
       },
       paranoid: false,
     });
@@ -684,41 +768,83 @@ async getVendorDoctors(
    * Get any user (SUPER_ADMIN, DOCTOR, VENDOR) by ID with role-specific stats.
    */
   async getUserById(userId: string) {
+    // First try AppUser table (Super Admin, Doctor, Vendor, Assistant)
     const user = await AppUser.findOne({
       where: {
         id: userId,
-        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
       },
       attributes: [
-        "id", "fullName", "email", "phone", "role",
+        "id", "fullName", "email", "phone", "landLinePhone", "role",
         "hospital", "specialization", "license", "GST", "location",
+        "address", "city", "state",
         "commissionType", "commissionRate", "cashfreeVendorId",
         "isActive", "isEmailVerified", "createdAt", "updatedAt",
+        "parentId", "assistantStatus",
       ],
     });
 
-    if (!user) {
-      throw new Error("User not found");
-    }
+    if (user) {
+      const result: Record<string, unknown> = { ...user.toJSON() };
 
-    const result: Record<string, unknown> = { ...user.toJSON() };
-
-    // Add role-specific stats
-    if (user.role === "DOCTOR") {
-      const patientCount = await Patient.count({ where: { doctorId: userId } });
-      const assistantCount = await AppUser.count({
-        where: { role: "ASSISTANT", parentId: userId },
-      });
-      let taskCount = 0;
-      try {
-        taskCount = await Task.count({ where: { createdBy: userId } });
-      } catch {
-        // Tasks table may not exist
+      // Add role-specific stats
+      if (user.role === "DOCTOR") {
+        const patientCount = await Patient.count({ where: { doctorId: userId } });
+        const assistantCount = await AppUser.count({
+          where: { role: "ASSISTANT", parentId: userId },
+        });
+        let taskCount = 0;
+        try {
+          taskCount = await Task.count({ where: { createdBy: userId } });
+        } catch {
+          // Tasks table may not exist
+        }
+        result.stats = { totalPatients: patientCount, totalAssistants: assistantCount, totalTasks: taskCount };
       }
-      result.stats = { totalPatients: patientCount, totalAssistants: assistantCount, totalTasks: taskCount };
+
+      // Assistant: include parent doctor name
+      if (user.role === "ASSISTANT" && user.parentId) {
+        const parentDoctor = await AppUser.findByPk(user.parentId, { attributes: ["id", "fullName"] });
+        if (parentDoctor) {
+          result.doctorName = parentDoctor.fullName;
+          result.doctorId = parentDoctor.id;
+        }
+      }
+
+      return result;
     }
 
-    return result;
+    // Fallback: check Patient table
+    const patient = await Patient.findByPk(userId);
+    if (patient) {
+      const result: Record<string, unknown> = {
+        id: patient.id,
+        fullName: patient.fullName,
+        email: "",
+        phone: patient.phone || "",
+        role: "PATIENT",
+        isActive: patient.status !== "INACTIVE",
+        isEmailVerified: false,
+        createdAt: patient.createdAt,
+        updatedAt: patient.updatedAt,
+        diaryId: patient.diaryId,
+        caseType: patient.caseType,
+        patientStatus: patient.status,
+        age: patient.age,
+        gender: patient.gender,
+        address: patient.address,
+      };
+      if (patient.doctorId) {
+        const doctor = await AppUser.findByPk(patient.doctorId, { attributes: ["id", "fullName"] });
+        if (doctor) {
+          result.doctorName = doctor.fullName;
+          result.doctorId = doctor.id;
+        }
+      }
+      return result;
+    }
+
+    throw new Error("User not found");
   }
 
   /**
@@ -734,7 +860,7 @@ async getVendorDoctors(
     const user = await AppUser.findOne({
       where: {
         id: userId,
-        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR"] },
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
       },
     });
 
@@ -744,9 +870,9 @@ async getVendorDoctors(
 
     // Allowed fields for update (role is NEVER allowed)
     const allowedFields = [
-      "fullName", "phone", "hospital", "specialization",
-      "license", "GST", "location", "commissionType", "commissionRate",
-      "password",
+      "fullName", "phone", "landLinePhone", "hospital", "specialization",
+      "license", "GST", "location", "address", "city", "state",
+      "commissionType", "commissionRate", "password",
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -783,8 +909,9 @@ async getVendorDoctors(
     // Return updated user WITHOUT password
     const updated = await AppUser.findByPk(userId, {
       attributes: [
-        "id", "fullName", "email", "phone", "role",
+        "id", "fullName", "email", "phone", "landLinePhone", "role",
         "hospital", "specialization", "license", "GST", "location",
+        "address", "city", "state",
         "commissionType", "commissionRate", "cashfreeVendorId",
         "isActive", "isEmailVerified", "createdAt", "updatedAt",
       ],
