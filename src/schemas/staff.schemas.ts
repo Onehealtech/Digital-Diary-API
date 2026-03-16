@@ -43,7 +43,7 @@ export const createStaffSchema = z.object({
   address: z.string().max(500, "Address must be 500 characters or less").optional().transform(v => v?.trim() || undefined),
   city: z.string().max(100, "City must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
   state: z.string().max(100, "State must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
-  landLinePhone: z.string().max(15).optional().transform(v => v?.trim() || undefined),
+  landLinePhone: z.string().regex(/^(\+91|0)?[1-9][0-9]{9,10}$/, "Enter a valid landline number").optional().transform(v => v?.trim() || undefined),
   commissionType: z.enum(["FIXED", "PERCENTAGE"]).optional(),
   commissionRate: z.number().min(0).optional(),
   bank: z.record(z.unknown()).optional(),
