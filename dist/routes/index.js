@@ -29,6 +29,7 @@ const bubbleScan_routes_1 = __importDefault(require("./bubbleScan.routes"));
 const visionScan_routes_1 = __importDefault(require("../modules/visionScan/visionScan.routes"));
 const diaryPage_routes_1 = __importDefault(require("./diaryPage.routes"));
 const doctorOnboard_routes_1 = __importDefault(require("./doctorOnboard.routes"));
+const welcome_routes_1 = __importDefault(require("./welcome.routes"));
 const router = express_1.default.Router();
 // API v1 Routes
 router.use("/v1", auth_routes_1.default); // Auth routes (staff & patient login)
@@ -56,4 +57,5 @@ router.use("/v1/bubble-scan", bubbleScan_routes_1.default); // Bubble scan OMR r
 router.use("/v1/vision-scan", visionScan_routes_1.default); // Vision AI scan routes (Patient upload, Doctor review)
 router.use("/v1/diary-pages", diaryPage_routes_1.default); // Diary page routes (questions for manual entry, seed)
 router.use("/v1/doctor-onboard", doctorOnboard_routes_1.default); // Doctor onboard requests & vendor-doctor assignments
+router.use("/welcome", welcome_routes_1.default); // Welcome route (first 21 visits show message)
 exports.default = router;

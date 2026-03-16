@@ -24,6 +24,7 @@ import bubbleScanRoutes from "./bubbleScan.routes";
 import visionScanRoutes from "../modules/visionScan/visionScan.routes";
 import diaryPageRoutes from "./diaryPage.routes";
 import doctorOnboardRoutes from "./doctorOnboard.routes";
+import welcomeRoutes from "./welcome.routes";
 
 const router = express.Router();
 
@@ -53,5 +54,6 @@ router.use("/v1/bubble-scan", bubbleScanRoutes); // Bubble scan OMR routes (Pati
 router.use("/v1/vision-scan", visionScanRoutes); // Vision AI scan routes (Patient upload, Doctor review)
 router.use("/v1/diary-pages", diaryPageRoutes); // Diary page routes (questions for manual entry, seed)
 router.use("/v1/doctor-onboard", doctorOnboardRoutes); // Doctor onboard requests & vendor-doctor assignments
+router.use("/welcome", welcomeRoutes); // Welcome route (first 21 visits show message)
 
 export default router;
