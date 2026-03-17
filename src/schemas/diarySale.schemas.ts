@@ -7,7 +7,7 @@ export const sellDiarySchema = z.object({
     .min(1, "Patient name is required")
     .max(100, "Name must be 100 characters or less")
     .trim(),
-  age: z.coerce.number().int().min(0, "Age must be positive").max(150, "Invalid age"),
+  age: z.coerce.number().int().min(0, "Age must be between 0 and 100").max(100, "Age must be between 0 and 100"),
   gender: z.string({ required_error: "Gender is required" }).min(1, "Gender is required"),
   phone: z
     .string({ required_error: "Phone is required" })
