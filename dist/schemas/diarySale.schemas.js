@@ -9,7 +9,7 @@ exports.sellDiarySchema = zod_1.z.object({
         .min(1, "Patient name is required")
         .max(100, "Name must be 100 characters or less")
         .trim(),
-    age: zod_1.z.coerce.number().int().min(0, "Age must be positive").max(150, "Invalid age"),
+    age: zod_1.z.coerce.number().int().min(0, "Age must be between 0 and 100").max(100, "Age must be between 0 and 100"),
     gender: zod_1.z.string({ required_error: "Gender is required" }).min(1, "Gender is required"),
     phone: zod_1.z
         .string({ required_error: "Phone is required" })
