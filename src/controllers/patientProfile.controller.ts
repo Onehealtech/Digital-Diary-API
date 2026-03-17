@@ -66,15 +66,15 @@ export const updateProfile = async (
 ): Promise<void> => {
     try {
         const patientId = req.user!.id;
-        const { otp, fullName, age, gender, phone } = req.body;
+        const { fullName, age, gender, phone } = req.body;
 
-        if (!otp) {
-            res.status(400).json({
-                success: false,
-                message: "OTP is required",
-            });
-            return;
-        }
+        // if (!otp) {
+        //     res.status(400).json({
+        //         success: false,
+        //         message: "OTP is required",
+        //     });
+        //     return;
+        // }
 
         // Get patient details
         const patient = await Patient.findByPk(patientId);
@@ -88,16 +88,16 @@ export const updateProfile = async (
         }
 
         // For MVP: Accept hardcoded OTP "1234" OR verify generated OTP
-        const isValidOTP =
-            otp === "1234" || verifyOTP(patient.phone || "", otp);
+        // const isValidOTP =
+        //     otp === "1234" || verifyOTP(patient.phone || "", otp);
 
-        if (!isValidOTP) {
-            res.status(401).json({
-                success: false,
-                message: "Invalid or expired OTP",
-            });
-            return;
-        }
+        // if (!isValidOTP) {
+        //     res.status(401).json({
+        //         success: false,
+        //         message: "Invalid or expired OTP",
+        //     });
+        //     return;
+        // }
 
         // Update patient details
         if (fullName) patient.fullName = fullName;
