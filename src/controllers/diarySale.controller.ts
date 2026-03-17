@@ -3,6 +3,8 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { AppError } from "../utils/AppError";
 import { diarySaleService } from "../service/diarySale.service";
 import { sellDiarySchema, requestDiariesSchema } from "../schemas/diarySale.schemas";
+import { messageCentralService } from "../service/messageCentral.service";
+import { z } from "zod";
 
 /**
  * POST /api/v1/diary-sales/sell
@@ -203,5 +205,74 @@ export const markFundTransferred = async (req: AuthenticatedRequest, res: Respon
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Mark fund transferred error:", message);
     res.status(500).json({ success: false, message: "Failed to mark fund as transferred" });
+  }
+};
+
+// ── Phone OTP for diary selling ─────────────────────────────────────
+
+const sendPhoneOtpSchema = z.object({
+  phone: z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+});
+
+const verifyPhoneOtpSchema = z.object({
+  phone: z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+  otp: z.string().min(4, "OTP is required"),
+});
+
+/**
+ * POST /api/v1/diary-sales/send-phone-otp
+ * Send OTP to patient's phone number during diary selling
+ */
+export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const parsed = sendPhoneOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+      return;
+    }
+
+    const { phone } = parsed.data;
+    const key = `sell-phone-${phone}`;
+    const sent = await messageCentralService.sendOTP(phone, key);
+
+    if (!sent) {
+      res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
+      return;
+    }
+
+    res.status(200).json({ success: true, message: "OTP sent successfully" });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Send phone OTP error:", message);
+    res.status(500).json({ success: false, message: "Failed to send OTP" });
+  }
+};
+
+/**
+ * POST /api/v1/diary-sales/verify-phone-otp
+ * Verify OTP for patient's phone number during diary selling
+ */
+export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const parsed = verifyPhoneOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+      return;
+    }
+
+    const { phone, otp } = parsed.data;
+    const key = `sell-phone-${phone}`;
+    const valid = await messageCentralService.verifyOTP(phone, key, otp);
+
+    if (!valid) {
+      res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      return;
+    }
+
+    res.status(200).json({ success: true, message: "Phone number verified successfully" });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Verify phone OTP error:", message);
+    res.status(500).json({ success: false, message: "Failed to verify OTP" });
   }
 };
