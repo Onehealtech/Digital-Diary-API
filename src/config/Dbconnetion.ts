@@ -27,6 +27,7 @@ import { DoctorOnboardRequest } from '../models/DoctorOnboardRequest';
 import { VendorDoctor } from '../models/VendorDoctor';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { UserSubscription } from '../models/UserSubscription';
+import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -83,6 +84,7 @@ export const sequelize = new Sequelize({
     VendorDoctor,
     SubscriptionPlan,
     UserSubscription,
+    DoctorAssignmentRequest,
   ],
 
   // Logging configuration
@@ -240,6 +242,43 @@ export const initializeDatabase = async (): Promise<void> => {
       );
     `).catch((err: unknown) => {
       console.warn('⚠️ user_subscriptions migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Make patients.doctorId nullable + add registrationSource for self-signup
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        -- Make doctorId nullable (self-signup patients don't have one initially)
+        ALTER TABLE "patients" ALTER COLUMN "doctorId" DROP NOT NULL;
+
+        -- Make diaryId nullable (self-signup patients don't have a physical diary)
+        ALTER TABLE "patients" ALTER COLUMN "diaryId" DROP NOT NULL;
+
+        -- Add registrationSource column
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'registrationSource') THEN
+          ALTER TABLE "patients" ADD COLUMN "registrationSource" VARCHAR(20) NOT NULL DEFAULT 'VENDOR_ASSIGNED';
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ Patient self-signup migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create doctor_assignment_requests table
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "doctor_assignment_requests" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorId" UUID NOT NULL REFERENCES "app-users"("id"),
+        "status" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        "rejectionReason" TEXT,
+        "respondedAt" TIMESTAMP WITH TIME ZONE,
+        "attemptNumber" INTEGER NOT NULL DEFAULT 1,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ doctor_assignment_requests migration warning:', err instanceof Error ? err.message : err);
     });
 
     console.log('✅ Database models synchronized');

@@ -26,6 +26,7 @@ import diaryPageRoutes from "./diaryPage.routes";
 import doctorOnboardRoutes from "./doctorOnboard.routes";
 import diarySalesRoutes from "./diary-sales.routes";
 import subscriptionRoutes from "./subscription.routes";
+import doctorRequestRoutes from "./doctorRequest.routes";
 
 const router = express.Router();
 
@@ -57,5 +58,6 @@ router.use("/v1/diary-pages", diaryPageRoutes); // Diary page routes (questions 
 router.use("/v1/doctor-onboard", doctorOnboardRoutes); // Doctor onboard requests & vendor-doctor assignments
 router.use("/v1/diary-sales", diarySalesRoutes); // Diary selling (all roles) & diary requests
 router.use("/v1/subscriptions", subscriptionRoutes); // Subscription plans & patient subscriptions
+router.use("/v1/doctor-requests", doctorRequestRoutes); // Patient→Doctor assignment requests (self-signup)
 
 export default router;
