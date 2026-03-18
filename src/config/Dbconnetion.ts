@@ -122,6 +122,11 @@ export const initializeDatabase = async (): Promise<void> => {
         EXCEPTION WHEN duplicate_object THEN NULL;
         END;
 
+        BEGIN
+          ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'ON_HOLD';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
         -- Add deactivation columns
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'deactivationReason') THEN
           ALTER TABLE "patients" ADD COLUMN "deactivationReason" TEXT;

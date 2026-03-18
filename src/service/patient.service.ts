@@ -415,7 +415,47 @@ class PatientService {
   }
 
   /**
-   * Reactivate an inactive patient — sets status back to ACTIVE.
+   * Put a patient on hold — sets status to ON_HOLD (no reason required).
+   */
+  async putPatientOnHold(
+    patientId: string,
+    requesterId: string,
+    role: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can put patients on hold");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status === "ON_HOLD") {
+      throw new Error("Patient is already on hold");
+    }
+
+    await patient.update({
+      status: "ON_HOLD",
+      deactivatedAt: new Date(),
+      deactivatedBy: requesterId,
+    });
+
+    return patient;
+  }
+
+  /**
+   * Reactivate an inactive/on-hold patient — sets status back to ACTIVE.
    */
   async activatePatient(
     patientId: string,
@@ -441,8 +481,8 @@ class PatientService {
       throw new Error("Patient not found or access denied");
     }
 
-    if (patient.status !== "INACTIVE") {
-      throw new Error("Patient is not inactive");
+    if (patient.status !== "INACTIVE" && patient.status !== "ON_HOLD") {
+      throw new Error("Patient is not inactive or on hold");
     }
 
     await patient.update({

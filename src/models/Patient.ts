@@ -110,10 +110,10 @@ export class Patient extends Model {
   registeredDate?: Date;
 
   @Column({
-    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE"),
+    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD"),
     defaultValue: "ACTIVE",
   })
-  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE";
+  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE" | "ON_HOLD";
 
   @Column({
     type: DataType.TEXT,
