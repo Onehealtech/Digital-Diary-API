@@ -40,6 +40,8 @@ router.put("/:id", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR,
 router.put("/:id/deactivate", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('deactivatePatients'), patient_controller_1.deactivatePatient);
 // Activate patient
 router.put("/:id/activate", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('deactivatePatients'), patient_controller_1.activatePatient);
+// Put patient on hold
+router.put("/:id/on-hold", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('deactivatePatients'), patient_controller_1.putPatientOnHold);
 // Update test status
 router.put("/:id/tests/:testName", (0, authMiddleware_2.authCheck)([constants_1.UserRole.DOCTOR]), patient_controller_1.updateTestStatus);
 // Log call attempt

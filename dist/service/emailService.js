@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendAppointmentRejectionEmail = exports.sendOTPEmail = exports.sendPasswordEmail = void 0;
+exports.sendDoctorRequestEmail = exports.sendAppointmentRejectionEmail = exports.sendOTPEmail = exports.sendPasswordEmail = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
@@ -205,3 +205,74 @@ const sendAppointmentRejectionEmail = async (staffEmail, staffName, patientName,
     }
 };
 exports.sendAppointmentRejectionEmail = sendAppointmentRejectionEmail;
+/**
+ * Send email to doctor when a self-signup patient sends an assignment request
+ */
+const sendDoctorRequestEmail = async (doctorEmail, doctorName, patientName, patientAge, patientGender, caseType, patientPhone) => {
+    const mailOptions = {
+        from: `"Elvantia Alerts" <${process.env.SMTP_USER}>`,
+        to: doctorEmail,
+        subject: `New Patient Request - ${patientName}`,
+        html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0E2F5A 0%, #007787 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .details { background: white; padding: 20px; border-left: 4px solid #007787; margin: 20px 0; border-radius: 0 8px 8px 0; }
+          .details p { margin: 8px 0; }
+          .label { font-weight: bold; color: #0E2F5A; }
+          .action { background: #007787; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin: 10px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .note { background: #E8F6F8; border-left: 4px solid #007787; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>New Patient Request</h1>
+            <p>A patient has chosen you as their doctor</p>
+          </div>
+          <div class="content">
+            <p>Hello Dr. <strong>${doctorName}</strong>,</p>
+
+            <p>A new patient has signed up on Elvantia and selected you as their preferred doctor. Please review the details below:</p>
+
+            <div class="details">
+              <p><span class="label">Patient Name:</span> ${patientName}</p>
+              <p><span class="label">Age:</span> ${patientAge}</p>
+              <p><span class="label">Gender:</span> ${patientGender}</p>
+              <p><span class="label">Case Type:</span> ${caseType}</p>
+              <p><span class="label">Phone:</span> ${patientPhone}</p>
+            </div>
+
+            <div class="note">
+              <strong>Action Required:</strong> Please log in to your Elvantia dashboard to accept or decline this request. The patient will be notified of your decision.
+            </div>
+
+            <p>If you have any questions, please contact support.</p>
+
+            <p>Best regards,<br><strong>Elvantia Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>&copy; ${new Date().getFullYear()} Elvantia. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    };
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`✅ Doctor request email sent to ${doctorEmail}`);
+    }
+    catch (error) {
+        console.error(`❌ Failed to send doctor request email to ${doctorEmail}:`, error);
+        throw new Error("Failed to send doctor request email");
+    }
+};
+exports.sendDoctorRequestEmail = sendDoctorRequestEmail;

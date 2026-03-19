@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.markFundTransferred = exports.getMyDiaryRequests = exports.requestDiaries = exports.getMySales = exports.getMyInventory = exports.sellDiary = void 0;
+exports.verifyPhoneOtp = exports.sendPhoneOtp = exports.markFundTransferred = exports.getMyDiaryRequests = exports.requestDiaries = exports.getMySales = exports.getMyInventory = exports.sellDiary = void 0;
 const AppError_1 = require("../utils/AppError");
 const diarySale_service_1 = require("../service/diarySale.service");
 const diarySale_schemas_1 = require("../schemas/diarySale.schemas");
+const messageCentral_service_1 = require("../service/messageCentral.service");
+const zod_1 = require("zod");
 /**
  * POST /api/v1/diary-sales/sell
  * Sell a diary — available to SUPER_ADMIN, VENDOR, DOCTOR, ASSISTANT
@@ -190,3 +192,65 @@ const markFundTransferred = async (req, res) => {
     }
 };
 exports.markFundTransferred = markFundTransferred;
+// ── Phone OTP for diary selling ─────────────────────────────────────
+const sendPhoneOtpSchema = zod_1.z.object({
+    phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+});
+const verifyPhoneOtpSchema = zod_1.z.object({
+    phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+    otp: zod_1.z.string().min(4, "OTP is required"),
+});
+/**
+ * POST /api/v1/diary-sales/send-phone-otp
+ * Send OTP to patient's phone number during diary selling
+ */
+const sendPhoneOtp = async (req, res) => {
+    try {
+        const parsed = sendPhoneOtpSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+            return;
+        }
+        const { phone } = parsed.data;
+        const key = `sell-phone-${phone}`;
+        const sent = await messageCentral_service_1.messageCentralService.sendOTP(phone, key);
+        if (!sent) {
+            res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
+            return;
+        }
+        res.status(200).json({ success: true, message: "OTP sent successfully" });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error("Send phone OTP error:", message);
+        res.status(500).json({ success: false, message: "Failed to send OTP" });
+    }
+};
+exports.sendPhoneOtp = sendPhoneOtp;
+/**
+ * POST /api/v1/diary-sales/verify-phone-otp
+ * Verify OTP for patient's phone number during diary selling
+ */
+const verifyPhoneOtp = async (req, res) => {
+    try {
+        const parsed = verifyPhoneOtpSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+            return;
+        }
+        const { phone, otp } = parsed.data;
+        const key = `sell-phone-${phone}`;
+        const valid = await messageCentral_service_1.messageCentralService.verifyOTP(phone, key, otp);
+        if (!valid) {
+            res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+            return;
+        }
+        res.status(200).json({ success: true, message: "Phone number verified successfully" });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error("Verify phone OTP error:", message);
+        res.status(500).json({ success: false, message: "Failed to verify OTP" });
+    }
+};
+exports.verifyPhoneOtp = verifyPhoneOtp;

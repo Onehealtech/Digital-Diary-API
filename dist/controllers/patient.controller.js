@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.markAllPatientNotificationsAsRead = exports.markPatientNotificationAsRead = exports.getPatientNotificationStats = exports.getPatientNotifications = exports.updateFcmToken = exports.activatePatient = exports.deactivatePatient = exports.getPatientsNeedingFollowUp = exports.getTestProgress = exports.logCallAttempt = exports.updateTestStatus = exports.prescribeTests = exports.updatePatient = exports.getPatientById = exports.getDoctorPatients = exports.createPatient = void 0;
+exports.markAllPatientNotificationsAsRead = exports.markPatientNotificationAsRead = exports.getPatientNotificationStats = exports.getPatientNotifications = exports.updateFcmToken = exports.putPatientOnHold = exports.activatePatient = exports.deactivatePatient = exports.getPatientsNeedingFollowUp = exports.getTestProgress = exports.logCallAttempt = exports.updateTestStatus = exports.prescribeTests = exports.updatePatient = exports.getPatientById = exports.getDoctorPatients = exports.createPatient = void 0;
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const patient_service_1 = require("../service/patient.service");
@@ -328,6 +328,34 @@ const activatePatient = async (req, res) => {
     }
 };
 exports.activatePatient = activatePatient;
+/**
+ * PUT /api/v1/patients/:id/on-hold
+ * Put a patient on hold (no reason required)
+ */
+const putPatientOnHold = async (req, res) => {
+    try {
+        const id = req.params.id;
+        const requesterId = req.user?.id;
+        const role = req.user?.role;
+        if (!requesterId || !role) {
+            return (0, response_1.sendError)(res, "Unauthorized", 401);
+        }
+        const patient = await patient_service_1.patientService.putPatientOnHold(id, requesterId, role);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: requesterId,
+            userRole: role,
+            action: "PATIENT_ON_HOLD",
+            details: { patientId: id },
+        });
+        return (0, response_1.sendResponse)(res, patient, "Patient put on hold successfully");
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return (0, response_1.sendError)(res, message, message.includes("not found") ? 404 : 400);
+    }
+};
+exports.putPatientOnHold = putPatientOnHold;
 // =========================================================================
 // PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
 // =========================================================================

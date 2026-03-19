@@ -27,7 +27,7 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.STRING,
         unique: true,
-        allowNull: false,
+        allowNull: true,
     }),
     __metadata("design:type", String)
 ], Patient.prototype, "diaryId", void 0);
@@ -119,7 +119,7 @@ __decorate([
 ], Patient.prototype, "registeredDate", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE"),
+        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD"),
         defaultValue: "ACTIVE",
     }),
     __metadata("design:type", String)
@@ -160,10 +160,18 @@ __decorate([
     __metadata("design:type", String)
 ], Patient.prototype, "fcmToken", void 0);
 __decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
+        defaultValue: "VENDOR_ASSIGNED",
+        allowNull: false,
+    }),
+    __metadata("design:type", String)
+], Patient.prototype, "registrationSource", void 0);
+__decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
     }),
     __metadata("design:type", String)
 ], Patient.prototype, "doctorId", void 0);

@@ -30,6 +30,9 @@ const visionScan_routes_1 = __importDefault(require("../modules/visionScan/visio
 const diaryPage_routes_1 = __importDefault(require("./diaryPage.routes"));
 const doctorOnboard_routes_1 = __importDefault(require("./doctorOnboard.routes"));
 const diary_sales_routes_1 = __importDefault(require("./diary-sales.routes"));
+const subscription_routes_1 = __importDefault(require("./subscription.routes"));
+const doctorRequest_routes_1 = __importDefault(require("./doctorRequest.routes"));
+const accountDeletion_routes_1 = __importDefault(require("./accountDeletion.routes"));
 const router = express_1.default.Router();
 // API v1 Routes
 router.use("/v1", auth_routes_1.default); // Auth routes (staff & patient login)
@@ -58,4 +61,7 @@ router.use("/v1/vision-scan", visionScan_routes_1.default); // Vision AI scan ro
 router.use("/v1/diary-pages", diaryPage_routes_1.default); // Diary page routes (questions for manual entry, seed)
 router.use("/v1/doctor-onboard", doctorOnboard_routes_1.default); // Doctor onboard requests & vendor-doctor assignments
 router.use("/v1/diary-sales", diary_sales_routes_1.default); // Diary selling (all roles) & diary requests
+router.use("/v1/subscriptions", subscription_routes_1.default); // Subscription plans & patient subscriptions
+router.use("/v1/doctor-requests", doctorRequest_routes_1.default); // Patient→Doctor assignment requests (self-signup)
+router.use("/v1/account", accountDeletion_routes_1.default); // Account deletion (Play Store compliance)
 exports.default = router;

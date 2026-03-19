@@ -1,0 +1,336 @@
+"use strict";
+// src/service/subscription.service.ts
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.incrementPageUsage = exports.isManualEntryEnabled = exports.isScanEnabled = exports.canAddDiaryPage = exports.upgradePlan = exports.getAllSubscriptions = exports.getPatientSubscription = exports.linkDoctor = exports.subscribeToPlan = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
+const sequelize_1 = require("sequelize");
+const Dbconnetion_1 = require("../config/Dbconnetion");
+const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
+const UserSubscription_1 = require("../models/UserSubscription");
+const Patient_1 = require("../models/Patient");
+const Appuser_1 = require("../models/Appuser");
+const Diary_1 = require("../models/Diary");
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAN CRUD (Super Admin)
+// ═══════════════════════════════════════════════════════════════════════════
+const createPlan = async (data) => {
+    // If marking as popular, unmark others
+    if (data.isPopular) {
+        await SubscriptionPlan_1.SubscriptionPlan.update({ isPopular: false }, { where: { isPopular: true } });
+    }
+    return await SubscriptionPlan_1.SubscriptionPlan.create(data);
+};
+exports.createPlan = createPlan;
+const updatePlan = async (planId, data) => {
+    const plan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(planId);
+    if (!plan)
+        throw new Error("Plan not found");
+    // If marking as popular, unmark others
+    if (data.isPopular) {
+        await SubscriptionPlan_1.SubscriptionPlan.update({ isPopular: false }, { where: { isPopular: true, id: { [sequelize_1.Op.ne]: planId } } });
+    }
+    await plan.update(data);
+    return plan;
+};
+exports.updatePlan = updatePlan;
+const deletePlan = async (planId) => {
+    const plan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(planId);
+    if (!plan)
+        throw new Error("Plan not found");
+    // Check if any active subscriptions use this plan
+    const activeCount = await UserSubscription_1.UserSubscription.count({
+        where: { planId, status: "ACTIVE" },
+    });
+    if (activeCount > 0) {
+        throw new Error(`Cannot delete plan with ${activeCount} active subscription(s). Deactivate the plan instead.`);
+    }
+    await plan.destroy(); // soft delete (paranoid)
+    return { message: "Plan deleted successfully" };
+};
+exports.deletePlan = deletePlan;
+const getAllPlans = async (includeInactive = false) => {
+    const where = {};
+    if (!includeInactive) {
+        where.isActive = true;
+    }
+    return await SubscriptionPlan_1.SubscriptionPlan.findAll({
+        where,
+        order: [["sortOrder", "ASC"], ["createdAt", "ASC"]],
+    });
+};
+exports.getAllPlans = getAllPlans;
+const getPlanById = async (planId) => {
+    const plan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(planId);
+    if (!plan)
+        throw new Error("Plan not found");
+    return plan;
+};
+exports.getPlanById = getPlanById;
+// ═══════════════════════════════════════════════════════════════════════════
+// PATIENT SUBSCRIPTION
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Subscribe a patient to a plan.
+ * Flow: Patient signs up → buys subscription → then chooses doctor.
+ * Diary is NOT assigned here — it is assigned when a doctor accepts the request.
+ */
+const subscribeToPlan = async (params) => {
+    const { patientId, planId, paymentOrderId, paymentMethod } = params;
+    return await Dbconnetion_1.sequelize.transaction(async (t) => {
+        // 1. Validate patient
+        const patient = await Patient_1.Patient.findByPk(patientId, { transaction: t });
+        if (!patient)
+            throw new Error("Patient not found");
+        // 2. Validate plan
+        const plan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(planId, { transaction: t });
+        if (!plan)
+            throw new Error("Plan not found");
+        if (!plan.isActive)
+            throw new Error("This plan is no longer available");
+        // 3. Check for existing active subscription
+        const existingActive = await UserSubscription_1.UserSubscription.findOne({
+            where: { patientId, status: "ACTIVE" },
+            transaction: t,
+        });
+        if (existingActive) {
+            throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
+        }
+        // 4. Create subscription with plan snapshot (no diary, no doctor yet)
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+        const subscription = await UserSubscription_1.UserSubscription.create({
+            patientId,
+            planId,
+            status: "ACTIVE",
+            paidAmount: plan.monthlyPrice,
+            maxDiaryPages: plan.maxDiaryPages,
+            scanEnabled: plan.scanEnabled,
+            manualEntryEnabled: plan.manualEntryEnabled,
+            pagesUsed: 0,
+            paymentOrderId,
+            paymentMethod,
+            startDate: now,
+            endDate,
+        }, { transaction: t });
+        return {
+            subscription,
+            plan: {
+                name: plan.name,
+                maxDiaryPages: plan.maxDiaryPages,
+                scanEnabled: plan.scanEnabled,
+                manualEntryEnabled: plan.manualEntryEnabled,
+            },
+        };
+    });
+};
+exports.subscribeToPlan = subscribeToPlan;
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCTOR LINKING
+// ═══════════════════════════════════════════════════════════════════════════
+const linkDoctor = async (subscriptionId, doctorId) => {
+    return await Dbconnetion_1.sequelize.transaction(async (t) => {
+        const subscription = await UserSubscription_1.UserSubscription.findByPk(subscriptionId, { transaction: t });
+        if (!subscription)
+            throw new Error("Subscription not found");
+        if (subscription.status !== "ACTIVE")
+            throw new Error("Subscription is not active");
+        const doctor = await Appuser_1.AppUser.findOne({
+            where: { id: doctorId, role: "DOCTOR", isActive: true },
+            transaction: t,
+        });
+        if (!doctor)
+            throw new Error("Doctor not found or inactive");
+        // Update subscription
+        subscription.doctorId = doctorId;
+        await subscription.save({ transaction: t });
+        // Update patient doctor link
+        const patient = await Patient_1.Patient.findByPk(subscription.patientId, { transaction: t });
+        if (patient) {
+            patient.doctorId = doctorId;
+            await patient.save({ transaction: t });
+        }
+        // Update diary doctor link
+        if (subscription.diaryId) {
+            const diary = await Diary_1.Diary.findByPk(subscription.diaryId, { transaction: t });
+            if (diary) {
+                diary.doctorId = doctorId;
+                await diary.save({ transaction: t });
+            }
+        }
+        return subscription;
+    });
+};
+exports.linkDoctor = linkDoctor;
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBSCRIPTION QUERIES
+// ═══════════════════════════════════════════════════════════════════════════
+const getPatientSubscription = async (patientId) => {
+    return await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+        include: [
+            { model: SubscriptionPlan_1.SubscriptionPlan, attributes: ["id", "name", "description", "monthlyPrice", "isPopular"] },
+            { model: Patient_1.Patient, attributes: ["id", "fullName", "phone", "diaryId"] },
+            { model: Appuser_1.AppUser, attributes: ["id", "fullName", "email", "specialization"] },
+        ],
+    });
+};
+exports.getPatientSubscription = getPatientSubscription;
+const getAllSubscriptions = async (params) => {
+    const { page, limit, status } = params;
+    const where = {};
+    if (status)
+        where.status = status;
+    const { rows, count } = await UserSubscription_1.UserSubscription.findAndCountAll({
+        where,
+        include: [
+            { model: SubscriptionPlan_1.SubscriptionPlan, attributes: ["id", "name", "monthlyPrice"] },
+            { model: Patient_1.Patient, attributes: ["id", "fullName", "phone", "diaryId", "status"] },
+            { model: Appuser_1.AppUser, attributes: ["id", "fullName", "email"] },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit,
+        offset: (page - 1) * limit,
+    });
+    return {
+        subscriptions: rows,
+        total: count,
+        page,
+        limit,
+        totalPages: Math.ceil(count / limit),
+    };
+};
+exports.getAllSubscriptions = getAllSubscriptions;
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAN UPGRADE / DOWNGRADE
+// ═══════════════════════════════════════════════════════════════════════════
+const upgradePlan = async (params) => {
+    const { patientId, newPlanId, paymentOrderId, paymentMethod } = params;
+    return await Dbconnetion_1.sequelize.transaction(async (t) => {
+        // 1. Find current active subscription
+        const current = await UserSubscription_1.UserSubscription.findOne({
+            where: { patientId, status: "ACTIVE" },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+        });
+        if (!current)
+            throw new Error("No active subscription found");
+        // 2. Validate new plan
+        const newPlan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(newPlanId, { transaction: t });
+        if (!newPlan)
+            throw new Error("New plan not found");
+        if (!newPlan.isActive)
+            throw new Error("New plan is not available");
+        if (newPlanId === current.planId)
+            throw new Error("Already on this plan");
+        // 3. Mark current as UPGRADED
+        current.status = "UPGRADED";
+        await current.save({ transaction: t });
+        // 4. Create new subscription preserving diary & doctor
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + 1);
+        const newSub = await UserSubscription_1.UserSubscription.create({
+            patientId,
+            planId: newPlanId,
+            diaryId: current.diaryId,
+            doctorId: current.doctorId,
+            status: "ACTIVE",
+            paidAmount: newPlan.monthlyPrice,
+            maxDiaryPages: newPlan.maxDiaryPages,
+            scanEnabled: newPlan.scanEnabled,
+            manualEntryEnabled: newPlan.manualEntryEnabled,
+            pagesUsed: current.pagesUsed,
+            paymentOrderId,
+            paymentMethod,
+            startDate: now,
+            endDate,
+        }, { transaction: t });
+        return {
+            previousPlan: current.planId,
+            newSubscription: newSub,
+            plan: {
+                name: newPlan.name,
+                maxDiaryPages: newPlan.maxDiaryPages,
+                scanEnabled: newPlan.scanEnabled,
+                manualEntryEnabled: newPlan.manualEntryEnabled,
+            },
+        };
+    });
+};
+exports.upgradePlan = upgradePlan;
+// ═══════════════════════════════════════════════════════════════════════════
+// PERMISSION CHECKS
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Check if a patient can add a diary page (page limit enforcement)
+ */
+const canAddDiaryPage = async (patientId) => {
+    const subscription = await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+    });
+    if (!subscription) {
+        return { allowed: false, reason: "No active subscription", pagesUsed: 0, maxPages: 0 };
+    }
+    // Check expiry
+    if (new Date() > subscription.endDate) {
+        subscription.status = "EXPIRED";
+        await subscription.save();
+        return { allowed: false, reason: "Subscription expired", pagesUsed: subscription.pagesUsed, maxPages: subscription.maxDiaryPages };
+    }
+    // -1 means unlimited
+    if (subscription.maxDiaryPages === -1) {
+        return { allowed: true, pagesUsed: subscription.pagesUsed, maxPages: -1 };
+    }
+    if (subscription.pagesUsed >= subscription.maxDiaryPages) {
+        return {
+            allowed: false,
+            reason: `Page limit reached (${subscription.pagesUsed}/${subscription.maxDiaryPages}). Upgrade your plan for more pages.`,
+            pagesUsed: subscription.pagesUsed,
+            maxPages: subscription.maxDiaryPages,
+        };
+    }
+    return { allowed: true, pagesUsed: subscription.pagesUsed, maxPages: subscription.maxDiaryPages };
+};
+exports.canAddDiaryPage = canAddDiaryPage;
+/**
+ * Check if scan feature is enabled for patient
+ */
+const isScanEnabled = async (patientId) => {
+    const subscription = await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+    });
+    if (!subscription)
+        return false;
+    if (new Date() > subscription.endDate)
+        return false;
+    return subscription.scanEnabled;
+};
+exports.isScanEnabled = isScanEnabled;
+/**
+ * Check if manual entry is enabled for patient
+ */
+const isManualEntryEnabled = async (patientId) => {
+    const subscription = await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+    });
+    if (!subscription)
+        return false;
+    if (new Date() > subscription.endDate)
+        return false;
+    return subscription.manualEntryEnabled;
+};
+exports.isManualEntryEnabled = isManualEntryEnabled;
+/**
+ * Increment page usage after a successful diary page submission
+ */
+const incrementPageUsage = async (patientId) => {
+    const subscription = await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+    });
+    if (!subscription)
+        throw new Error("No active subscription");
+    subscription.pagesUsed += 1;
+    await subscription.save();
+    return subscription.pagesUsed;
+};
+exports.incrementPageUsage = incrementPageUsage;

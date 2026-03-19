@@ -29,6 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const staffAuthController = __importStar(require("../controllers/staffAuth.controller"));
 const patientAuthController = __importStar(require("../controllers/patientAuth.controller"));
+const patientSelfSignupController = __importStar(require("../controllers/patientSelfSignup.controller"));
 const setupController = __importStar(require("../controllers/setup.controller"));
 const auth_controller_1 = require("../controllers/auth.controller");
 const authMiddleware_1 = require("../middleware/authMiddleware");
@@ -39,9 +40,15 @@ router.post("/auth/signup-super-admin", setupController.signupSuperAdmin);
 // Staff Authentication Routes
 router.post("/auth/login", staffAuthController.login);
 router.post("/auth/verify-2fa", staffAuthController.verify2FA);
-// Patient Authentication Routes
+// Patient Authentication Routes (diary-based login)
 router.post("/patient/login", patientAuthController.login);
 router.post("/patient/verify-otp", patientAuthController.verifyOTP);
+// Patient Self-Signup Routes (subscription model — phone-based)
+router.post("/patient/self-signup/send-otp", patientSelfSignupController.sendSignupOtp);
+router.post("/patient/self-signup/verify", patientSelfSignupController.verifyAndCreate);
+router.post("/patient/self-signup/login", patientSelfSignupController.selfSignupLogin);
+router.post("/patient/self-signup/verify-login", patientSelfSignupController.verifySelfSignupLogin);
+router.get("/patient/self-signup/doctors", patientSelfSignupController.listDoctors);
 // Authentication Enhancements
 router.get("/auth/me", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.getCurrentUser);
 router.post("/auth/logout", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.logout);
