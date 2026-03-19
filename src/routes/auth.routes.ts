@@ -22,7 +22,8 @@ router.post("/patient/verify-otp", patientAuthController.verifyOTP);
 
 // Patient Self-Signup Routes (subscription model — phone-based)
 router.post("/patient/self-signup/send-otp", patientSelfSignupController.sendSignupOtp);
-router.post("/patient/self-signup/verify", patientSelfSignupController.verifyAndCreate);
+router.post("/patient/self-signup/verify", patientSelfSignupController.verifySignupOtp);
+router.post("/patient/self-signup/complete-profile", patientSelfSignupController.completeProfile);
 router.post("/patient/self-signup/login", patientSelfSignupController.selfSignupLogin);
 router.post("/patient/self-signup/verify-login", patientSelfSignupController.verifySelfSignupLogin);
 router.get("/patient/self-signup/doctors", patientSelfSignupController.listDoctors);

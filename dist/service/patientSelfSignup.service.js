@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listAvailableDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.verifyAndCreatePatient = exports.sendSignupOtp = void 0;
+exports.listAvailableDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.completeSignupProfile = exports.verifySignupOtp = exports.sendSignupOtp = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const sequelize_1 = require("sequelize");
 const Patient_1 = require("../models/Patient");
@@ -27,13 +27,12 @@ async function sendSignupOtp(phone) {
 }
 exports.sendSignupOtp = sendSignupOtp;
 /**
- * Step 2: Verify OTP + create patient record
+ * Step 2: Verify OTP only — returns a short-lived signup token (10 min)
+ * The patient then uses this token to complete their profile in step 3.
  */
-async function verifyAndCreatePatient(data) {
-    const { phone, otp, fullName, age, gender, caseType } = data;
-    // Verify OTP (with MVP backdoor)
+async function verifySignupOtp(phone, otp) {
     const key = `self-signup-${phone}`;
-    let isValid = otp === "1234";
+    let isValid = otp === "1234"; // MVP backdoor
     if (!isValid) {
         isValid = await messageCentral_service_1.messageCentralService.verifyOTP(phone, key, otp);
     }
@@ -47,7 +46,37 @@ async function verifyAndCreatePatient(data) {
     if (existing) {
         throw new AppError_1.AppError(409, "Account already exists. Please login.");
     }
-    // Create patient without doctorId or diaryId
+    // Issue a short-lived signup token (10 minutes) — NOT a patient JWT
+    const signupToken = jsonwebtoken_1.default.sign({ phone, purpose: "SELF_SIGNUP_VERIFIED" }, process.env.JWT_SECRET, { expiresIn: "10m" });
+    return { signupToken, phone };
+}
+exports.verifySignupOtp = verifySignupOtp;
+/**
+ * Step 3: Complete profile — uses the signup token from step 2
+ * Creates the patient record and returns a full patient JWT.
+ */
+async function completeSignupProfile(data) {
+    const { signupToken, fullName, age, gender, caseType } = data;
+    // Verify the signup token
+    let decoded;
+    try {
+        decoded = jsonwebtoken_1.default.verify(signupToken, process.env.JWT_SECRET);
+    }
+    catch {
+        throw new AppError_1.AppError(401, "Signup token expired or invalid. Please verify OTP again.");
+    }
+    if (decoded.purpose !== "SELF_SIGNUP_VERIFIED") {
+        throw new AppError_1.AppError(401, "Invalid signup token");
+    }
+    const phone = decoded.phone;
+    // Double-check no duplicate (race condition guard)
+    const existing = await Patient_1.Patient.findOne({
+        where: { phone, registrationSource: "SELF_SIGNUP" },
+    });
+    if (existing) {
+        throw new AppError_1.AppError(409, "Account already exists. Please login.");
+    }
+    // Create patient
     const patient = await Patient_1.Patient.create({
         fullName,
         age,
@@ -58,7 +87,7 @@ async function verifyAndCreatePatient(data) {
         registeredDate: new Date(),
         status: "ACTIVE",
     });
-    // Generate JWT
+    // Generate full patient JWT (30 days)
     const token = jsonwebtoken_1.default.sign({
         id: patient.id,
         fullName: patient.fullName,
@@ -79,7 +108,7 @@ async function verifyAndCreatePatient(data) {
         },
     };
 }
-exports.verifyAndCreatePatient = verifyAndCreatePatient;
+exports.completeSignupProfile = completeSignupProfile;
 /**
  * Login for self-signup patients (by phone)
  */

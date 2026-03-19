@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.verifyAndCreate = exports.sendSignupOtp = void 0;
+exports.listDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.completeProfile = exports.verifySignupOtp = exports.sendSignupOtp = void 0;
 const zod_1 = require("zod");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
@@ -33,9 +33,12 @@ const signupService = __importStar(require("../service/patientSelfSignup.service
 const sendOtpSchema = zod_1.z.object({
     phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
 });
-const verifyAndCreateSchema = zod_1.z.object({
+const verifyOtpSchema = zod_1.z.object({
     phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
-    otp: zod_1.z.string().length(6, "OTP must be 6 digits"),
+    otp: zod_1.z.string().min(4, "OTP must be at least 4 digits").max(6, "OTP must be at most 6 digits"),
+});
+const completeProfileSchema = zod_1.z.object({
+    signupToken: zod_1.z.string().min(1, "Signup token is required"),
     fullName: zod_1.z.string().min(2, "Full name is required").max(255),
     age: zod_1.z.number().int().min(0, "Age must be 0–100").max(100, "Age must be 0–100"),
     gender: zod_1.z.enum(["Male", "Female", "Other"]),
@@ -80,16 +83,39 @@ const sendSignupOtp = async (req, res) => {
 exports.sendSignupOtp = sendSignupOtp;
 /**
  * POST /api/v1/patient/self-signup/verify
- * Step 2: Verify OTP + create patient account
+ * Step 2: Verify OTP only — returns a short-lived signup token (10 min)
  */
-const verifyAndCreate = async (req, res) => {
+const verifySignupOtp = async (req, res) => {
     try {
-        const parsed = verifyAndCreateSchema.safeParse(req.body);
+        const parsed = verifyOtpSchema.safeParse(req.body);
         if (!parsed.success) {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
             return;
         }
-        const result = await signupService.verifyAndCreatePatient(parsed.data);
+        const result = await signupService.verifySignupOtp(parsed.data.phone, parsed.data.otp);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "OTP verified successfully", result);
+    }
+    catch (error) {
+        if (error instanceof AppError_1.AppError) {
+            (0, response_1.responseMiddleware)(res, error.statusCode, error.message);
+            return;
+        }
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to verify OTP");
+    }
+};
+exports.verifySignupOtp = verifySignupOtp;
+/**
+ * POST /api/v1/patient/self-signup/complete-profile
+ * Step 3: Submit profile details using the signup token from step 2
+ */
+const completeProfile = async (req, res) => {
+    try {
+        const parsed = completeProfileSchema.safeParse(req.body);
+        if (!parsed.success) {
+            (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
+            return;
+        }
+        const result = await signupService.completeSignupProfile(parsed.data);
         res.status(constants_1.HTTP_STATUS.CREATED).json({
             success: true,
             message: "Account created successfully",
@@ -104,7 +130,7 @@ const verifyAndCreate = async (req, res) => {
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to create account");
     }
 };
-exports.verifyAndCreate = verifyAndCreate;
+exports.completeProfile = completeProfile;
 /**
  * POST /api/v1/patient/self-signup/login
  * Self-signup patient login — sends OTP
