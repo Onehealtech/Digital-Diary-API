@@ -28,6 +28,8 @@ import diarySalesRoutes from "./diary-sales.routes";
 import subscriptionRoutes from "./subscription.routes";
 import doctorRequestRoutes from "./doctorRequest.routes";
 import accountDeletionRoutes from "./accountDeletion.routes";
+import paymentConfigRoutes from "./paymentConfig.routes";
+import { handleCashfreeWebhook, handleRazorpayWebhook } from "../controllers/webhook.controller";
 
 const router = express.Router();
 
@@ -61,5 +63,10 @@ router.use("/v1/diary-sales", diarySalesRoutes); // Diary selling (all roles) & 
 router.use("/v1/subscriptions", subscriptionRoutes); // Subscription plans & patient subscriptions
 router.use("/v1/doctor-requests", doctorRequestRoutes); // Patient→Doctor assignment requests (self-signup)
 router.use("/v1/account", accountDeletionRoutes); // Account deletion (Play Store compliance)
+router.use("/v1/payment-config", paymentConfigRoutes); // Payment gateway config (Super Admin)
+
+// Webhook routes (no auth — verified via signatures)
+router.post("/v1/webhooks/cashfree", handleCashfreeWebhook);
+router.post("/v1/webhooks/razorpay", handleRazorpayWebhook);
 
 export default router;

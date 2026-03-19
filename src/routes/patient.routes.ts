@@ -23,6 +23,10 @@ import {
     getProfile,
 } from "../controllers/patientProfile.controller";
 import {
+    getAccessInfo,
+    getDiaryCatalog,
+} from "../controllers/patientAccess.controller";
+import {
     getPatientReminders,
     markReminderAsRead,
     respondToReminder
@@ -39,6 +43,10 @@ const router = Router();
 // Legacy routes (Accessed by Doctors)
 router.post("/", authCheck([UserRole.VENDOR]), validate({ body: createPatientSchema }), createPatient);
 router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('viewPatients'), getDoctorPatients);
+
+// Patient access level & diary catalog (Accessed by Patients)
+router.get("/access-info", patientAuthCheck, getAccessInfo);
+router.get("/diary-catalog", patientAuthCheck, getDiaryCatalog);
 
 // Patient profile management (Accessed by Patients)
 router.post("/request-edit-otp", patientAuthCheck, requestEditOTP);

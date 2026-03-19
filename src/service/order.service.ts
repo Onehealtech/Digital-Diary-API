@@ -378,7 +378,7 @@ export const processPaymentSuccess = async (
                 transaction: t,
             });
 
-            if (platformAdmin) {
+            if (platformAdmin && order.vendorId && order.doctorId) {
                 await creditWalletsOnSale({
                     orderId: order.orderId,
                     vendorId: order.vendorId,

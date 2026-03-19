@@ -33,8 +33,13 @@ app.use(
 
 
 
-// Parse JSON request bodies
-app.use(express.json());
+// Capture raw body for webhook signature verification, then parse JSON
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    // Store raw body for webhook routes that need signature verification
+    req.rawBody = buf.toString();
+  },
+}));
 
 // Parse URL-encoded request bodies
 app.use(express.urlencoded({ extended: true }));

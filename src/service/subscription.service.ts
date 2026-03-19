@@ -1,5 +1,6 @@
 // src/service/subscription.service.ts
 
+import crypto from "crypto";
 import { Op } from "sequelize";
 import { sequelize } from "../config/Dbconnetion";
 import { SubscriptionPlan } from "../models/SubscriptionPlan";
@@ -7,6 +8,8 @@ import { UserSubscription } from "../models/UserSubscription";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Diary } from "../models/Diary";
+import { Order } from "../models/Order";
+import { createPaymentOrder, getActiveGateway } from "./paymentGateway.service";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
@@ -91,14 +94,208 @@ export const getPlanById = async (planId: string) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PATIENT SUBSCRIPTION
+// SUBSCRIPTION PAYMENT FLOW
 // ═══════════════════════════════════════════════════════════════════════════
 
+const generateOrderId = (): string => {
+  const timestamp = Date.now().toString(36);
+  const random = crypto.randomBytes(4).toString("hex");
+  return `SUB-${timestamp}-${random}`.toUpperCase();
+};
+
 /**
- * Subscribe a patient to a plan.
- * Flow: Patient signs up → buys subscription → then chooses doctor.
- * Diary is NOT assigned here — it is assigned when a doctor accepts the request.
+ * Step 1: Initiate subscription payment
+ *
+ * Creates a PENDING order with the active payment gateway.
+ * Does NOT create the UserSubscription yet — that happens after payment.
  */
+export const initiateSubscriptionPayment = async (params: {
+  patientId: string;
+  planId: string;
+}) => {
+  const { patientId, planId } = params;
+
+  // 1. Validate patient
+  const patient = await Patient.findByPk(patientId);
+  if (!patient) throw new Error("Patient not found");
+
+  // 2. Validate plan
+  const plan = await SubscriptionPlan.findByPk(planId);
+  if (!plan) throw new Error("Plan not found");
+  if (!plan.isActive) throw new Error("This plan is no longer available");
+
+  // 3. Check for existing active subscription
+  const existingActive = await UserSubscription.findOne({
+    where: { patientId, status: "ACTIVE" },
+  });
+  if (existingActive) {
+    throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
+  }
+
+  // 4. Check for an existing PENDING order for this patient + plan
+  const existingPending = await Order.findOne({
+    where: {
+      patientId,
+      subscriptionPlanId: planId,
+      status: "PENDING",
+    },
+  });
+  if (existingPending) {
+    // Return the existing pending order details so the user can retry payment
+    const gateway = existingPending.paymentGateway || "CASHFREE";
+    return {
+      orderId: existingPending.orderId,
+      gateway,
+      gatewayOrderId: existingPending.cfOrderId || "",
+      paymentSessionId: gateway === "CASHFREE" ? existingPending.paymentSessionId : undefined,
+      razorpayKeyId: gateway === "RAZORPAY" ? process.env.RAZORPAY_KEY_ID : undefined,
+      amount: Number(existingPending.amount),
+      currency: existingPending.currency,
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        monthlyPrice: plan.monthlyPrice,
+      },
+    };
+  }
+
+  // 5. Create payment order with active gateway
+  const orderId = generateOrderId();
+  const amount = Number(plan.monthlyPrice);
+
+  const paymentResult = await createPaymentOrder({
+    orderId,
+    amount,
+    customerName: patient.fullName || "Patient",
+    customerPhone: patient.phone || "9999999999",
+    orderNote: `Subscription: ${plan.name}`,
+    notes: {
+      planId,
+      patientId,
+      planName: plan.name,
+    },
+  });
+
+  // 6. Save Order as PENDING
+  await Order.create({
+    orderId,
+    cfOrderId: paymentResult.gatewayOrderId,
+    patientId,
+    doctorId: null,
+    vendorId: null,
+    amount,
+    currency: "INR",
+    status: "PENDING",
+    paymentSessionId: paymentResult.paymentSessionId || null,
+    paymentGateway: paymentResult.gateway,
+    subscriptionPlanId: planId,
+    orderNote: `Subscription: ${plan.name}`,
+  });
+
+  return {
+    orderId,
+    gateway: paymentResult.gateway,
+    gatewayOrderId: paymentResult.gatewayOrderId,
+    paymentSessionId: paymentResult.paymentSessionId,
+    razorpayKeyId: paymentResult.razorpayKeyId,
+    amount,
+    currency: "INR",
+    plan: {
+      id: plan.id,
+      name: plan.name,
+      monthlyPrice: plan.monthlyPrice,
+    },
+  };
+};
+
+/**
+ * Step 2: Activate subscription after successful payment
+ *
+ * Called from:
+ * - Razorpay client-side verify endpoint
+ * - Cashfree/Razorpay webhook handlers
+ *
+ * Idempotent: safe to call multiple times for the same order.
+ */
+export const activateSubscriptionAfterPayment = async (
+  orderId: string,
+  paymentMethod?: string,
+  transactionId?: string
+) => {
+  return await sequelize.transaction(async (t) => {
+    // 1. Find and lock the order
+    const order = await Order.findOne({
+      where: { orderId },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!order) throw new Error(`Order ${orderId} not found`);
+
+    // Idempotency: already processed
+    if (order.status === "PAID") {
+      const existingSub = await UserSubscription.findOne({
+        where: { paymentOrderId: orderId },
+        transaction: t,
+      });
+      return { subscription: existingSub, alreadyProcessed: true };
+    }
+
+    if (!order.subscriptionPlanId) {
+      throw new Error("Order is not a subscription order");
+    }
+
+    // 2. Get the plan
+    const plan = await SubscriptionPlan.findByPk(order.subscriptionPlanId, { transaction: t });
+    if (!plan) throw new Error("Subscription plan not found");
+
+    // 3. Update order status
+    order.status = "PAID";
+    order.paymentMethod = paymentMethod || order.paymentMethod;
+    order.transactionId = transactionId || order.transactionId;
+    order.paidAt = new Date();
+    await order.save({ transaction: t });
+
+    // 4. Create the subscription
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+
+    const subscription = await UserSubscription.create(
+      {
+        patientId: order.patientId,
+        planId: order.subscriptionPlanId,
+        status: "ACTIVE",
+        paidAmount: plan.monthlyPrice,
+        maxDiaryPages: plan.maxDiaryPages,
+        scanEnabled: plan.scanEnabled,
+        manualEntryEnabled: plan.manualEntryEnabled,
+        pagesUsed: 0,
+        paymentOrderId: orderId,
+        paymentMethod: paymentMethod || order.paymentGateway,
+        startDate: now,
+        endDate,
+      },
+      { transaction: t }
+    );
+
+    return {
+      subscription,
+      plan: {
+        name: plan.name,
+        maxDiaryPages: plan.maxDiaryPages,
+        scanEnabled: plan.scanEnabled,
+        manualEntryEnabled: plan.manualEntryEnabled,
+      },
+      alreadyProcessed: false,
+    };
+  });
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY: Direct subscribe (kept for backward compatibility / free plans)
+// ═══════════════════════════════════════════════════════════════════════════
+
 export const subscribeToPlan = async (params: {
   patientId: string;
   planId: string;
@@ -396,4 +593,3 @@ export const incrementPageUsage = async (patientId: string) => {
   await subscription.save();
   return subscription.pagesUsed;
 };
-
