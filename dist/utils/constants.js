@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDiaryTypeForCaseType = exports.DEFAULT_DIARY_TYPE = exports.CASE_TYPE_TO_DIARY_TYPE = exports.CaseType = exports.GCP_PROJECT_ID = exports.GCP_BUCKET_NAME = exports.HTTP_STATUS = exports.API_MESSAGES = exports.UserRole = void 0;
+exports.BUNDLE_PACKS = exports.DIARY_MODULES = exports.AccessLevel = exports.getDiaryTypeForCaseType = exports.DEFAULT_DIARY_TYPE = exports.CASE_TYPE_TO_DIARY_TYPE = exports.CaseType = exports.GCP_PROJECT_ID = exports.GCP_BUCKET_NAME = exports.HTTP_STATUS = exports.API_MESSAGES = exports.UserRole = void 0;
 /**
  * User Roles
  * Defines the allowed roles in the system
@@ -92,3 +92,88 @@ function getDiaryTypeForCaseType(caseType) {
     return exports.DEFAULT_DIARY_TYPE;
 }
 exports.getDiaryTypeForCaseType = getDiaryTypeForCaseType;
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCESS LEVELS
+// ═══════════════════════════════════════════════════════════════════════════
+var AccessLevel;
+(function (AccessLevel) {
+    AccessLevel["ALL_ACCESS"] = "all_access";
+    AccessLevel["LIMITED_ACCESS"] = "limited_access";
+})(AccessLevel = exports.AccessLevel || (exports.AccessLevel = {}));
+exports.DIARY_MODULES = {
+    [CaseType.PERI_OPERATIVE]: {
+        caseType: CaseType.PERI_OPERATIVE,
+        moduleName: "Peri-Operative Diary",
+        diaryType: "CANTrac-Breast",
+        defaultValidityDays: 30,
+        mrpInclGST: 2499,
+        extensions: [
+            { label: "+15 days", days: 15, price: 799 },
+            { label: "+30 days", days: 30, price: 1199 },
+        ],
+    },
+    [CaseType.POST_OPERATIVE]: {
+        caseType: CaseType.POST_OPERATIVE,
+        moduleName: "Post-Operative Diary",
+        diaryType: "CANTrac-PostOp",
+        defaultValidityDays: 30,
+        mrpInclGST: 2499,
+        extensions: [
+            { label: "+15 days", days: 15, price: 799 },
+            { label: "+30 days", days: 30, price: 1199 },
+        ],
+    },
+    [CaseType.CHEMOTHERAPY]: {
+        caseType: CaseType.CHEMOTHERAPY,
+        moduleName: "Chemotherapy Diary",
+        diaryType: "CANTrac-Chemo",
+        defaultValidityDays: 90,
+        mrpInclGST: 4999,
+        extensions: [{ label: "+30 days", days: 30, price: 1499 }],
+    },
+    [CaseType.RADIOLOGY]: {
+        caseType: CaseType.RADIOLOGY,
+        moduleName: "Radiation Therapy Diary",
+        diaryType: "CANTrac-Radiology",
+        defaultValidityDays: 60,
+        mrpInclGST: 3999,
+        extensions: [{ label: "+15 days", days: 15, price: 999 }],
+    },
+    [CaseType.FOLLOW_UP]: {
+        caseType: CaseType.FOLLOW_UP,
+        moduleName: "Follow-up Diary",
+        diaryType: "CANTrac-FollowUp",
+        defaultValidityDays: 365,
+        mrpInclGST: 2999,
+        extensions: [{ label: "+12 months", days: 365, price: 2499 }],
+    },
+};
+exports.BUNDLE_PACKS = [
+    {
+        bundleCode: "SURGERY_PACK",
+        bundleName: "Surgery Pack",
+        includes: [CaseType.PERI_OPERATIVE, CaseType.POST_OPERATIVE],
+        packMRP: 4499,
+        discountPercent: 10,
+    },
+    {
+        bundleCode: "TREATMENT_PACK",
+        bundleName: "Treatment Pack",
+        includes: [CaseType.PERI_OPERATIVE, CaseType.POST_OPERATIVE, CaseType.CHEMOTHERAPY],
+        packMRP: 8499,
+        discountPercent: 15,
+    },
+    {
+        bundleCode: "COMPLETE_CARE_PACK",
+        bundleName: "Complete Care Pack",
+        includes: [
+            CaseType.PERI_OPERATIVE,
+            CaseType.POST_OPERATIVE,
+            CaseType.CHEMOTHERAPY,
+            CaseType.RADIOLOGY,
+            CaseType.FOLLOW_UP,
+        ],
+        packMRP: 14499,
+        discountPercent: 20,
+    },
+];

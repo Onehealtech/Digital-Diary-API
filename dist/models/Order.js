@@ -13,6 +13,7 @@ exports.Order = void 0;
 const sequelize_typescript_1 = require("sequelize-typescript");
 const Patient_1 = require("./Patient");
 const Appuser_1 = require("./Appuser");
+const SubscriptionPlan_1 = require("./SubscriptionPlan");
 let Order = class Order extends sequelize_typescript_1.Model {
 };
 __decorate([
@@ -54,7 +55,7 @@ __decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
         field: "doctorId",
     }),
     __metadata("design:type", String)
@@ -66,7 +67,7 @@ __decorate([
 __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
         field: "vendorId",
     }),
     __metadata("design:type", String)
@@ -122,6 +123,32 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], Order.prototype, "orderNote", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(20),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Order.prototype, "paymentGateway", void 0);
+__decorate([
+    (0, sequelize_typescript_1.ForeignKey)(() => SubscriptionPlan_1.SubscriptionPlan),
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.UUID,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Order.prototype, "subscriptionPlanId", void 0);
+__decorate([
+    (0, sequelize_typescript_1.BelongsTo)(() => SubscriptionPlan_1.SubscriptionPlan),
+    __metadata("design:type", SubscriptionPlan_1.SubscriptionPlan)
+], Order.prototype, "subscriptionPlan", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Order.prototype, "transactionId", void 0);
 Order = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "orders",

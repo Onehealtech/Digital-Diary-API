@@ -26,8 +26,13 @@ app.use((0, cors_1.default)({
     origin: '*',
     credentials: true,
 }));
-// Parse JSON request bodies
-app.use(express_1.default.json());
+// Capture raw body for webhook signature verification, then parse JSON
+app.use(express_1.default.json({
+    verify: (req, _res, buf) => {
+        // Store raw body for webhook routes that need signature verification
+        req.rawBody = buf.toString();
+    },
+}));
 // Parse URL-encoded request bodies
 app.use(express_1.default.urlencoded({ extended: true }));
 // Serve static files for uploads

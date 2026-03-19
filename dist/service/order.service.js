@@ -314,7 +314,7 @@ const processPaymentSuccess = async (orderId, paymentMethod, webhookPayload) => 
                 where: { role: "SUPER_ADMIN" },
                 transaction: t,
             });
-            if (platformAdmin) {
+            if (platformAdmin && order.vendorId && order.doctorId) {
                 await (0, wallet_service_1.creditWalletsOnSale)({
                     orderId: order.orderId,
                     vendorId: order.vendorId,

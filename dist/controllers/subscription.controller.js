@@ -24,10 +24,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkFeatureAccess = exports.checkPageLimit = exports.upgradePlan = exports.getAllSubscriptions = exports.getMySubscription = exports.linkDoctor = exports.subscribeToPlan = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
+exports.checkFeatureAccess = exports.checkPageLimit = exports.upgradePlan = exports.getAllSubscriptions = exports.getMySubscription = exports.linkDoctor = exports.subscribeToPlan = exports.verifySubscriptionPayment = exports.initiateSubscription = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
 const subscriptionService = __importStar(require("../service/subscription.service"));
+const razorpay_service_1 = require("../service/razorpay.service");
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -94,7 +95,87 @@ const getPlanById = async (req, res) => {
 };
 exports.getPlanById = getPlanById;
 // ═══════════════════════════════════════════════════════════════════════════
-// PATIENT SUBSCRIPTION
+// SUBSCRIPTION PAYMENT FLOW
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * POST /subscriptions/subscribe
+ * Initiates a subscription payment order.
+ * Returns gateway-specific details for the frontend to open checkout.
+ */
+const initiateSubscription = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const { planId } = req.body;
+        if (!planId) {
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "planId is required");
+        }
+        const result = await subscriptionService.initiateSubscriptionPayment({
+            patientId,
+            planId,
+        });
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.CREATED, "Payment order created", result);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to initiate subscription";
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, message);
+    }
+};
+exports.initiateSubscription = initiateSubscription;
+/**
+ * POST /subscriptions/verify-payment
+ * Verifies payment after Razorpay client-side checkout callback.
+ * For Cashfree, payment is verified via webhook instead.
+ */
+const verifySubscriptionPayment = async (req, res) => {
+    try {
+        const { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature, gateway, } = req.body;
+        if (!orderId) {
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "orderId is required");
+        }
+        if (gateway === "RAZORPAY") {
+            if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "razorpayOrderId, razorpayPaymentId, and razorpaySignature are required");
+            }
+            // Verify Razorpay payment signature
+            const isValid = (0, razorpay_service_1.verifyRazorpayPaymentSignature)({
+                razorpayOrderId,
+                razorpayPaymentId,
+                razorpaySignature,
+            });
+            if (!isValid) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "Payment verification failed: invalid signature");
+            }
+            // Activate subscription
+            const result = await subscriptionService.activateSubscriptionAfterPayment(orderId, "RAZORPAY", razorpayPaymentId);
+            if (result.alreadyProcessed) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription already active", result.subscription);
+            }
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Payment verified and subscription activated", {
+                subscription: result.subscription,
+                plan: result.plan,
+            });
+        }
+        // For Cashfree: verify via polling or just activate (webhook is the primary method)
+        if (gateway === "CASHFREE") {
+            const result = await subscriptionService.activateSubscriptionAfterPayment(orderId, "CASHFREE");
+            if (result.alreadyProcessed) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription already active", result.subscription);
+            }
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription activated", {
+                subscription: result.subscription,
+                plan: result.plan,
+            });
+        }
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "Invalid gateway specified");
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Payment verification failed";
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, message);
+    }
+};
+exports.verifySubscriptionPayment = verifySubscriptionPayment;
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY: Direct subscribe (for backward compat / free plans)
 // ═══════════════════════════════════════════════════════════════════════════
 const subscribeToPlan = async (req, res) => {
     try {

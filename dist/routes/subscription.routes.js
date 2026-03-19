@@ -24,8 +24,13 @@ router.get("/patient/plans", authMiddleware_1.patientAuthCheck, async (req, res)
     req.query.includeInactive = "false";
     return (0, subscription_controller_1.getAllPlans)(req, res);
 });
-// ── Patient Subscription ─────────────────────────────────────────────────
-router.post("/subscribe", authMiddleware_1.patientAuthCheck, (0, validate_middleware_1.validate)({ body: subscription_schemas_1.subscribeToPlanSchema }), subscription_controller_1.subscribeToPlan);
+// ── Subscription Payment Flow (Patient) ──────────────────────────────────
+// Step 1: Create payment order for a subscription plan
+router.post("/subscribe", authMiddleware_1.patientAuthCheck, subscription_controller_1.initiateSubscription);
+// Step 2: Verify payment and activate subscription
+router.post("/verify-payment", authMiddleware_1.patientAuthCheck, subscription_controller_1.verifySubscriptionPayment);
+// Legacy: Direct subscribe (for free plans / backward compat)
+router.post("/subscribe-direct", authMiddleware_1.patientAuthCheck, (0, validate_middleware_1.validate)({ body: subscription_schemas_1.subscribeToPlanSchema }), subscription_controller_1.subscribeToPlan);
 router.put("/:subscriptionId/link-doctor", authMiddleware_1.patientAuthCheck, (0, validate_middleware_1.validate)({ body: subscription_schemas_1.linkDoctorSchema }), subscription_controller_1.linkDoctor);
 router.get("/my-subscription", authMiddleware_1.patientAuthCheck, subscription_controller_1.getMySubscription);
 router.post("/upgrade", authMiddleware_1.patientAuthCheck, subscription_controller_1.upgradePlan);

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const patient_controller_1 = require("../controllers/patient.controller");
 const patientProfile_controller_1 = require("../controllers/patientProfile.controller");
+const patientAccess_controller_1 = require("../controllers/patientAccess.controller");
 const reminder_controller_1 = require("../controllers/reminder.controller");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const authMiddleware_2 = require("../middleware/authMiddleware");
@@ -14,6 +15,9 @@ const router = (0, express_1.Router)();
 // Legacy routes (Accessed by Doctors)
 router.post("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR]), (0, validate_middleware_1.validate)({ body: staff_schemas_1.createPatientSchema }), patient_controller_1.createPatient);
 router.get("/getAllPatients", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('viewPatients'), patient_controller_1.getDoctorPatients);
+// Patient access level & diary catalog (Accessed by Patients)
+router.get("/access-info", authMiddleware_1.patientAuthCheck, patientAccess_controller_1.getAccessInfo);
+router.get("/diary-catalog", authMiddleware_1.patientAuthCheck, patientAccess_controller_1.getDiaryCatalog);
 // Patient profile management (Accessed by Patients)
 router.post("/request-edit-otp", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.requestEditOTP);
 router.post("/update-profile", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.updateProfile);
