@@ -19,7 +19,9 @@ router.delete("/plans/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRol
 router.get("/plans", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), subscription_controller_1.getAllPlans);
 router.get("/plans/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), subscription_controller_1.getPlanById);
 // Public endpoint for patients to see plans
-router.get("/patient/plans", authMiddleware_1.patientAuthCheck, async (req, res) => {
+router.get("/patient/plans", 
+// patientAuthCheck,
+async (req, res) => {
     // Reuse the same controller but force exclude inactive
     req.query.includeInactive = "false";
     return (0, subscription_controller_1.getAllPlans)(req, res);

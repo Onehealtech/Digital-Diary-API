@@ -67,7 +67,7 @@ router.get(
 // Public endpoint for patients to see plans
 router.get(
   "/patient/plans",
-  patientAuthCheck,
+  // patientAuthCheck,
   async (req, res) => {
     // Reuse the same controller but force exclude inactive
     req.query.includeInactive = "false";
