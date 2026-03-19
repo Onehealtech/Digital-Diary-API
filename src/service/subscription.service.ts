@@ -7,8 +7,6 @@ import { UserSubscription } from "../models/UserSubscription";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Diary } from "../models/Diary";
-import { GeneratedDiary } from "../models/GeneratedDiary";
-import crypto from "crypto";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
@@ -98,21 +96,16 @@ export const getPlanById = async (planId: string) => {
 
 /**
  * Subscribe a patient to a plan.
- * - Validates the plan exists and is active
- * - Checks no existing active subscription
- * - Finds or auto-creates an unassigned diary
- * - Assigns diary to patient
- * - Links doctor if provided
- * - Creates subscription record with plan snapshot
+ * Flow: Patient signs up → buys subscription → then chooses doctor.
+ * Diary is NOT assigned here — it is assigned when a doctor accepts the request.
  */
 export const subscribeToPlan = async (params: {
   patientId: string;
   planId: string;
-  doctorId?: string;
   paymentOrderId?: string;
   paymentMethod?: string;
 }) => {
-  const { patientId, planId, doctorId, paymentOrderId, paymentMethod } = params;
+  const { patientId, planId, paymentOrderId, paymentMethod } = params;
 
   return await sequelize.transaction(async (t) => {
     // 1. Validate patient
@@ -133,72 +126,7 @@ export const subscribeToPlan = async (params: {
       throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
     }
 
-    // 4. Validate doctor if provided
-    let resolvedDoctorId = doctorId || patient.doctorId;
-    if (doctorId) {
-      const doctor = await AppUser.findOne({
-        where: { id: doctorId, role: "DOCTOR", isActive: true },
-        transaction: t,
-      });
-      if (!doctor) throw new Error("Doctor not found or inactive");
-    }
-
-    // 5. Find or create an unassigned diary
-    let generatedDiary = await GeneratedDiary.findOne({
-      where: { status: "unassigned" },
-      order: [["createdAt", "ASC"]],
-      lock: t.LOCK.UPDATE,
-      transaction: t,
-    });
-
-    if (!generatedDiary) {
-      // Auto-create a diary if none available
-      const diaryId = generateDiaryId();
-      generatedDiary = await GeneratedDiary.create(
-        {
-          id: diaryId,
-          diaryType: "breast-cancer-treatment",
-          status: "unassigned",
-          generatedDate: new Date(),
-        },
-        { transaction: t }
-      );
-    }
-
-    // 6. Mark generated diary as sold
-    generatedDiary.status = "sold";
-    generatedDiary.soldTo = patientId;
-    generatedDiary.soldDate = new Date();
-    await generatedDiary.save({ transaction: t });
-
-    // 7. Create diary record
-    await Diary.create(
-      {
-        id: generatedDiary.id,
-        patientId,
-        doctorId: resolvedDoctorId,
-        status: "active",
-        activationDate: new Date(),
-        approvedBy: null,
-        saleAmount: Number(plan.monthlyPrice),
-        commissionAmount: 0,
-      },
-      { transaction: t }
-    );
-
-    // 8. Update patient diaryId if not set
-    if (!patient.diaryId || patient.diaryId === "") {
-      patient.diaryId = generatedDiary.id;
-      await patient.save({ transaction: t });
-    }
-
-    // 9. Link doctor to patient if provided
-    if (doctorId && patient.doctorId !== doctorId) {
-      patient.doctorId = doctorId;
-      await patient.save({ transaction: t });
-    }
-
-    // 10. Create subscription with plan snapshot
+    // 4. Create subscription with plan snapshot (no diary, no doctor yet)
     const now = new Date();
     const endDate = new Date(now);
     endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
@@ -207,8 +135,6 @@ export const subscribeToPlan = async (params: {
       {
         patientId,
         planId,
-        diaryId: generatedDiary.id,
-        doctorId: resolvedDoctorId,
         status: "ACTIVE",
         paidAmount: plan.monthlyPrice,
         maxDiaryPages: plan.maxDiaryPages,
@@ -225,7 +151,6 @@ export const subscribeToPlan = async (params: {
 
     return {
       subscription,
-      diaryId: generatedDiary.id,
       plan: {
         name: plan.name,
         maxDiaryPages: plan.maxDiaryPages,
@@ -472,12 +397,3 @@ export const incrementPageUsage = async (patientId: string) => {
   return subscription.pagesUsed;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function generateDiaryId(): string {
-  const year = new Date().getFullYear();
-  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `DRY-${year}-AUTO-${random}`;
-}

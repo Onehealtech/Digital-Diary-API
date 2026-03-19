@@ -29,7 +29,6 @@ export const updatePlanSchema = createPlanSchema.partial();
 
 export const subscribeToPlanSchema = z.object({
   planId: z.string().uuid("Invalid plan ID"),
-  doctorId: z.string().uuid("Invalid doctor ID").optional(),
   paymentOrderId: z.string().optional(),
   paymentMethod: z.string().optional(),
 });

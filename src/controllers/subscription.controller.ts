@@ -74,12 +74,11 @@ export const getPlanById = async (req: AuthenticatedRequest, res: Response) => {
 export const subscribeToPlan = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const patientId = req.user.id; // from patient auth
-    const { planId, doctorId, paymentOrderId, paymentMethod } = req.body;
+    const { planId, paymentOrderId, paymentMethod } = req.body;
 
     const result = await subscriptionService.subscribeToPlan({
       patientId,
       planId,
-      doctorId,
       paymentOrderId,
       paymentMethod,
     });
