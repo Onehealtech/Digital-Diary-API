@@ -436,7 +436,7 @@ class DashboardService {
     async getAllSuperAdmins() {
         const getSuperAdmins = await Appuser_1.AppUser.findAll({
             where: { role: "SUPER_ADMIN" },
-            attributes: ["id", "fullName", "email", "phone", "createdAt"],
+            attributes: ["id", "fullName", "email", "phone", "isActive", "createdAt"],
         });
         return getSuperAdmins;
     }

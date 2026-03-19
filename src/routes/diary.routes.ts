@@ -21,14 +21,14 @@ router.post(
 // GET /api/v1/generated-diaries - List generated diaries
 router.get(
   "/generated-diaries",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   diaryController.getAllGeneratedDiaries.bind(diaryController)
 );
 
 // GET /api/v1/generated-diaries/:id - Get diary by ID
 router.get(
   "/generated-diaries/:id",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   diaryController.getDiaryById.bind(diaryController)
 );
 
@@ -76,7 +76,7 @@ router.put(
 // GET /api/v1/diary-requests - List diary requests
 router.get(
   "/diary-requests",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   diaryController.getAllDiaryRequests.bind(diaryController)
 );
 router.get(
@@ -88,7 +88,7 @@ router.get(
 // POST /api/v1/diary-requests - Create diary request
 router.post(
   "/diary-requests",
-  authCheck([UserRole.VENDOR]),
+  authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
   diaryController.createDiaryRequest.bind(diaryController)
 );
 

@@ -92,6 +92,24 @@ export const getRequestById = async (req: AuthenticatedRequest, res: Response): 
 };
 
 /**
+ * SuperAdmin checks for duplicate doctors matching a request
+ */
+export const checkDuplicateDoctor = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const requestId = req.params.id as string;
+    const result = await doctorOnboardService.checkDuplicateDoctor(requestId);
+    res.status(200).json({ success: true, data: result });
+  } catch (error: unknown) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    console.error("Check duplicate doctor error:", error);
+    res.status(500).json({ success: false, message: "Failed to check for duplicate doctors" });
+  }
+};
+
+/**
  * SuperAdmin approves a doctor onboard request
  */
 export const approveRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => {

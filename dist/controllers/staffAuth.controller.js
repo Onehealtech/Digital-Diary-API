@@ -25,15 +25,18 @@ const login = async (req, res) => {
         });
     }
     catch (error) {
-        // Log blocked login attempts for archived/on-hold assistants
-        if (error.loginBlocked && error.assistantId) {
-            (0, activityLogger_1.logActivity)({
-                req,
-                userId: error.assistantId,
-                userRole: "ASSISTANT",
-                action: "ASSISTANT_LOGIN_BLOCKED",
-                details: { email: req.body.email, reason: error.message },
-            });
+        // Log blocked login attempts for deactivated/archived/on-hold users
+        if (error.loginBlocked) {
+            const userId = error.userId || error.assistantId;
+            if (userId) {
+                (0, activityLogger_1.logActivity)({
+                    req,
+                    userId,
+                    userRole: "UNKNOWN",
+                    action: "LOGIN_BLOCKED",
+                    details: { email: req.body.email, reason: error.message },
+                });
+            }
         }
         res.status(401).json({
             success: false,

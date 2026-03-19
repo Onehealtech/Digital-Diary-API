@@ -54,6 +54,11 @@ const authCheck = (allowedRoles) => {
                 (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.FORBIDDEN, constants_1.API_MESSAGES.FORBIDDEN);
                 return;
             }
+            // Force logout deactivated users (isActive = false)
+            if (user.isActive === false) {
+                (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, 'Your account has been deactivated. Please contact your administrator.');
+                return;
+            }
             // Force logout ON_HOLD or DELETED assistants
             if (user.role === 'ASSISTANT') {
                 if (user.assistantStatus === 'ON_HOLD') {

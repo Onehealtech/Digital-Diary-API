@@ -54,6 +54,13 @@ router.get(
   doctorOnboardController.getRequestById
 );
 
+// SuperAdmin checks for duplicate doctors matching a request
+router.get(
+  "/doctor-requests/:id/check-duplicate",
+  authCheck([UserRole.SUPER_ADMIN]),
+  doctorOnboardController.checkDuplicateDoctor
+);
+
 // SuperAdmin approves a request
 router.post(
   "/doctor-requests/:id/approve",

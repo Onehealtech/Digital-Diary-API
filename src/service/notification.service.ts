@@ -4,7 +4,7 @@ import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
 import { notificationRepository } from "../repositories/notification.repository";
-import { twilioService } from "./twilioService";
+import { messageCentralService } from "./messageCentral.service";
 import { sendEmail } from "../utils/common";
 
 interface NotificationFilters {
@@ -232,13 +232,13 @@ class NotificationService {
       }).catch((err) => console.error("FCM push error:", err));
     }
 
-    // Send Twilio SMS if it's a patient and they have a phone number
+    // Send SMS if it's a patient and they have a phone number
     if (data.recipientType === "patient") {
       const patient = await Patient.findByPk(data.recipientId);
       if (patient && patient.phone) {
         // Strip out the long body or just send title + short body
         const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-        twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error("Twilio SMS err:", err));
+        messageCentralService.sendSMS(patient.phone, smsContent).catch((err) => console.error("SMS err:", err));
       }
     }
 
@@ -321,7 +321,7 @@ class NotificationService {
       }).catch((err) => console.error("FCM multicast error:", err));
     }
 
-    // Send Twilio SMS to all patients with phone numbers
+    // Send SMS to all patients with phone numbers
     const patientsWithPhones = await Patient.findAll({
       where: whereClause,
       attributes: ["id", "fullName", "phone"]
@@ -338,7 +338,7 @@ class NotificationService {
           }
         }
         const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-        twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error("Twilio SMS bulk err:", err));
+        messageCentralService.sendSMS(patient.phone, smsContent).catch((err) => console.error("SMS bulk err:", err));
       }
     });
 
@@ -564,9 +564,9 @@ class NotificationService {
 
     // Send SMS
     if (staff.phone) {
-      twilioService
+      messageCentralService
         .sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
-        .catch((err) => console.error("Twilio SMS error:", err));
+        .catch((err: unknown) => console.error("SMS error:", err));
     }
 
     return {

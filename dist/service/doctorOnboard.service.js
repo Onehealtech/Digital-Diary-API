@@ -8,6 +8,7 @@ const constants_1 = require("../utils/constants");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const emailService_1 = require("./emailService");
 const cashfree_vendor_service_1 = require("./cashfree-vendor.service");
+const wallet_service_1 = require("./wallet.service");
 const doctorOnboardRequest_repository_1 = require("../repositories/doctorOnboardRequest.repository");
 const vendorDoctor_repository_1 = require("../repositories/vendorDoctor.repository");
 class DoctorOnboardService {
@@ -35,6 +36,9 @@ class DoctorOnboardService {
             hospital: data.hospital,
             specialization: data.specialization,
             license: data.license,
+            address: data.address,
+            city: data.city,
+            state: data.state,
             commissionType: data.commissionType,
             commissionRate: data.commissionRate,
             bankDetails: data.bank,
@@ -121,6 +125,9 @@ class DoctorOnboardService {
                 license: request.license,
                 hospital: request.hospital,
                 specialization: request.specialization,
+                address: request.address,
+                city: request.city,
+                state: request.state,
                 commissionType: request.commissionType,
                 commissionRate: request.commissionRate,
             }, { transaction });
@@ -161,6 +168,11 @@ class DoctorOnboardService {
             const message = cfError instanceof Error ? cfError.message : "Unknown error";
             console.error(`Cashfree registration failed for ${request.email}:`, message);
         }
+        // Create wallet for the new doctor (non-blocking)
+        (0, wallet_service_1.createWallet)(newDoctor.id, "DOCTOR").catch((err) => {
+            const message = err instanceof Error ? err.message : "Unknown error";
+            console.error(`Failed to create wallet for doctor ${newDoctor.id}:`, message);
+        });
         // Send password email (non-blocking)
         (0, emailService_1.sendPasswordEmail)(request.email, plainPassword, "DOCTOR", request.fullName).catch((err) => {
             const message = err instanceof Error ? err.message : "Unknown error";
@@ -175,6 +187,37 @@ class DoctorOnboardService {
             },
             requestId: request.id,
             vendorId: request.vendorId,
+        };
+    }
+    /**
+     * Check for duplicate doctors matching a request's phone or license
+     */
+    async checkDuplicateDoctor(requestId) {
+        const request = await doctorOnboardRequest_repository_1.doctorOnboardRequestRepository.findById(requestId);
+        if (!request) {
+            throw new AppError_1.AppError(constants_1.HTTP_STATUS.NOT_FOUND, "Doctor onboard request not found");
+        }
+        const matches = await doctorOnboardRequest_repository_1.doctorOnboardRequestRepository.findDuplicateDoctors(request.phone, request.license);
+        const taggedMatches = matches.map((doc) => {
+            const matchedOn = [];
+            if (request.phone && doc.phone === request.phone.trim()) {
+                matchedOn.push("phone");
+            }
+            if (request.license &&
+                doc.license?.toLowerCase() === request.license.trim().toLowerCase()) {
+                matchedOn.push("license");
+            }
+            return { ...doc.toJSON(), matchedOn };
+        });
+        return {
+            requestId,
+            requestDoctor: {
+                fullName: request.fullName,
+                phone: request.phone,
+                license: request.license,
+            },
+            duplicatesFound: taggedMatches.length,
+            duplicates: taggedMatches,
         };
     }
     /**

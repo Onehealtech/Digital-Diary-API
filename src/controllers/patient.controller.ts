@@ -367,6 +367,37 @@ export const activatePatient = async (req: AuthRequest, res: Response) => {
   }
 };
 
+/**
+ * PUT /api/v1/patients/:id/on-hold
+ * Put a patient on hold (no reason required)
+ */
+export const putPatientOnHold = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const patient = await patientService.putPatientOnHold(id, requesterId, role);
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_ON_HOLD",
+      details: { patientId: id },
+    });
+
+    return sendResponse(res, patient, "Patient put on hold successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
 // =========================================================================
 // PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
 // =========================================================================

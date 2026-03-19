@@ -52,7 +52,9 @@ export class VendorController {
         phone,
         password,
         businessName,
-        location,
+        address,
+        city,
+        state,
         gst,
         bankDetails,
         commissionRate,
@@ -64,7 +66,9 @@ export class VendorController {
         !email ||
         !password ||
         !businessName ||
-        !location ||
+        !address ||
+        !city ||
+        !state ||
         !gst ||
         !bankDetails
       ) {
@@ -77,7 +81,9 @@ export class VendorController {
         phone,
         password,
         businessName,
-        location,
+        address,
+        city,
+        state,
         gst,
         bankDetails,
         commissionRate,

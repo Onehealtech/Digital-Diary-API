@@ -15,6 +15,8 @@ router.get("/archived", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SU
 router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getUserById);
 // Update user details
 router.put("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.updateUser);
+// Toggle active/inactive status
+router.put("/:id/toggle-status", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.toggleUserStatus);
 // Restore an archived user
 router.post("/:id/restore", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.restoreUser);
 // Archive (soft-delete) a user

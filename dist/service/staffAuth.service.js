@@ -26,7 +26,15 @@ const staffLogin = async (email, password) => {
     if (!isMatch) {
         throw new Error("Invalid credentials");
     }
-    // Block login for archived or on-hold assistants
+    // Block login for deactivated users (isActive = false)
+    if (user.isActive === false) {
+        throw Object.assign(new Error("Your account has been deactivated. Please contact your administrator."), { loginBlocked: true, userId: user.id });
+    }
+    // Block login for archived (soft-deleted) users
+    if (user.deletedAt !== null) {
+        throw Object.assign(new Error("Your account has been archived. Please contact your administrator to restore access."), { loginBlocked: true, userId: user.id });
+    }
+    // Block login for on-hold assistants
     if (user.role === "ASSISTANT") {
         const status = user.assistantStatus;
         if (status === "DELETED") {
@@ -57,13 +65,21 @@ const verifyStaffOTP = async (email, otp) => {
     // Get user details (paranoid: false to catch soft-deleted/archived assistants)
     const user = await Appuser_1.AppUser.findOne({
         where: { email: email.toLowerCase() },
-        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus"],
+        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus", "isActive", "deletedAt"],
         paranoid: false,
     });
     if (!user) {
         throw new Error("User not found");
     }
-    // Block OTP verification for archived or on-hold assistants
+    // Block OTP verification for deactivated users
+    if (user.isActive === false) {
+        throw new Error("Your account has been deactivated. Please contact your administrator.");
+    }
+    // Block OTP verification for archived (soft-deleted) users
+    if (user.deletedAt !== null) {
+        throw new Error("Your account has been archived. Please contact your administrator to restore access.");
+    }
+    // Block OTP verification for on-hold assistants
     if (user.role === "ASSISTANT") {
         const status = user.assistantStatus;
         if (status === "DELETED") {

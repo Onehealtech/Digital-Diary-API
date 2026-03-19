@@ -4,7 +4,7 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Notification } from "../models/Notification";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
-import { twilioService } from "../service/twilioService";
+import { messageCentralService } from "../service/messageCentral.service";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
 import { notificationService } from "../service/notification.service";
 
@@ -87,10 +87,10 @@ export const createReminder = async (
             deliveryMethod: "in-app",
         });
 
-        // Send Twilio SMS
+        // Send SMS
         if (patient.phone) {
             const smsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${new Date(reminderDate).toLocaleString()}\n${message}`;
-            twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS reminder err:", err));
+            messageCentralService.sendSMS(patient.phone, smsContent).catch(err => console.error("SMS reminder err:", err));
         }
 
         res.status(201).json({
@@ -485,9 +485,9 @@ New Date: ${new Date(reminder.newReminderDate || reminder.reminderDate).toLocale
 
 ${reminder.newReminderMessage || reminder.message}`;
 
-            twilioService
+            messageCentralService
                 .sendSMS(reminder.patient.phone, smsContent)
-                .catch(err => console.error("Twilio SMS resend err:", err));
+                .catch((err: unknown) => console.error("SMS resend err:", err));
         }
 
         res.status(200).json({

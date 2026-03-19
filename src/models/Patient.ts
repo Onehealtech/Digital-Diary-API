@@ -26,9 +26,9 @@ export class Patient extends Model {
   @Column({
     type: DataType.STRING,
     unique: true,
-    allowNull: false,
+    allowNull: true,
   })
-  diaryId!: string;
+  diaryId?: string;
 
   @Column({
     type: DataType.STRING,
@@ -110,10 +110,10 @@ export class Patient extends Model {
   registeredDate?: Date;
 
   @Column({
-    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE"),
+    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD"),
     defaultValue: "ACTIVE",
   })
-  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE";
+  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE" | "ON_HOLD";
 
   @Column({
     type: DataType.TEXT,
@@ -156,13 +156,20 @@ export class Patient extends Model {
   })
   fcmToken?: string;
 
-  // 🔗 Foreign Key → Doctor
+  @Column({
+    type: DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
+    defaultValue: "VENDOR_ASSIGNED",
+    allowNull: false,
+  })
+  registrationSource!: "VENDOR_ASSIGNED" | "SELF_SIGNUP";
+
+  // 🔗 Foreign Key → Doctor (nullable for self-signup patients awaiting doctor acceptance)
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  doctorId!: string;
+  doctorId?: string;
 
   @BelongsTo(() => AppUser)
   doctor!: AppUser;

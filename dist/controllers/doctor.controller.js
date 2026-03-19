@@ -4,6 +4,7 @@ exports.createAssistant = void 0;
 const Appuser_1 = require("../models/Appuser");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const emailService_1 = require("../service/emailService");
+const wallet_service_1 = require("../service/wallet.service");
 const activityLogger_1 = require("../utils/activityLogger");
 /**
  * POST /api/v1/doctor/create-assistant
@@ -56,6 +57,11 @@ const createAssistant = async (req, res) => {
         });
         // Send password email
         await (0, emailService_1.sendPasswordEmail)(email, plainPassword, "ASSISTANT", fullName);
+        // Create wallet for the assistant (uses DOCTOR wallet type)
+        (0, wallet_service_1.createWallet)(newAssistant.id, "DOCTOR").catch((err) => {
+            const message = err instanceof Error ? err.message : "Unknown error";
+            console.error(`Failed to create wallet for assistant ${newAssistant.id}:`, message);
+        });
         (0, activityLogger_1.logActivity)({
             req,
             userId: req.user.id,

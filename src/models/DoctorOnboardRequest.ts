@@ -57,6 +57,15 @@ export class DoctorOnboardRequest extends Model {
   @Column({ type: DataType.STRING(30), allowNull: true })
   license?: string;
 
+  @Column({ type: DataType.STRING(500), allowNull: true })
+  address?: string;
+
+  @Column({ type: DataType.STRING(100), allowNull: true })
+  city?: string;
+
+  @Column({ type: DataType.STRING(100), allowNull: true })
+  state?: string;
+
   @Column({ type: DataType.STRING(255), allowNull: true })
   commissionType?: string;
 

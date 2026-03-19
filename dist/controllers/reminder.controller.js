@@ -4,7 +4,7 @@ exports.resendReminder = exports.respondToReminder = exports.getDashboardReminde
 const Reminder_1 = require("../models/Reminder");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
-const twilioService_1 = require("../service/twilioService");
+const messageCentral_service_1 = require("../service/messageCentral.service");
 const emailService_1 = require("../service/emailService");
 const notification_service_1 = require("../service/notification.service");
 /**
@@ -76,10 +76,10 @@ const createReminder = async (req, res) => {
             relatedTaskId: reminder.id,
             deliveryMethod: "in-app",
         });
-        // Send Twilio SMS
+        // Send SMS
         if (patient.phone) {
             const smsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${new Date(reminderDate).toLocaleString()}\n${message}`;
-            twilioService_1.twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS reminder err:", err));
+            messageCentral_service_1.messageCentralService.sendSMS(patient.phone, smsContent).catch(err => console.error("SMS reminder err:", err));
         }
         res.status(201).json({
             success: true,
@@ -405,9 +405,9 @@ Type: ${reminder.type}
 New Date: ${new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString()}
 
 ${reminder.newReminderMessage || reminder.message}`;
-            twilioService_1.twilioService
+            messageCentral_service_1.messageCentralService
                 .sendSMS(reminder.patient.phone, smsContent)
-                .catch(err => console.error("Twilio SMS resend err:", err));
+                .catch((err) => console.error("SMS resend err:", err));
         }
         res.status(200).json({
             success: true,

@@ -50,18 +50,25 @@ export class Diary extends Model {
   doctor!: AppUser;
 
   // ================== VENDOR ==================
-  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  vendorId!: string;
+  vendorId?: string;
 
-  @BelongsTo(() => AppUser, {
-    foreignKey: "vendorId",
-    as: "vendor",
+
+  // ================== SELLER TRACKING ==================
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
   })
-  vendor!: AppUser;
+  soldBy?: string;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+  })
+  soldByRole?: "SUPER_ADMIN" | "VENDOR" | "DOCTOR" | "ASSISTANT";
 
   // ================== STATUS ==================
   @Column({

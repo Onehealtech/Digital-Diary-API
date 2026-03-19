@@ -45,6 +45,8 @@ router.get("/vendor-doctors/my", (0, authMiddleware_1.authCheck)([constants_1.Us
 router.get("/doctor-requests", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), (0, validate_middleware_1.validate)({ query: doctorOnboard_schemas_1.listRequestsQuerySchema }), doctorOnboardController.getAllRequests);
 // SuperAdmin views a single request
 router.get("/doctor-requests/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), doctorOnboardController.getRequestById);
+// SuperAdmin checks for duplicate doctors matching a request
+router.get("/doctor-requests/:id/check-duplicate", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), doctorOnboardController.checkDuplicateDoctor);
 // SuperAdmin approves a request
 router.post("/doctor-requests/:id/approve", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), doctorOnboardController.approveRequest);
 // SuperAdmin rejects a request

@@ -30,11 +30,20 @@ export const createStaffSchema = z.object({
     required_error: "Role is required",
     invalid_type_error: "Invalid role",
   }),
-  hospital: z.string().max(100).optional(),
-  specialization: z.string().max(100).optional(),
-  license: z.string().max(30).optional(),
-  GST: z.string().length(15, "GST must be 15 characters").optional(),
-  location: z.string().max(200).optional(),
+  hospital: z.string().max(100).optional().transform(v => v?.trim() || undefined),
+  specialization: z.string().max(100).optional().transform(v => v?.trim() || undefined),
+  license: z.string().max(30).optional().transform(v => v?.trim() || undefined),
+  GST: z
+    .string()
+    .regex(
+      /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/,
+      "Invalid GST format"
+    )
+    .optional(),
+  address: z.string().max(500, "Address must be 500 characters or less").optional().transform(v => v?.trim() || undefined),
+  city: z.string().max(100, "City must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  state: z.string().max(100, "State must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  landLinePhone: z.string().regex(/^(\+91|0)?[1-9][0-9]{9,10}$/, "Enter a valid landline number").optional().transform(v => v?.trim() || undefined),
   commissionType: z.enum(["FIXED", "PERCENTAGE"]).optional(),
   commissionRate: z.number().min(0).optional(),
   bank: z.record(z.unknown()).optional(),
@@ -75,8 +84,15 @@ export const createVendorSchema = z.object({
   phone: phoneSchema,
   password: z.string().min(6, "Password must be at least 6 characters"),
   businessName: z.string({ required_error: "Business name is required" }).min(1),
-  location: z.string({ required_error: "Location is required" }).min(1),
-  gst: z.string({ required_error: "GST is required" }).length(15, "GST must be 15 characters"),
+  address: z.string({ required_error: "Address is required" }).min(1).max(500),
+  city: z.string({ required_error: "City is required" }).min(1).max(100),
+  state: z.string({ required_error: "State is required" }).min(1).max(100),
+  gst: z
+    .string({ required_error: "GST is required" })
+    .regex(
+      /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/,
+      "Invalid GST format. Expected: 2-digit state code + PAN + entity code + Z + checksum"
+    ),
   bankDetails: z.record(z.unknown(), { required_error: "Bank details are required" }),
   commissionRate: z.number().min(0).optional(),
 });

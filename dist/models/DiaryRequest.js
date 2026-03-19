@@ -26,14 +26,28 @@ __decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
     }),
     __metadata("design:type", String)
 ], DiaryRequest.prototype, "vendorId", void 0);
 __decorate([
-    (0, sequelize_typescript_1.BelongsTo)(() => Appuser_1.AppUser),
+    (0, sequelize_typescript_1.BelongsTo)(() => Appuser_1.AppUser, { foreignKey: "vendorId", as: "vendor" }),
     __metadata("design:type", Appuser_1.AppUser)
 ], DiaryRequest.prototype, "vendor", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.UUID,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], DiaryRequest.prototype, "requesterId", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(20),
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], DiaryRequest.prototype, "requesterRole", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.INTEGER,
