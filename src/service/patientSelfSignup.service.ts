@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AppError } from "../utils/AppError";
@@ -168,14 +169,46 @@ export async function verifySelfSignupLogin(
 
 /**
  * List doctors available for patient selection (public — no auth needed on mobile)
- * Returns doctors with name, specialization, hospital, location
+ * Supports pagination and optional search by name, specialization, hospital, city.
  */
-export async function listAvailableDoctors(): Promise<Record<string, unknown>[]> {
-  const doctors = await AppUser.findAll({
-    where: { role: "DOCTOR", isActive: true },
+export async function listAvailableDoctors(params: {
+  page: number;
+  limit: number;
+  search?: string;
+}): Promise<{
+  doctors: Record<string, unknown>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  const { page, limit, search } = params;
+
+  const where: any = { role: "DOCTOR", isActive: true };
+
+  if (search && search.trim()) {
+    const term = `%${search.trim()}%`;
+    where[Op.or] = [
+      { fullName: { [Op.iLike]: term } },
+      { specialization: { [Op.iLike]: term } },
+      { hospital: { [Op.iLike]: term } },
+      { city: { [Op.iLike]: term } },
+    ];
+  }
+
+  const { rows, count } = await AppUser.findAndCountAll({
+    where,
     attributes: ["id", "fullName", "specialization", "hospital", "location", "city", "state"],
     order: [["fullName", "ASC"]],
+    limit,
+    offset: (page - 1) * limit,
   });
 
-  return doctors.map((d) => d.toJSON());
+  return {
+    doctors: rows.map((d) => d.toJSON()),
+    total: count,
+    page,
+    limit,
+    totalPages: Math.ceil(count / limit),
+  };
 }

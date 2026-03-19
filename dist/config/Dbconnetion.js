@@ -34,6 +34,7 @@ const VendorDoctor_1 = require("../models/VendorDoctor");
 const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
 const UserSubscription_1 = require("../models/UserSubscription");
 const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
+const PatientDoctorSuggestion_1 = require("../models/PatientDoctorSuggestion");
 const PaymentConfig_1 = require("../models/PaymentConfig");
 // Load environment variables from .env file
 dotenv_1.default.config();
@@ -87,6 +88,7 @@ exports.sequelize = new sequelize_typescript_1.Sequelize({
         SubscriptionPlan_1.SubscriptionPlan,
         UserSubscription_1.UserSubscription,
         DoctorAssignmentRequest_1.DoctorAssignmentRequest,
+        PatientDoctorSuggestion_1.PatientDoctorSuggestion,
         PaymentConfig_1.PaymentConfig,
     ],
     // Logging configuration
@@ -300,6 +302,29 @@ const initializeDatabase = async () => {
       $$;
     `).catch((err) => {
             console.warn('⚠️ orders dual gateway migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Create patient_doctor_suggestions table
+        await exports.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "patient_doctor_suggestions" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorName" VARCHAR(255) NOT NULL,
+        "doctorPhone" VARCHAR(255),
+        "doctorEmail" VARCHAR(255),
+        "hospital" VARCHAR(255),
+        "specialization" VARCHAR(255),
+        "city" VARCHAR(255),
+        "additionalNotes" TEXT,
+        "status" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        "reviewedBy" UUID REFERENCES "app-users"("id"),
+        "reviewedAt" TIMESTAMP WITH TIME ZONE,
+        "rejectionReason" TEXT,
+        "onboardedDoctorId" UUID,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err) => {
+            console.warn('⚠️ patient_doctor_suggestions migration warning:', err instanceof Error ? err.message : err);
         });
         // Create doctor_assignment_requests table
         await exports.sequelize.query(`

@@ -140,13 +140,17 @@ export const verifySelfSignupLogin = async (req: Request, res: Response): Promis
 };
 
 /**
- * GET /api/v1/patient/self-signup/doctors
- * Public list of available doctors for patient selection
+ * GET /api/v1/patient/self-signup/doctors?page=1&limit=10&search=oncology
+ * Public paginated list of available doctors for patient selection
  */
-export const listDoctors = async (_req: Request, res: Response): Promise<void> => {
+export const listDoctors = async (req: Request, res: Response): Promise<void> => {
   try {
-    const doctors = await signupService.listAvailableDoctors();
-    responseMiddleware(res, HTTP_STATUS.OK, "Doctors fetched", doctors);
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
+    const search = (req.query.search as string) || undefined;
+
+    const result = await signupService.listAvailableDoctors({ page, limit, search });
+    responseMiddleware(res, HTTP_STATUS.OK, "Doctors fetched", result);
   } catch (error: unknown) {
     responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to fetch doctors");
   }

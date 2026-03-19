@@ -28,6 +28,7 @@ import { VendorDoctor } from '../models/VendorDoctor';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { UserSubscription } from '../models/UserSubscription';
 import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
+import { PatientDoctorSuggestion } from '../models/PatientDoctorSuggestion';
 import { PaymentConfig } from '../models/PaymentConfig';
 
 // Load environment variables from .env file
@@ -86,6 +87,7 @@ export const sequelize = new Sequelize({
     SubscriptionPlan,
     UserSubscription,
     DoctorAssignmentRequest,
+    PatientDoctorSuggestion,
     PaymentConfig,
   ],
 
@@ -311,6 +313,30 @@ export const initializeDatabase = async (): Promise<void> => {
       $$;
     `).catch((err: unknown) => {
       console.warn('⚠️ orders dual gateway migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create patient_doctor_suggestions table
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "patient_doctor_suggestions" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorName" VARCHAR(255) NOT NULL,
+        "doctorPhone" VARCHAR(255),
+        "doctorEmail" VARCHAR(255),
+        "hospital" VARCHAR(255),
+        "specialization" VARCHAR(255),
+        "city" VARCHAR(255),
+        "additionalNotes" TEXT,
+        "status" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        "reviewedBy" UUID REFERENCES "app-users"("id"),
+        "reviewedAt" TIMESTAMP WITH TIME ZONE,
+        "rejectionReason" TEXT,
+        "onboardedDoctorId" UUID,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ patient_doctor_suggestions migration warning:', err instanceof Error ? err.message : err);
     });
 
     // Create doctor_assignment_requests table

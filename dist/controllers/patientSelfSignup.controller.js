@@ -156,13 +156,16 @@ const verifySelfSignupLogin = async (req, res) => {
 };
 exports.verifySelfSignupLogin = verifySelfSignupLogin;
 /**
- * GET /api/v1/patient/self-signup/doctors
- * Public list of available doctors for patient selection
+ * GET /api/v1/patient/self-signup/doctors?page=1&limit=10&search=oncology
+ * Public paginated list of available doctors for patient selection
  */
-const listDoctors = async (_req, res) => {
+const listDoctors = async (req, res) => {
     try {
-        const doctors = await signupService.listAvailableDoctors();
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Doctors fetched", doctors);
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+        const search = req.query.search || undefined;
+        const result = await signupService.listAvailableDoctors({ page, limit, search });
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Doctors fetched", result);
     }
     catch (error) {
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to fetch doctors");
