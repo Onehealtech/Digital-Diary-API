@@ -25,6 +25,9 @@ import { BubbleScanResult } from '../models/BubbleScanResult';
 import { DiaryPage } from '../models/DiaryPage';
 import { DoctorOnboardRequest } from '../models/DoctorOnboardRequest';
 import { VendorDoctor } from '../models/VendorDoctor';
+import { SubscriptionPlan } from '../models/SubscriptionPlan';
+import { UserSubscription } from '../models/UserSubscription';
+import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -79,6 +82,9 @@ export const sequelize = new Sequelize({
     DiaryPage,
     DoctorOnboardRequest,
     VendorDoctor,
+    SubscriptionPlan,
+    UserSubscription,
+    DoctorAssignmentRequest,
   ],
 
   // Logging configuration
@@ -113,6 +119,11 @@ export const initializeDatabase = async (): Promise<void> => {
         -- Add INACTIVE to status enum if not present
         BEGIN
           ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'INACTIVE';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        BEGIN
+          ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'ON_HOLD';
         EXCEPTION WHEN duplicate_object THEN NULL;
         END;
 
@@ -189,6 +200,90 @@ export const initializeDatabase = async (): Promise<void> => {
       $$;
     `).catch((err: unknown) => {
       console.warn('⚠️ diaries seller tracking migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create subscription_plans table if not exists
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "subscription_plans" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "name" VARCHAR(100) NOT NULL,
+        "description" TEXT,
+        "monthlyPrice" DECIMAL(10,2) NOT NULL,
+        "maxDiaryPages" INTEGER NOT NULL,
+        "scanEnabled" BOOLEAN NOT NULL DEFAULT false,
+        "manualEntryEnabled" BOOLEAN NOT NULL DEFAULT false,
+        "isPopular" BOOLEAN NOT NULL DEFAULT false,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "sortOrder" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "deletedAt" TIMESTAMP WITH TIME ZONE
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ subscription_plans migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create user_subscriptions table if not exists
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "user_subscriptions" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "planId" UUID NOT NULL REFERENCES "subscription_plans"("id"),
+        "diaryId" VARCHAR(255),
+        "doctorId" UUID REFERENCES "app-users"("id"),
+        "status" VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+        "paidAmount" DECIMAL(10,2) NOT NULL,
+        "maxDiaryPages" INTEGER NOT NULL,
+        "scanEnabled" BOOLEAN NOT NULL DEFAULT false,
+        "manualEntryEnabled" BOOLEAN NOT NULL DEFAULT false,
+        "pagesUsed" INTEGER NOT NULL DEFAULT 0,
+        "paymentOrderId" VARCHAR(255),
+        "paymentMethod" VARCHAR(255),
+        "startDate" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "endDate" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "cancelledAt" TIMESTAMP WITH TIME ZONE,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ user_subscriptions migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Make patients.doctorId nullable + add registrationSource for self-signup
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        -- Make doctorId nullable (self-signup patients don't have one initially)
+        ALTER TABLE "patients" ALTER COLUMN "doctorId" DROP NOT NULL;
+
+        -- Make diaryId nullable (self-signup patients don't have a physical diary)
+        ALTER TABLE "patients" ALTER COLUMN "diaryId" DROP NOT NULL;
+
+        -- Add registrationSource column
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'registrationSource') THEN
+          ALTER TABLE "patients" ADD COLUMN "registrationSource" VARCHAR(20) NOT NULL DEFAULT 'VENDOR_ASSIGNED';
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ Patient self-signup migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create doctor_assignment_requests table
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "doctor_assignment_requests" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorId" UUID NOT NULL REFERENCES "app-users"("id"),
+        "status" VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        "rejectionReason" TEXT,
+        "respondedAt" TIMESTAMP WITH TIME ZONE,
+        "attemptNumber" INTEGER NOT NULL DEFAULT 1,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ doctor_assignment_requests migration warning:', err instanceof Error ? err.message : err);
     });
 
     console.log('✅ Database models synchronized');

@@ -10,6 +10,7 @@ import {
     getPatientsNeedingFollowUp,
     deactivatePatient,
     activatePatient,
+    putPatientOnHold,
     updateFcmToken,
     getPatientNotifications,
     getPatientNotificationStats,
@@ -97,7 +98,13 @@ router.put(
     activatePatient
 );
 
-
+// Put patient on hold
+router.put(
+    "/:id/on-hold",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    putPatientOnHold
+);
 
 // Update test status
 router.put(
