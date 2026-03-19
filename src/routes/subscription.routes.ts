@@ -16,6 +16,8 @@ import {
   deletePlan,
   getAllPlans,
   getPlanById,
+  initiateSubscription,
+  verifySubscriptionPayment,
   subscribeToPlan,
   linkDoctor,
   getMySubscription,
@@ -73,10 +75,25 @@ router.get(
   }
 );
 
-// ── Patient Subscription ─────────────────────────────────────────────────
+// ── Subscription Payment Flow (Patient) ──────────────────────────────────
 
+// Step 1: Create payment order for a subscription plan
 router.post(
   "/subscribe",
+  patientAuthCheck,
+  initiateSubscription
+);
+
+// Step 2: Verify payment and activate subscription
+router.post(
+  "/verify-payment",
+  patientAuthCheck,
+  verifySubscriptionPayment
+);
+
+// Legacy: Direct subscribe (for free plans / backward compat)
+router.post(
+  "/subscribe-direct",
   patientAuthCheck,
   validate({ body: subscribeToPlanSchema }),
   subscribeToPlan

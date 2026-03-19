@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { responseMiddleware } from "../utils/response";
 import { HTTP_STATUS } from "../utils/constants";
 import * as subscriptionService from "../service/subscription.service";
+import { verifyRazorpayPaymentSignature } from "../service/razorpay.service";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
@@ -68,7 +69,117 @@ export const getPlanById = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PATIENT SUBSCRIPTION
+// SUBSCRIPTION PAYMENT FLOW
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /subscriptions/subscribe
+ * Initiates a subscription payment order.
+ * Returns gateway-specific details for the frontend to open checkout.
+ */
+export const initiateSubscription = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const patientId = req.user.id;
+    const { planId } = req.body;
+
+    if (!planId) {
+      return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "planId is required");
+    }
+
+    const result = await subscriptionService.initiateSubscriptionPayment({
+      patientId,
+      planId,
+    });
+
+    return responseMiddleware(res, HTTP_STATUS.CREATED, "Payment order created", result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to initiate subscription";
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, message);
+  }
+};
+
+/**
+ * POST /subscriptions/verify-payment
+ * Verifies payment after Razorpay client-side checkout callback.
+ * For Cashfree, payment is verified via webhook instead.
+ */
+export const verifySubscriptionPayment = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const {
+      orderId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      gateway,
+    } = req.body;
+
+    if (!orderId) {
+      return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "orderId is required");
+    }
+
+    if (gateway === "RAZORPAY") {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return responseMiddleware(
+          res,
+          HTTP_STATUS.BAD_REQUEST,
+          "razorpayOrderId, razorpayPaymentId, and razorpaySignature are required"
+        );
+      }
+
+      // Verify Razorpay payment signature
+      const isValid = verifyRazorpayPaymentSignature({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      });
+
+      if (!isValid) {
+        return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "Payment verification failed: invalid signature");
+      }
+
+      // Activate subscription
+      const result = await subscriptionService.activateSubscriptionAfterPayment(
+        orderId,
+        "RAZORPAY",
+        razorpayPaymentId
+      );
+
+      if (result.alreadyProcessed) {
+        return responseMiddleware(res, HTTP_STATUS.OK, "Subscription already active", result.subscription);
+      }
+
+      return responseMiddleware(res, HTTP_STATUS.OK, "Payment verified and subscription activated", {
+        subscription: result.subscription,
+        plan: result.plan,
+      });
+    }
+
+    // For Cashfree: verify via polling or just activate (webhook is the primary method)
+    if (gateway === "CASHFREE") {
+      const result = await subscriptionService.activateSubscriptionAfterPayment(
+        orderId,
+        "CASHFREE"
+      );
+
+      if (result.alreadyProcessed) {
+        return responseMiddleware(res, HTTP_STATUS.OK, "Subscription already active", result.subscription);
+      }
+
+      return responseMiddleware(res, HTTP_STATUS.OK, "Subscription activated", {
+        subscription: result.subscription,
+        plan: result.plan,
+      });
+    }
+
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "Invalid gateway specified");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Payment verification failed";
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, message);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY: Direct subscribe (for backward compat / free plans)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const subscribeToPlan = async (req: AuthenticatedRequest, res: Response) => {

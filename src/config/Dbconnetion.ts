@@ -28,6 +28,7 @@ import { VendorDoctor } from '../models/VendorDoctor';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { UserSubscription } from '../models/UserSubscription';
 import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
+import { PaymentConfig } from '../models/PaymentConfig';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -85,6 +86,7 @@ export const sequelize = new Sequelize({
     SubscriptionPlan,
     UserSubscription,
     DoctorAssignmentRequest,
+    PaymentConfig,
   ],
 
   // Logging configuration
@@ -267,6 +269,48 @@ export const initializeDatabase = async (): Promise<void> => {
       $$;
     `).catch((err: unknown) => {
       console.warn('⚠️ Patient self-signup migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create payment_config table and seed default row
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "payment_config" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "activeGateway" VARCHAR(20) NOT NULL DEFAULT 'CASHFREE',
+        "updatedBy" UUID REFERENCES "app-users"("id"),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO "payment_config" ("id", "activeGateway")
+      SELECT gen_random_uuid(), 'CASHFREE'
+      WHERE NOT EXISTS (SELECT 1 FROM "payment_config" LIMIT 1);
+    `).catch((err: unknown) => {
+      console.warn('⚠️ payment_config migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Add new columns to orders table for dual gateway + subscription support
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'paymentGateway') THEN
+          ALTER TABLE "orders" ADD COLUMN "paymentGateway" VARCHAR(20);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'subscriptionPlanId') THEN
+          ALTER TABLE "orders" ADD COLUMN "subscriptionPlanId" UUID REFERENCES "subscription_plans"("id");
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'transactionId') THEN
+          ALTER TABLE "orders" ADD COLUMN "transactionId" VARCHAR(255);
+        END IF;
+
+        -- Make doctorId and vendorId nullable (subscription orders have no doctor/vendor)
+        ALTER TABLE "orders" ALTER COLUMN "doctorId" DROP NOT NULL;
+        ALTER TABLE "orders" ALTER COLUMN "vendorId" DROP NOT NULL;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ orders dual gateway migration warning:', err instanceof Error ? err.message : err);
     });
 
     // Create doctor_assignment_requests table

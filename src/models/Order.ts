@@ -8,6 +8,7 @@ import {
 } from "sequelize-typescript";
 import { Patient } from "./Patient";
 import { AppUser } from "./Appuser";
+import { SubscriptionPlan } from "./SubscriptionPlan";
 
 @Table({
     tableName: "orders",
@@ -26,7 +27,7 @@ export class Order extends Model {
         allowNull: false,
         unique: true,
     })
-    orderId!: string; // Our internal order ID (sent to Cashfree)
+    orderId!: string; // Our internal order ID (sent to gateway)
 
     @Column({
         type: DataType.STRING,
@@ -45,25 +46,25 @@ export class Order extends Model {
     @BelongsTo(() => Patient)
     patient!: Patient;
 
-    // 🔗 Prescribing doctor
+    // 🔗 Prescribing doctor (nullable for subscription orders)
     @ForeignKey(() => AppUser)
     @Column({
         type: DataType.UUID,
-        allowNull: false,
+        allowNull: true,
         field: "doctorId",
     })
-    doctorId!: string;
+    doctorId?: string;
 
     @BelongsTo(() => AppUser, "doctorId")
     doctor!: AppUser;
 
-    // 🔗 Fulfilling vendor
+    // 🔗 Fulfilling vendor (nullable for subscription orders)
     @Column({
         type: DataType.UUID,
-        allowNull: false,
+        allowNull: true,
         field: "vendorId",
     })
-    vendorId!: string;
+    vendorId?: string;
 
     // 💰 Total order amount — DECIMAL for precision
     @Column({
@@ -109,4 +110,28 @@ export class Order extends Model {
         allowNull: true,
     })
     orderNote?: string;
+
+    // ── New fields for dual gateway + subscription support ──
+
+    @Column({
+        type: DataType.STRING(20),
+        allowNull: true,
+    })
+    paymentGateway?: "CASHFREE" | "RAZORPAY";
+
+    @ForeignKey(() => SubscriptionPlan)
+    @Column({
+        type: DataType.UUID,
+        allowNull: true,
+    })
+    subscriptionPlanId?: string;
+
+    @BelongsTo(() => SubscriptionPlan)
+    subscriptionPlan!: SubscriptionPlan;
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true,
+    })
+    transactionId?: string; // Gateway-specific payment/transaction ID
 }
