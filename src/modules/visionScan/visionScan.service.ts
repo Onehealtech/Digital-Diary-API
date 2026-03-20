@@ -100,6 +100,7 @@ class VisionScanService {
         }
 
         const data = (await response.json()) as OpenRouterResponse;
+        console.log("[PageDetection] API response:", JSON.stringify(data, null, 2));
         if (data.error) {
             throw new AppError(502, `Page detection error: ${data.error.message}`);
         }
@@ -180,16 +181,31 @@ class VisionScanService {
             imageUrl: s3Url,
         });
 
-        // Queue extraction in background — don't await
-        const { visionScanQueue } = require("./visionScan.queue");
-        await visionScanQueue.add("extract", {
+        // Try queue-based extraction; fall back to inline if queue unavailable
+        const jobData = {
             scanRecordId: scanRecord.id,
             base64,
             mimeType,
             diaryType,
             detectedPageNumber,
             patientId,
-        });
+        };
+
+        let queued = false;
+        try {
+            const { visionScanQueue } = require("./visionScan.queue");
+            await visionScanQueue.add("extract", jobData);
+            queued = true;
+        } catch {
+            // Queue unavailable — process inline in background
+        }
+
+        if (!queued) {
+            // Fire-and-forget inline extraction
+            this.processExtraction(jobData).catch((err) =>
+                console.error("[VisionScan] Inline extraction failed:", err.message)
+            );
+        }
 
         return scanRecord;
     }
