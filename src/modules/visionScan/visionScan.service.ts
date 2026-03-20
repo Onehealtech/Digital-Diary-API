@@ -138,8 +138,7 @@ class VisionScanService {
     }
 
     /**
-     * Fast path: detect page, validate, create record, queue extraction.
-     * Returns immediately after queuing — UI gets scan record in "processing" status.
+     * Process scan: detect page, validate, create record, run extraction, return completed result.
      */
     async processScan(
         patientId: string,
@@ -180,9 +179,8 @@ class VisionScanService {
             imageUrl: s3Url,
         });
 
-        // Queue extraction in background — don't await
-        const { visionScanQueue } = require("./visionScan.queue");
-        await visionScanQueue.add("extract", {
+        // Run extraction synchronously and return completed result
+        await this.processExtraction({
             scanRecordId: scanRecord.id,
             base64,
             mimeType,
@@ -191,7 +189,9 @@ class VisionScanService {
             patientId,
         });
 
-        return scanRecord;
+        // Reload the scan record to get the updated data after extraction
+        const completedRecord = await visionScanRepository.findScanById(scanRecord.id);
+        return completedRecord || scanRecord;
     }
 
     /**
