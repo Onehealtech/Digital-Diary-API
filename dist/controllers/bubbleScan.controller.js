@@ -67,7 +67,12 @@ const uploadBubbleScan = async (req, res) => {
             action: "BUBBLE_SCAN_UPLOADED",
             details: { patientId, pageNumber, processingStatus: result.processingStatus },
         });
-        (0, response_1.sendResponse)(res, 202, "Scan accepted and queued for processing", result);
+        if (result.processingStatus === "completed") {
+            (0, response_1.sendResponse)(res, 200, "Scan completed successfully", result);
+        }
+        else {
+            (0, response_1.sendResponse)(res, 202, "Scan processing did not complete successfully", result);
+        }
     }
     catch (error) {
         console.error("Bubble scan upload error:", error);
