@@ -54,6 +54,13 @@ router.post(
   notificationController.translateText
 );
 
+// Transliterate English to Hindi script (Doctor/Assistant only)
+router.post(
+  "/transliterate",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.transliterateText
+);
+
 // Send single notification (Doctor/Assistant only)
 router.post(
   "/",

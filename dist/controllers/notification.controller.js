@@ -294,6 +294,38 @@ class NotificationController {
         }
     }
     /**
+     * POST /api/v1/notifications/transliterate
+     * Transliterate English text to Hindi script (phonetic conversion)
+     * Uses Google Input Tools API for accurate transliteration
+     */
+    async transliterateText(req, res) {
+        try {
+            const { text } = req.body;
+            if (!text || typeof text !== "string" || !text.trim()) {
+                return (0, response_1.sendError)(res, "text is required", 400);
+            }
+            const url = `https://inputtools.google.com/request?text=${encodeURIComponent(text.trim())}&itc=hi-t-i0-und&num=5&cp=0&cs=1&ie=utf-8&oe=utf-8`;
+            const response = await fetch(url);
+            const data = await response.json();
+            // Google Input Tools returns [status, [[input, suggestions, ...]]]
+            if (data[0] === "SUCCESS" && data[1]?.[0]?.[1]?.length > 0) {
+                return (0, response_1.sendResponse)(res, {
+                    input: text.trim(),
+                    suggestions: data[1][0][1],
+                }, "Transliteration successful");
+            }
+            // Fallback: return the original text if no suggestions
+            return (0, response_1.sendResponse)(res, {
+                input: text.trim(),
+                suggestions: [text.trim()],
+            }, "No transliteration available");
+        }
+        catch (error) {
+            console.error("Transliteration error:", error);
+            return (0, response_1.sendError)(res, error.message || "Transliteration failed");
+        }
+    }
+    /**
    * POST /api/v1/notifications/:id/respond
    * Patient responds to a notification
    */
