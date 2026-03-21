@@ -3,7 +3,7 @@ import { CustomRequest } from './authMiddleware';
 import { responseMiddleware } from '../utils/response';
 import { HTTP_STATUS, API_MESSAGES, UserRole } from '../utils/constants';
 
-type PermissionKey = 'viewPatients' | 'callPatients' | 'exportData' | 'sendNotifications' | 'deactivatePatients' | 'sellDiary';
+type PermissionKey = 'viewPatients' | 'callPatients' | 'exportData' | 'sendNotifications' | 'deactivatePatients' | 'sellDiary' | 'manageOnboardingRequests';
 
 /**
  * Middleware factory that checks a specific permission for ASSISTANT users.
@@ -26,7 +26,12 @@ export const requirePermission = (permission: PermissionKey) => {
     }
 
     // ASSISTANT: check granular permission
-    const permissions = user.permissions || {};
+    // Sequelize raw: true may return JSONB as string — parse if needed
+    console.log(`[Permission] Checking '${permission}' for assistant ${user.id}, raw permissions:`, typeof user.permissions, user.permissions);
+    let permissions = user.permissions || {};
+    if (typeof permissions === 'string') {
+      try { permissions = JSON.parse(permissions); } catch { permissions = {}; }
+    }
     if (permissions[permission] === true) {
       next();
       return;

@@ -1,5 +1,6 @@
 import express from "express";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 import * as controller from "../controllers/doctorAssignmentRequest.controller";
 import * as suggestionController from "../controllers/patientDoctorSuggestion.controller";
@@ -20,16 +21,16 @@ router.post("/suggest-doctor", patientAuthCheck, suggestionController.createSugg
 // GET /api/v1/doctor-requests/my-suggestions — patient views their suggestions
 router.get("/my-suggestions", patientAuthCheck, suggestionController.getMySuggestions);
 
-// ── Doctor-facing (web dashboard, staff JWT auth) ────────────────────────
+// ── Doctor/Assistant-facing (web dashboard, staff JWT auth) ──────────────
 
-// GET /api/v1/doctor-requests — doctor lists assignment requests
-router.get("/", authCheck([UserRole.DOCTOR]), controller.getRequests);
+// GET /api/v1/doctor-requests — doctor/assistant lists assignment requests
+router.get("/", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('manageOnboardingRequests'), controller.getRequests);
 
-// PUT /api/v1/doctor-requests/:id/accept — doctor accepts
-router.put("/:id/accept", authCheck([UserRole.DOCTOR]), controller.acceptRequest);
+// PUT /api/v1/doctor-requests/:id/accept — doctor/assistant accepts
+router.put("/:id/accept", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('manageOnboardingRequests'), controller.acceptRequest);
 
-// PUT /api/v1/doctor-requests/:id/reject — doctor rejects
-router.put("/:id/reject", authCheck([UserRole.DOCTOR]), controller.rejectRequest);
+// PUT /api/v1/doctor-requests/:id/reject — doctor/assistant rejects
+router.put("/:id/reject", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('manageOnboardingRequests'), controller.rejectRequest);
 
 // ── Super Admin-facing (doctor suggestion management) ────────────────────
 
