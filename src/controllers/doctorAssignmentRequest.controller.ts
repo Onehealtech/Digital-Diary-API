@@ -59,15 +59,25 @@ export const getMyRequests = async (req: AuthenticatedRequest, res: Response): P
   }
 };
 
-// ── Doctor-facing endpoints (called from web dashboard) ──────────────────
+// ── Doctor/Assistant-facing endpoints (called from web dashboard) ────────
+
+/** Resolve the actual doctorId — assistants act on behalf of their parent doctor */
+function resolveDoctorId(req: AuthenticatedRequest): string {
+  const user = req.user as { id: string; role: string; parentId?: string };
+  if (user.role === "ASSISTANT") {
+    if (!user.parentId) throw new AppError(403, "Assistant is not assigned to a doctor");
+    return user.parentId;
+  }
+  return user.id;
+}
 
 /**
  * GET /api/v1/doctor-requests
- * Doctor views assignment requests (optionally filtered by status)
+ * Doctor/Assistant views assignment requests (optionally filtered by status)
  */
 export const getRequests = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const doctorId = req.user!.id;
+    const doctorId = resolveDoctorId(req);
     const status = req.query.status as string | undefined;
     const requests = await requestService.getRequestsForDoctor(doctorId, status);
     responseMiddleware(res, HTTP_STATUS.OK, "Requests fetched", requests);
@@ -82,21 +92,21 @@ export const getRequests = async (req: AuthenticatedRequest, res: Response): Pro
 
 /**
  * PUT /api/v1/doctor-requests/:id/accept
- * Doctor accepts a patient request
+ * Doctor/Assistant accepts a patient request
  */
 export const acceptRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const doctorId = req.user!.id;
+    const doctorId = resolveDoctorId(req);
     const requestId = req.params.id as string;
 
     const result = await requestService.acceptRequest(requestId, doctorId);
 
     logActivity({
       req,
-      userId: doctorId,
-      userRole: "DOCTOR",
+      userId: req.user!.id,
+      userRole: req.user!.role || "DOCTOR",
       action: "PATIENT_REQUEST_ACCEPTED",
-      details: { requestId, patientId: result.patientId },
+      details: { requestId, patientId: result.patientId, actingAs: doctorId },
     });
 
     responseMiddleware(res, HTTP_STATUS.OK, "Patient request accepted", result);
@@ -111,11 +121,11 @@ export const acceptRequest = async (req: AuthenticatedRequest, res: Response): P
 
 /**
  * PUT /api/v1/doctor-requests/:id/reject
- * Doctor rejects a patient request
+ * Doctor/Assistant rejects a patient request
  */
 export const rejectRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const doctorId = req.user!.id;
+    const doctorId = resolveDoctorId(req);
     const requestId = req.params.id as string;
 
     const parsed = rejectRequestSchema.safeParse(req.body);
@@ -132,10 +142,10 @@ export const rejectRequest = async (req: AuthenticatedRequest, res: Response): P
 
     logActivity({
       req,
-      userId: doctorId,
-      userRole: "DOCTOR",
+      userId: req.user!.id,
+      userRole: req.user!.role || "DOCTOR",
       action: "PATIENT_REQUEST_REJECTED",
-      details: { requestId, patientId: result.patientId, reason: parsed.data.rejectionReason },
+      details: { requestId, patientId: result.patientId, reason: parsed.data.rejectionReason, actingAs: doctorId },
     });
 
     responseMiddleware(res, HTTP_STATUS.OK, "Patient request rejected", result);
