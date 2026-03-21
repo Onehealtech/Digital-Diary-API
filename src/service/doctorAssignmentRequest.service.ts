@@ -8,7 +8,7 @@ import { SubscriptionPlan } from "../models/SubscriptionPlan";
 import { Diary } from "../models/Diary";
 import { GeneratedDiary } from "../models/GeneratedDiary";
 import { AppError } from "../utils/AppError";
-import { messageCentralService } from "./messageCentral.service";
+import { twilioService } from "./twilio.service";
 import { sendDoctorRequestEmail } from "./emailService";
 import crypto from "crypto";
 
@@ -217,7 +217,7 @@ export async function acceptRequest(
     // 9. Notify patient via SMS (fire-and-forget, outside transaction)
     const doctor = await AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
     if (patient.phone && doctor) {
-      messageCentralService
+      twilioService
         .sendSMS(
           patient.phone,
           `Good news! Dr. ${doctor.fullName} has accepted your request. Your diary (${generatedDiary.id}) has been assigned. You can now start using your Elvantia diary. - Elvantia`
@@ -256,7 +256,7 @@ export async function rejectRequest(
       ? " You may send one more request to this doctor, or choose a different doctor."
       : " You have used both attempts with this doctor. Please choose a different doctor.";
 
-    messageCentralService
+    twilioService
       .sendSMS(
         patient.phone,
         `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`
@@ -299,7 +299,7 @@ async function notifyDoctorOfRequest(
 
   // SMS notification
   if (doctor.phone) {
-    await messageCentralService.sendSMS(
+    await twilioService.sendSMS(
       doctor.phone,
       `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`
     );
