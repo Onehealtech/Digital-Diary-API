@@ -1,10 +1,14 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AppError } from "../utils/AppError";
 import { generateOTP, verifyOTP } from "./otpService";
 import { twilioService } from "./twilio.service";
+
+// In-memory session store mapping sessionId → phone (use Redis in production)
+const otpSessionStore = new Map<string, { phone: string; expiresAt: Date }>();
 
 /**
  * Step 1: Send OTP to phone — works for both new and existing patients.
@@ -13,7 +17,7 @@ import { twilioService } from "./twilio.service";
  */
 export async function sendSignupOtp(
   phone: string
-): Promise<{ message: string; isExistingUser: boolean }> {
+): Promise<{ message: string; isExistingUser: boolean; sessionId: string }> {
   const existing = await Patient.findOne({
     where: { phone, registrationSource: "SELF_SIGNUP" },
   });
@@ -31,9 +35,23 @@ export async function sendSignupOtp(
     console.warn(`Failed to send OTP to ${phone}`);
   }
 
+  // Create a session linking sessionId → phone so verify doesn't need phone
+  const sessionId = crypto.randomUUID();
+  const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES || "5");
+  otpSessionStore.set(sessionId, {
+    phone,
+    expiresAt: new Date(Date.now() + expiryMinutes * 60 * 1000),
+  });
+
+  // Auto-cleanup
+  setTimeout(() => {
+    otpSessionStore.delete(sessionId);
+  }, expiryMinutes * 60 * 1000);
+
   return {
     message: "OTP sent to your phone number",
     isExistingUser: !!existing,
+    sessionId,
   };
 }
 
@@ -45,16 +63,31 @@ export async function sendSignupOtp(
  * Profile fields (fullName, age, gender, caseType) are required only for new signups.
  */
 export async function verifySignupOtp(
-  phone: string,
+  sessionId: string,
   otp: string,
   profile?: { fullName: string; age: number; gender: string; caseType: string }
 ): Promise<{ token: string; patient: Record<string, unknown>; isNewUser: boolean }> {
+  // Resolve phone from session
+  const session = otpSessionStore.get(sessionId);
+  if (!session) {
+    throw new AppError(401, "Invalid or expired session. Please request a new OTP.");
+  }
+
+  if (new Date() > session.expiresAt) {
+    otpSessionStore.delete(sessionId);
+    throw new AppError(401, "Session expired. Please request a new OTP.");
+  }
+
+  const { phone } = session;
   const key = `self-otp-${phone}`;
 
   const isValid = verifyOTP(key, otp);
   if (!isValid) {
     throw new AppError(401, "Invalid or expired OTP");
   }
+
+  // Clean up session after successful verification
+  otpSessionStore.delete(sessionId);
 
   // Check if patient already exists
   const existing = await Patient.findOne({
