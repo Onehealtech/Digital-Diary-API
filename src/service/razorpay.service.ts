@@ -1,7 +1,7 @@
 // src/service/razorpay.service.ts
 
 import crypto from "crypto";
-import { razorpayInstance, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET } from "../config/razorpay";
+import { getRazorpayInstance, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET } from "../config/razorpay";
 
 interface CreateRazorpayOrderParams {
     orderId: string;
@@ -25,7 +25,7 @@ export const createRazorpayOrder = async (
 ): Promise<CreateRazorpayOrderResult> => {
     const amountInPaise = Math.round(params.amount * 100);
 
-    const order = await razorpayInstance.orders.create({
+    const order = await getRazorpayInstance().orders.create({
         amount: amountInPaise,
         currency: params.currency || "INR",
         receipt: params.orderId,
