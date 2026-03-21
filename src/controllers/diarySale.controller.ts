@@ -3,7 +3,8 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { AppError } from "../utils/AppError";
 import { diarySaleService } from "../service/diarySale.service";
 import { sellDiarySchema, requestDiariesSchema } from "../schemas/diarySale.schemas";
-import { messageCentralService } from "../service/messageCentral.service";
+import { twilioService } from "../service/twilio.service";
+import { generateOTP, verifyOTP } from "../service/otpService";
 import { z } from "zod";
 
 /**
@@ -233,8 +234,9 @@ export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Pr
 
     const { phone } = parsed.data;
     const key = `sell-phone-${phone}`;
-    const sent = await messageCentralService.sendOTP(phone, key);
+    const otp = generateOTP(key);
 
+    const sent = await twilioService.sendOTP(phone, otp);
     if (!sent) {
       res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
       return;
@@ -262,7 +264,7 @@ export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): 
 
     const { phone, otp } = parsed.data;
     const key = `sell-phone-${phone}`;
-    const valid = await messageCentralService.verifyOTP(phone, key, otp);
+    const valid = verifyOTP(key, otp);
 
     if (!valid) {
       res.status(400).json({ success: false, message: "Invalid or expired OTP" });

@@ -1,9 +1,11 @@
 import jwt from "jsonwebtoken";
 import { Patient } from "../models/Patient";
-import { messageCentralService } from "./messageCentral.service";
+import { generateOTP, verifyOTP } from "./otpService";
+import { twilioService } from "./twilio.service";
 
 /**
- * Patient Login - Step 1: Validate sticker and send OTP via Message Central
+ * Patient Login - Step 1: Validate sticker and send OTP via SMS (Twilio)
+ * Patients receive OTP on mobile only.
  */
 export const patientLogin = async (
     diaryId: string
@@ -21,10 +23,14 @@ export const patientLogin = async (
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
 
-    // Send OTP via Message Central
+    // Generate OTP locally and send via Twilio SMS
     const phone = patient.phone;
     if (phone) {
-        await messageCentralService.sendOTP(phone, diaryId);
+        const otp = generateOTP(diaryId);
+        const sent = await twilioService.sendOTP(phone, otp);
+        if (!sent) {
+            console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
+        }
     } else {
         console.warn(`No phone number recorded for patient ${diaryId}. OTP not sent via SMS.`);
     }
@@ -37,14 +43,15 @@ export const patientLogin = async (
 };
 
 /**
- * Patient Login - Step 2: Verify OTP via Message Central
+ * Patient Login - Step 2: Verify OTP (locally generated, verified in-memory)
+ * Patients verify via SMS OTP only.
  */
 export const verifyPatientOTP = async (
     diaryId: string,
     otp: string
 ): Promise<{ token: string; patient: Record<string, unknown> }> => {
 
-    // Get patient details first (need phone for verification)
+    // Get patient details
     const patient = await Patient.findOne({
         where: { diaryId },
         attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
@@ -58,12 +65,8 @@ export const verifyPatientOTP = async (
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
 
-    // MVP: "1234" backdoor for testing. Remove in production.
-    let isValid = otp === "1234";
-
-    if (!isValid && patient.phone) {
-        isValid = await messageCentralService.verifyOTP(patient.phone, diaryId, otp);
-    }
+    // Verify OTP from local store (keyed by diaryId)
+    const isValid = verifyOTP(diaryId, otp);
 
     if (!isValid) {
         throw new Error("Invalid or expired OTP");

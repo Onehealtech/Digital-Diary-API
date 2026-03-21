@@ -44,10 +44,9 @@ router.post("/auth/verify-2fa", staffAuthController.verify2FA);
 router.post("/patient/login", patientAuthController.login);
 router.post("/patient/verify-otp", patientAuthController.verifyOTP);
 // Patient Self-Signup Routes (subscription model — phone-based)
+// Unified: send-otp handles both new and existing users; verify handles login + signup
 router.post("/patient/self-signup/send-otp", patientSelfSignupController.sendSignupOtp);
 router.post("/patient/self-signup/verify", patientSelfSignupController.verifySignupOtp);
-router.post("/patient/self-signup/login", patientSelfSignupController.selfSignupLogin);
-router.post("/patient/self-signup/verify-login", patientSelfSignupController.verifySelfSignupLogin);
 router.get("/patient/self-signup/doctors", patientSelfSignupController.listDoctors);
 // Authentication Enhancements
 router.get("/auth/me", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.getCurrentUser);

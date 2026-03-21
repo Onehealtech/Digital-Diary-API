@@ -3,55 +3,106 @@ import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AppError } from "../utils/AppError";
-import { messageCentralService } from "./messageCentral.service";
+import { generateOTP, verifyOTP } from "./otpService";
+import { twilioService } from "./twilio.service";
 
 /**
- * Step 1: Patient self-signup — sends OTP to verify phone
+ * Step 1: Send OTP to phone — works for both new and existing patients.
+ * - If account exists → sends OTP for login (returns isExistingUser: true)
+ * - If account does not exist → sends OTP for signup (returns isExistingUser: false)
  */
-export async function sendSignupOtp(phone: string): Promise<{ message: string }> {
-  // Check if a self-signup patient with this phone already exists
+export async function sendSignupOtp(
+  phone: string
+): Promise<{ message: string; isExistingUser: boolean }> {
   const existing = await Patient.findOne({
     where: { phone, registrationSource: "SELF_SIGNUP" },
   });
-  if (existing) {
-    throw new AppError(409, "An account with this phone number already exists. Please login instead.");
+
+  // Block inactive accounts
+  if (existing && existing.status === "INACTIVE") {
+    throw new AppError(403, "Your account has been deactivated. Please contact support.");
   }
 
-  const key = `self-signup-${phone}`;
-  await messageCentralService.sendOTP(phone, key);
+  const key = `self-otp-${phone}`;
+  const otp = generateOTP(key);
 
-  return { message: "OTP sent to your phone number" };
+  const sent = await twilioService.sendOTP(phone, otp);
+  if (!sent) {
+    console.warn(`Failed to send OTP to ${phone}`);
+  }
+
+  return {
+    message: "OTP sent to your phone number",
+    isExistingUser: !!existing,
+  };
 }
 
 /**
- * Step 2: Verify OTP and create patient profile in one step.
- * Returns a full patient JWT (30 days).
+ * Step 2: Verify OTP — handles both login and signup in one function.
+ * - If account exists → verify OTP and return JWT (login)
+ * - If account does not exist → verify OTP, create profile, return JWT (signup)
+ *
+ * Profile fields (fullName, age, gender, caseType) are required only for new signups.
  */
-export async function verifySignupOtpAndCreateProfile(
+export async function verifySignupOtp(
   phone: string,
   otp: string,
-  profile: { fullName: string; age: number; gender: string; caseType: string }
-): Promise<{ token: string; patient: Record<string, unknown> }> {
-  const key = `self-signup-${phone}`;
-  let isValid = otp === "1234"; // MVP backdoor
-  if (!isValid) {
-    isValid = await messageCentralService.verifyOTP(phone, key, otp);
-  }
+  profile?: { fullName: string; age: number; gender: string; caseType: string }
+): Promise<{ token: string; patient: Record<string, unknown>; isNewUser: boolean }> {
+  const key = `self-otp-${phone}`;
+
+  const isValid = verifyOTP(key, otp);
   if (!isValid) {
     throw new AppError(401, "Invalid or expired OTP");
   }
 
-  // Double-check no duplicate
+  // Check if patient already exists
   const existing = await Patient.findOne({
     where: { phone, registrationSource: "SELF_SIGNUP" },
   });
+
   if (existing) {
-    throw new AppError(409, "Account already exists. Please login.");
+    // --- LOGIN flow ---
+    if (existing.status === "INACTIVE") {
+      throw new AppError(403, "Your account has been deactivated. Please contact support.");
+    }
+
+    const token = jwt.sign(
+      {
+        id: existing.id,
+        fullName: existing.fullName,
+        caseType: existing.caseType,
+        doctorId: existing.doctorId,
+        type: "PATIENT",
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: "30d" }
+    );
+
+    return {
+      token,
+      patient: {
+        id: existing.id,
+        fullName: existing.fullName,
+        age: existing.age,
+        gender: existing.gender,
+        phone: existing.phone,
+        caseType: existing.caseType,
+        doctorId: existing.doctorId,
+        registrationSource: existing.registrationSource,
+        status: existing.status,
+      },
+      isNewUser: false,
+    };
+  }
+
+  // --- SIGNUP flow ---
+  if (!profile || !profile.fullName || !profile.age || !profile.gender || !profile.caseType) {
+    throw new AppError(400, "Profile details (fullName, age, gender, caseType) are required for new registration");
   }
 
   const { fullName, age, gender, caseType } = profile;
 
-  // Create patient
   const patient = await Patient.create({
     fullName,
     age,
@@ -63,7 +114,6 @@ export async function verifySignupOtpAndCreateProfile(
     status: "ACTIVE",
   });
 
-  // Generate full patient JWT (30 days)
   const token = jwt.sign(
     {
       id: patient.id,
@@ -87,80 +137,7 @@ export async function verifySignupOtpAndCreateProfile(
       registrationSource: patient.registrationSource,
       status: patient.status,
     },
-  };
-}
-
-/**
- * Login for self-signup patients (by phone)
- */
-export async function selfSignupLogin(phone: string): Promise<{ message: string; patientId: string }> {
-  const patient = await Patient.findOne({
-    where: { phone, registrationSource: "SELF_SIGNUP" },
-  });
-  if (!patient) {
-    throw new AppError(404, "No account found with this phone number. Please sign up first.");
-  }
-  if (patient.status === "INACTIVE") {
-    throw new AppError(403, "Your account has been deactivated. Please contact support.");
-  }
-
-  const key = `self-login-${phone}`;
-  await messageCentralService.sendOTP(phone, key);
-
-  return { message: "OTP sent to your phone number", patientId: patient.id };
-}
-
-/**
- * Verify OTP for self-signup patient login
- */
-export async function verifySelfSignupLogin(
-  phone: string,
-  otp: string
-): Promise<{ token: string; patient: Record<string, unknown> }> {
-  const patient = await Patient.findOne({
-    where: { phone, registrationSource: "SELF_SIGNUP" },
-  });
-  if (!patient) {
-    throw new AppError(404, "Patient not found");
-  }
-  if (patient.status === "INACTIVE") {
-    throw new AppError(403, "Account deactivated");
-  }
-
-  const key = `self-login-${phone}`;
-  let isValid = otp === "1234";
-  if (!isValid) {
-    isValid = await messageCentralService.verifyOTP(phone, key, otp);
-  }
-  if (!isValid) {
-    throw new AppError(401, "Invalid or expired OTP");
-  }
-
-  const token = jwt.sign(
-    {
-      id: patient.id,
-      fullName: patient.fullName,
-      caseType: patient.caseType,
-      doctorId: patient.doctorId,
-      type: "PATIENT",
-    },
-    process.env.JWT_SECRET!,
-    { expiresIn: "30d" }
-  );
-
-  return {
-    token,
-    patient: {
-      id: patient.id,
-      fullName: patient.fullName,
-      age: patient.age,
-      gender: patient.gender,
-      phone: patient.phone,
-      caseType: patient.caseType,
-      doctorId: patient.doctorId,
-      registrationSource: patient.registrationSource,
-      status: patient.status,
-    },
+    isNewUser: true,
   };
 }
 

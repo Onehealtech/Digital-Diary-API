@@ -1,11 +1,13 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { AppUser } from "../models/Appuser";
-import { generateOTP, verifyOTP } from "./otpService";
+import { generateOTP, storeOTP, verifyOTPMultiKey } from "./otpService";
 import { sendOTPEmail } from "./emailService";
+import { twilioService } from "./twilio.service";
 
 /**
- * Staff Login - Step 1: Validate credentials and send OTP
+ * Staff Login - Step 1: Validate credentials and send OTP via Email + SMS
+ * Roles: Super Admin, Doctor, Assistant, Vendor
  */
 export const staffLogin = async (
     email: string,
@@ -60,30 +62,44 @@ export const staffLogin = async (
         }
     }
 
-    // Generate and send OTP
+    // Generate a single OTP — send the SAME code via Email and SMS
     const otp = generateOTP(email);
-    await sendOTPEmail(email, otp, user.fullName);
+
+    // Store the same OTP under the phone key so verification works from either channel
+    if (user.phone) {
+        storeOTP(user.phone, otp);
+    }
+
+    // Send OTP via Email
+    try {
+        await sendOTPEmail(email, otp, user.fullName);
+    } catch (err) {
+        console.error("Failed to send OTP email:", err);
+        // Continue — SMS may still work
+    }
+
+    // Send the same OTP via SMS (Twilio)
+    if (user.phone) {
+        twilioService.sendOTP(user.phone, otp).catch((err) => {
+            console.error("Failed to send OTP SMS:", err);
+        });
+    }
 
     return {
-        message: "OTP sent to your email",
+        message: "OTP sent to your email and phone",
         email: email.toLowerCase(),
     };
 };
 
 /**
  * Staff Login - Step 2: Verify OTP and return JWT
+ * OTP validation works regardless of whether user enters OTP from email or SMS.
  */
 export const verifyStaffOTP = async (
     email: string,
     otp: string
 ): Promise<{ token: string; user: any }> => {
-    // Verify OTP
-    const isValid = verifyOTP(email, otp);
-    if (!isValid) {
-        throw new Error("Invalid or expired OTP");
-    }
-
-    // Get user details (paranoid: false to catch soft-deleted/archived assistants)
+    // Get user to retrieve phone for multi-key verification
     const user = await AppUser.findOne({
         where: { email: email.toLowerCase() },
         attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus", "isActive", "deletedAt"],
@@ -92,6 +108,17 @@ export const verifyStaffOTP = async (
 
     if (!user) {
         throw new Error("User not found");
+    }
+
+    // Verify OTP against both email and phone keys
+    const keysToCheck = [email];
+    if (user.phone) {
+        keysToCheck.push(user.phone);
+    }
+
+    const isValid = verifyOTPMultiKey(keysToCheck, otp);
+    if (!isValid) {
+        throw new Error("Invalid or expired OTP");
     }
 
     // Block OTP verification for deactivated users

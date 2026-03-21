@@ -4,7 +4,8 @@ exports.verifyPhoneOtp = exports.sendPhoneOtp = exports.markFundTransferred = ex
 const AppError_1 = require("../utils/AppError");
 const diarySale_service_1 = require("../service/diarySale.service");
 const diarySale_schemas_1 = require("../schemas/diarySale.schemas");
-const messageCentral_service_1 = require("../service/messageCentral.service");
+const twilio_service_1 = require("../service/twilio.service");
+const otpService_1 = require("../service/otpService");
 const zod_1 = require("zod");
 /**
  * POST /api/v1/diary-sales/sell
@@ -213,7 +214,8 @@ const sendPhoneOtp = async (req, res) => {
         }
         const { phone } = parsed.data;
         const key = `sell-phone-${phone}`;
-        const sent = await messageCentral_service_1.messageCentralService.sendOTP(phone, key);
+        const otp = (0, otpService_1.generateOTP)(key);
+        const sent = await twilio_service_1.twilioService.sendOTP(phone, otp);
         if (!sent) {
             res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
             return;
@@ -240,7 +242,7 @@ const verifyPhoneOtp = async (req, res) => {
         }
         const { phone, otp } = parsed.data;
         const key = `sell-phone-${phone}`;
-        const valid = await messageCentral_service_1.messageCentralService.verifyOTP(phone, key, otp);
+        const valid = (0, otpService_1.verifyOTP)(key, otp);
         if (!valid) {
             res.status(400).json({ success: false, message: "Invalid or expired OTP" });
             return;
