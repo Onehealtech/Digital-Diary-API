@@ -78,14 +78,24 @@ const getMyRequests = async (req, res) => {
     }
 };
 exports.getMyRequests = getMyRequests;
-// ── Doctor-facing endpoints (called from web dashboard) ──────────────────
+// ── Doctor/Assistant-facing endpoints (called from web dashboard) ────────
+/** Resolve the actual doctorId — assistants act on behalf of their parent doctor */
+function resolveDoctorId(req) {
+    const user = req.user;
+    if (user.role === "ASSISTANT") {
+        if (!user.parentId)
+            throw new AppError_1.AppError(403, "Assistant is not assigned to a doctor");
+        return user.parentId;
+    }
+    return user.id;
+}
 /**
  * GET /api/v1/doctor-requests
- * Doctor views assignment requests (optionally filtered by status)
+ * Doctor/Assistant views assignment requests (optionally filtered by status)
  */
 const getRequests = async (req, res) => {
     try {
-        const doctorId = req.user.id;
+        const doctorId = resolveDoctorId(req);
         const status = req.query.status;
         const requests = await requestService.getRequestsForDoctor(doctorId, status);
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Requests fetched", requests);
@@ -101,19 +111,19 @@ const getRequests = async (req, res) => {
 exports.getRequests = getRequests;
 /**
  * PUT /api/v1/doctor-requests/:id/accept
- * Doctor accepts a patient request
+ * Doctor/Assistant accepts a patient request
  */
 const acceptRequest = async (req, res) => {
     try {
-        const doctorId = req.user.id;
+        const doctorId = resolveDoctorId(req);
         const requestId = req.params.id;
         const result = await requestService.acceptRequest(requestId, doctorId);
         (0, activityLogger_1.logActivity)({
             req,
-            userId: doctorId,
-            userRole: "DOCTOR",
+            userId: req.user.id,
+            userRole: req.user.role || "DOCTOR",
             action: "PATIENT_REQUEST_ACCEPTED",
-            details: { requestId, patientId: result.patientId },
+            details: { requestId, patientId: result.patientId, actingAs: doctorId },
         });
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Patient request accepted", result);
     }
@@ -128,11 +138,11 @@ const acceptRequest = async (req, res) => {
 exports.acceptRequest = acceptRequest;
 /**
  * PUT /api/v1/doctor-requests/:id/reject
- * Doctor rejects a patient request
+ * Doctor/Assistant rejects a patient request
  */
 const rejectRequest = async (req, res) => {
     try {
-        const doctorId = req.user.id;
+        const doctorId = resolveDoctorId(req);
         const requestId = req.params.id;
         const parsed = rejectRequestSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -142,10 +152,10 @@ const rejectRequest = async (req, res) => {
         const result = await requestService.rejectRequest(requestId, doctorId, parsed.data.rejectionReason);
         (0, activityLogger_1.logActivity)({
             req,
-            userId: doctorId,
-            userRole: "DOCTOR",
+            userId: req.user.id,
+            userRole: req.user.role || "DOCTOR",
             action: "PATIENT_REQUEST_REJECTED",
-            details: { requestId, patientId: result.patientId, reason: parsed.data.rejectionReason },
+            details: { requestId, patientId: result.patientId, reason: parsed.data.rejectionReason, actingAs: doctorId },
         });
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Patient request rejected", result);
     }

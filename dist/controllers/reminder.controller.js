@@ -222,9 +222,15 @@ exports.markReminderAsRead = markReminderAsRead;
  */
 const getDashboardReminders = async (req, res) => {
     try {
-        const createdBy = req.user.id;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        const parentId = req.user?.parentId;
         const { status, patientId } = req.query;
-        const whereClause = { createdBy };
+        // Assistants see both their own and their doctor's reminders
+        const createdByIds = userRole === "ASSISTANT" && parentId
+            ? [userId, parentId]
+            : [userId];
+        const whereClause = { createdBy: createdByIds };
         // Filter by status if provided
         if (status && ["PENDING", "READ", "EXPIRED"].includes(status)) {
             whereClause.status = status;

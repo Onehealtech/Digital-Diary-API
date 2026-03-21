@@ -21,7 +21,17 @@ const requirePermission = (permission) => {
             return;
         }
         // ASSISTANT: check granular permission
-        const permissions = user.permissions || {};
+        // Sequelize raw: true may return JSONB as string — parse if needed
+        console.log(`[Permission] Checking '${permission}' for assistant ${user.id}, raw permissions:`, typeof user.permissions, user.permissions);
+        let permissions = user.permissions || {};
+        if (typeof permissions === 'string') {
+            try {
+                permissions = JSON.parse(permissions);
+            }
+            catch {
+                permissions = {};
+            }
+        }
         if (permissions[permission] === true) {
             next();
             return;

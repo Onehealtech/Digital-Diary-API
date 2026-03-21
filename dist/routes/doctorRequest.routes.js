@@ -28,6 +28,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const permissionMiddleware_1 = require("../middleware/permissionMiddleware");
 const constants_1 = require("../utils/constants");
 const controller = __importStar(require("../controllers/doctorAssignmentRequest.controller"));
 const suggestionController = __importStar(require("../controllers/patientDoctorSuggestion.controller"));
@@ -41,13 +42,13 @@ router.get("/my-requests", authMiddleware_1.patientAuthCheck, controller.getMyRe
 router.post("/suggest-doctor", authMiddleware_1.patientAuthCheck, suggestionController.createSuggestion);
 // GET /api/v1/doctor-requests/my-suggestions — patient views their suggestions
 router.get("/my-suggestions", authMiddleware_1.patientAuthCheck, suggestionController.getMySuggestions);
-// ── Doctor-facing (web dashboard, staff JWT auth) ────────────────────────
-// GET /api/v1/doctor-requests — doctor lists assignment requests
-router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), controller.getRequests);
-// PUT /api/v1/doctor-requests/:id/accept — doctor accepts
-router.put("/:id/accept", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), controller.acceptRequest);
-// PUT /api/v1/doctor-requests/:id/reject — doctor rejects
-router.put("/:id/reject", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), controller.rejectRequest);
+// ── Doctor/Assistant-facing (web dashboard, staff JWT auth) ──────────────
+// GET /api/v1/doctor-requests — doctor/assistant lists assignment requests
+router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('manageOnboardingRequests'), controller.getRequests);
+// PUT /api/v1/doctor-requests/:id/accept — doctor/assistant accepts
+router.put("/:id/accept", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('manageOnboardingRequests'), controller.acceptRequest);
+// PUT /api/v1/doctor-requests/:id/reject — doctor/assistant rejects
+router.put("/:id/reject", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('manageOnboardingRequests'), controller.rejectRequest);
 // ── Super Admin-facing (doctor suggestion management) ────────────────────
 // GET /api/v1/doctor-requests/suggestions — list all patient doctor suggestions
 router.get("/suggestions", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), suggestionController.getAllSuggestions);
