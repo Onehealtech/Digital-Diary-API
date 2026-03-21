@@ -13,7 +13,7 @@ const razorpay_1 = require("../config/razorpay");
  */
 const createRazorpayOrder = async (params) => {
     const amountInPaise = Math.round(params.amount * 100);
-    const order = await razorpay_1.razorpayInstance.orders.create({
+    const order = await (0, razorpay_1.getRazorpayInstance)().orders.create({
         amount: amountInPaise,
         currency: params.currency || "INR",
         receipt: params.orderId,

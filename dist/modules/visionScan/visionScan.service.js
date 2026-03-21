@@ -66,6 +66,7 @@ class VisionScanService {
             throw new AppError_1.AppError(502, `Page detection API error (${response.status}): ${errorText}`);
         }
         const data = (await response.json());
+        console.log("[PageDetection] API response:", JSON.stringify(data, null, 2));
         if (data.error) {
             throw new AppError_1.AppError(502, `Page detection error: ${data.error.message}`);
         }
@@ -128,15 +129,28 @@ class VisionScanService {
             processingStatus: visionScan_types_1.ProcessingStatus.PROCESSING,
             imageUrl: s3Url,
         });
-        // Run extraction synchronously and return completed result
-        await this.processExtraction({
+        // Try queue-based extraction; fall back to inline if queue unavailable
+        const jobData = {
             scanRecordId: scanRecord.id,
             base64,
             mimeType,
             diaryType,
             detectedPageNumber,
             patientId,
-        });
+        };
+        let queued = false;
+        try {
+            const { visionScanQueue } = require("./visionScan.queue");
+            await visionScanQueue.add("extract", jobData);
+            queued = true;
+        }
+        catch {
+            // Queue unavailable — process inline in background
+        }
+        if (!queued) {
+            // Fire-and-forget inline extraction
+            this.processExtraction(jobData).catch((err) => console.error("[VisionScan] Inline extraction failed:", err.message));
+        }
         // Reload the scan record to get the updated data after extraction
         const completedRecord = await visionScan_repository_1.visionScanRepository.findScanById(scanRecord.id);
         return completedRecord || scanRecord;
