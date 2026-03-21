@@ -98,8 +98,7 @@ class VisionScanService {
         return { valid: true, pageNumber: parsed.pageNumber, usage };
     }
     /**
-     * Fast path: detect page, validate, create record, queue extraction.
-     * Returns immediately after queuing — UI gets scan record in "processing" status.
+     * Process scan: detect page, validate, create record, run extraction, return completed result.
      */
     async processScan(patientId, pageNumber, imageBuffer, mimeType, diaryType) {
         const base64 = imageBuffer.toString("base64");
@@ -129,9 +128,8 @@ class VisionScanService {
             processingStatus: visionScan_types_1.ProcessingStatus.PROCESSING,
             imageUrl: s3Url,
         });
-        // Queue extraction in background — don't await
-        const { visionScanQueue } = require("./visionScan.queue");
-        await visionScanQueue.add("extract", {
+        // Run extraction synchronously and return completed result
+        await this.processExtraction({
             scanRecordId: scanRecord.id,
             base64,
             mimeType,
@@ -139,7 +137,9 @@ class VisionScanService {
             detectedPageNumber,
             patientId,
         });
-        return scanRecord;
+        // Reload the scan record to get the updated data after extraction
+        const completedRecord = await visionScan_repository_1.visionScanRepository.findScanById(scanRecord.id);
+        return completedRecord || scanRecord;
     }
     /**
      * Background worker: runs the actual AI extraction and updates the scan record.

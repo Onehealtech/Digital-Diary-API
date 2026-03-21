@@ -139,8 +139,7 @@ class VisionScanService {
     }
 
     /**
-     * Fast path: detect page, validate, create record, queue extraction.
-     * Returns immediately after queuing — UI gets scan record in "processing" status.
+     * Process scan: detect page, validate, create record, run extraction, return completed result.
      */
     async processScan(
         patientId: string,
@@ -207,7 +206,9 @@ class VisionScanService {
             );
         }
 
-        return scanRecord;
+        // Reload the scan record to get the updated data after extraction
+        const completedRecord = await visionScanRepository.findScanById(scanRecord.id);
+        return completedRecord || scanRecord;
     }
 
     /**

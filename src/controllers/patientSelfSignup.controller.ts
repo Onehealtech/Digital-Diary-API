@@ -14,10 +14,6 @@ const sendOtpSchema = z.object({
 const verifyOtpSchema = z.object({
   phone: z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
   otp: z.string().min(4, "OTP must be at least 4 digits").max(6, "OTP must be at most 6 digits"),
-});
-
-const completeProfileSchema = z.object({
-  signupToken: z.string().min(1, "Signup token is required"),
   fullName: z.string().min(2, "Full name is required").max(255),
   age: z.number().int().min(0, "Age must be 0–100").max(100, "Age must be 0–100"),
   gender: z.enum(["Male", "Female", "Other"]),
@@ -66,7 +62,7 @@ export const sendSignupOtp = async (req: Request, res: Response): Promise<void> 
 
 /**
  * POST /api/v1/patient/self-signup/verify
- * Step 2: Verify OTP only — returns a short-lived signup token (10 min)
+ * Step 2: Verify OTP and create patient profile in one step
  */
 export const verifySignupOtp = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -76,30 +72,13 @@ export const verifySignupOtp = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const result = await signupService.verifySignupOtp(parsed.data.phone, parsed.data.otp);
-    responseMiddleware(res, HTTP_STATUS.OK, "OTP verified successfully", result);
-  } catch (error: unknown) {
-    if (error instanceof AppError) {
-      responseMiddleware(res, error.statusCode, error.message);
-      return;
-    }
-    responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to verify OTP");
-  }
-};
-
-/**
- * POST /api/v1/patient/self-signup/complete-profile
- * Step 3: Submit profile details using the signup token from step 2
- */
-export const completeProfile = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const parsed = completeProfileSchema.safeParse(req.body);
-    if (!parsed.success) {
-      responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
-      return;
-    }
-
-    const result = await signupService.completeSignupProfile(parsed.data);
+    const { phone, otp, fullName, age, gender, caseType } = parsed.data;
+    const result = await signupService.verifySignupOtpAndCreateProfile(phone, otp, {
+      fullName,
+      age,
+      gender,
+      caseType,
+    });
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
