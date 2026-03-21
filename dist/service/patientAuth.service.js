@@ -6,9 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyPatientOTP = exports.patientLogin = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Patient_1 = require("../models/Patient");
-const messageCentral_service_1 = require("./messageCentral.service");
+const otpService_1 = require("./otpService");
+const twilio_service_1 = require("./twilio.service");
 /**
- * Patient Login - Step 1: Validate sticker and send OTP via Message Central
+ * Patient Login - Step 1: Validate sticker and send OTP via SMS (Twilio)
+ * Patients receive OTP on mobile only.
  */
 const patientLogin = async (diaryId) => {
     // Check if sticker exists
@@ -21,10 +23,14 @@ const patientLogin = async (diaryId) => {
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
-    // Send OTP via Message Central
+    // Generate OTP locally and send via Twilio SMS
     const phone = patient.phone;
     if (phone) {
-        await messageCentral_service_1.messageCentralService.sendOTP(phone, diaryId);
+        const otp = (0, otpService_1.generateOTP)(diaryId);
+        const sent = await twilio_service_1.twilioService.sendOTP(phone, otp);
+        if (!sent) {
+            console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
+        }
     }
     else {
         console.warn(`No phone number recorded for patient ${diaryId}. OTP not sent via SMS.`);
@@ -37,10 +43,11 @@ const patientLogin = async (diaryId) => {
 };
 exports.patientLogin = patientLogin;
 /**
- * Patient Login - Step 2: Verify OTP via Message Central
+ * Patient Login - Step 2: Verify OTP (locally generated, verified in-memory)
+ * Patients verify via SMS OTP only.
  */
 const verifyPatientOTP = async (diaryId, otp) => {
-    // Get patient details first (need phone for verification)
+    // Get patient details
     const patient = await Patient_1.Patient.findOne({
         where: { diaryId },
         attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
@@ -51,11 +58,8 @@ const verifyPatientOTP = async (diaryId, otp) => {
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
-    // MVP: "1234" backdoor for testing. Remove in production.
-    let isValid = otp === "1234";
-    if (!isValid && patient.phone) {
-        isValid = await messageCentral_service_1.messageCentralService.verifyOTP(patient.phone, diaryId, otp);
-    }
+    // Verify OTP from local store (keyed by diaryId)
+    const isValid = (0, otpService_1.verifyOTP)(diaryId, otp);
     if (!isValid) {
         throw new Error("Invalid or expired OTP");
     }

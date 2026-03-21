@@ -14,7 +14,7 @@ const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
 const Diary_1 = require("../models/Diary");
 const GeneratedDiary_1 = require("../models/GeneratedDiary");
 const AppError_1 = require("../utils/AppError");
-const messageCentral_service_1 = require("./messageCentral.service");
+const twilio_service_1 = require("./twilio.service");
 const emailService_1 = require("./emailService");
 const crypto_1 = __importDefault(require("crypto"));
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
@@ -179,7 +179,7 @@ async function acceptRequest(requestId, doctorId) {
         // 9. Notify patient via SMS (fire-and-forget, outside transaction)
         const doctor = await Appuser_1.AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
         if (patient.phone && doctor) {
-            messageCentral_service_1.messageCentralService
+            twilio_service_1.twilioService
                 .sendSMS(patient.phone, `Good news! Dr. ${doctor.fullName} has accepted your request. Your diary (${generatedDiary.id}) has been assigned. You can now start using your Elvantia diary. - Elvantia`)
                 .catch((err) => console.error("Failed to send acceptance SMS:", err));
         }
@@ -208,7 +208,7 @@ async function rejectRequest(requestId, doctorId, rejectionReason) {
         const retryMsg = canRetry
             ? " You may send one more request to this doctor, or choose a different doctor."
             : " You have used both attempts with this doctor. Please choose a different doctor.";
-        messageCentral_service_1.messageCentralService
+        twilio_service_1.twilioService
             .sendSMS(patient.phone, `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`)
             .catch((err) => console.error("❌ Failed to send rejection SMS:", err));
     }
@@ -240,7 +240,7 @@ async function notifyDoctorOfRequest(doctor, patient, request) {
         : "not specified";
     // SMS notification
     if (doctor.phone) {
-        await messageCentral_service_1.messageCentralService.sendSMS(doctor.phone, `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`);
+        await twilio_service_1.twilioService.sendSMS(doctor.phone, `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`);
     }
     // Email notification
     if (doctor.email) {

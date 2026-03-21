@@ -3,51 +3,89 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listAvailableDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.verifySignupOtpAndCreateProfile = exports.sendSignupOtp = void 0;
+exports.listAvailableDoctors = exports.verifySignupOtp = exports.sendSignupOtp = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const sequelize_1 = require("sequelize");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const AppError_1 = require("../utils/AppError");
-const messageCentral_service_1 = require("./messageCentral.service");
+const otpService_1 = require("./otpService");
+const twilio_service_1 = require("./twilio.service");
 /**
- * Step 1: Patient self-signup — sends OTP to verify phone
+ * Step 1: Send OTP to phone — works for both new and existing patients.
+ * - If account exists → sends OTP for login (returns isExistingUser: true)
+ * - If account does not exist → sends OTP for signup (returns isExistingUser: false)
  */
 async function sendSignupOtp(phone) {
-    // Check if a self-signup patient with this phone already exists
     const existing = await Patient_1.Patient.findOne({
         where: { phone, registrationSource: "SELF_SIGNUP" },
     });
-    if (existing) {
-        throw new AppError_1.AppError(409, "An account with this phone number already exists. Please login instead.");
+    // Block inactive accounts
+    if (existing && existing.status === "INACTIVE") {
+        throw new AppError_1.AppError(403, "Your account has been deactivated. Please contact support.");
     }
-    const key = `self-signup-${phone}`;
-    await messageCentral_service_1.messageCentralService.sendOTP(phone, key);
-    return { message: "OTP sent to your phone number" };
+    const key = `self-otp-${phone}`;
+    const otp = (0, otpService_1.generateOTP)(key);
+    const sent = await twilio_service_1.twilioService.sendOTP(phone, otp);
+    if (!sent) {
+        console.warn(`Failed to send OTP to ${phone}`);
+    }
+    return {
+        message: "OTP sent to your phone number",
+        isExistingUser: !!existing,
+    };
 }
 exports.sendSignupOtp = sendSignupOtp;
 /**
- * Step 2: Verify OTP and create patient profile in one step.
- * Returns a full patient JWT (30 days).
+ * Step 2: Verify OTP — handles both login and signup in one function.
+ * - If account exists → verify OTP and return JWT (login)
+ * - If account does not exist → verify OTP, create profile, return JWT (signup)
+ *
+ * Profile fields (fullName, age, gender, caseType) are required only for new signups.
  */
-async function verifySignupOtpAndCreateProfile(phone, otp, profile) {
-    const key = `self-signup-${phone}`;
-    let isValid = otp === "1234"; // MVP backdoor
-    if (!isValid) {
-        isValid = await messageCentral_service_1.messageCentralService.verifyOTP(phone, key, otp);
-    }
+async function verifySignupOtp(phone, otp, profile) {
+    const key = `self-otp-${phone}`;
+    const isValid = (0, otpService_1.verifyOTP)(key, otp);
     if (!isValid) {
         throw new AppError_1.AppError(401, "Invalid or expired OTP");
     }
-    // Double-check no duplicate
+    // Check if patient already exists
     const existing = await Patient_1.Patient.findOne({
         where: { phone, registrationSource: "SELF_SIGNUP" },
     });
     if (existing) {
-        throw new AppError_1.AppError(409, "Account already exists. Please login.");
+        // --- LOGIN flow ---
+        if (existing.status === "INACTIVE") {
+            throw new AppError_1.AppError(403, "Your account has been deactivated. Please contact support.");
+        }
+        const token = jsonwebtoken_1.default.sign({
+            id: existing.id,
+            fullName: existing.fullName,
+            caseType: existing.caseType,
+            doctorId: existing.doctorId,
+            type: "PATIENT",
+        }, process.env.JWT_SECRET, { expiresIn: "30d" });
+        return {
+            token,
+            patient: {
+                id: existing.id,
+                fullName: existing.fullName,
+                age: existing.age,
+                gender: existing.gender,
+                phone: existing.phone,
+                caseType: existing.caseType,
+                doctorId: existing.doctorId,
+                registrationSource: existing.registrationSource,
+                status: existing.status,
+            },
+            isNewUser: false,
+        };
+    }
+    // --- SIGNUP flow ---
+    if (!profile || !profile.fullName || !profile.age || !profile.gender || !profile.caseType) {
+        throw new AppError_1.AppError(400, "Profile details (fullName, age, gender, caseType) are required for new registration");
     }
     const { fullName, age, gender, caseType } = profile;
-    // Create patient
     const patient = await Patient_1.Patient.create({
         fullName,
         age,
@@ -58,7 +96,6 @@ async function verifySignupOtpAndCreateProfile(phone, otp, profile) {
         registeredDate: new Date(),
         status: "ACTIVE",
     });
-    // Generate full patient JWT (30 days)
     const token = jsonwebtoken_1.default.sign({
         id: patient.id,
         fullName: patient.fullName,
@@ -77,71 +114,10 @@ async function verifySignupOtpAndCreateProfile(phone, otp, profile) {
             registrationSource: patient.registrationSource,
             status: patient.status,
         },
+        isNewUser: true,
     };
 }
-exports.verifySignupOtpAndCreateProfile = verifySignupOtpAndCreateProfile;
-/**
- * Login for self-signup patients (by phone)
- */
-async function selfSignupLogin(phone) {
-    const patient = await Patient_1.Patient.findOne({
-        where: { phone, registrationSource: "SELF_SIGNUP" },
-    });
-    if (!patient) {
-        throw new AppError_1.AppError(404, "No account found with this phone number. Please sign up first.");
-    }
-    if (patient.status === "INACTIVE") {
-        throw new AppError_1.AppError(403, "Your account has been deactivated. Please contact support.");
-    }
-    const key = `self-login-${phone}`;
-    await messageCentral_service_1.messageCentralService.sendOTP(phone, key);
-    return { message: "OTP sent to your phone number", patientId: patient.id };
-}
-exports.selfSignupLogin = selfSignupLogin;
-/**
- * Verify OTP for self-signup patient login
- */
-async function verifySelfSignupLogin(phone, otp) {
-    const patient = await Patient_1.Patient.findOne({
-        where: { phone, registrationSource: "SELF_SIGNUP" },
-    });
-    if (!patient) {
-        throw new AppError_1.AppError(404, "Patient not found");
-    }
-    if (patient.status === "INACTIVE") {
-        throw new AppError_1.AppError(403, "Account deactivated");
-    }
-    const key = `self-login-${phone}`;
-    let isValid = otp === "1234";
-    if (!isValid) {
-        isValid = await messageCentral_service_1.messageCentralService.verifyOTP(phone, key, otp);
-    }
-    if (!isValid) {
-        throw new AppError_1.AppError(401, "Invalid or expired OTP");
-    }
-    const token = jsonwebtoken_1.default.sign({
-        id: patient.id,
-        fullName: patient.fullName,
-        caseType: patient.caseType,
-        doctorId: patient.doctorId,
-        type: "PATIENT",
-    }, process.env.JWT_SECRET, { expiresIn: "30d" });
-    return {
-        token,
-        patient: {
-            id: patient.id,
-            fullName: patient.fullName,
-            age: patient.age,
-            gender: patient.gender,
-            phone: patient.phone,
-            caseType: patient.caseType,
-            doctorId: patient.doctorId,
-            registrationSource: patient.registrationSource,
-            status: patient.status,
-        },
-    };
-}
-exports.verifySelfSignupLogin = verifySelfSignupLogin;
+exports.verifySignupOtp = verifySignupOtp;
 /**
  * List doctors available for patient selection (public — no auth needed on mobile)
  * Supports pagination and optional search by name, specialization, hospital, city.
