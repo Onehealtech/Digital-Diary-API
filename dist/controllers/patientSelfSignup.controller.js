@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listDoctors = exports.verifySelfSignupLogin = exports.selfSignupLogin = exports.verifySignupOtp = exports.sendSignupOtp = void 0;
+exports.listDoctors = exports.verifySignupOtp = exports.sendSignupOtp = void 0;
 const zod_1 = require("zod");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
@@ -36,28 +36,24 @@ const sendOtpSchema = zod_1.z.object({
 const verifyOtpSchema = zod_1.z.object({
     phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
     otp: zod_1.z.string().min(4, "OTP must be at least 4 digits").max(6, "OTP must be at most 6 digits"),
-    fullName: zod_1.z.string().min(2, "Full name is required").max(255),
-    age: zod_1.z.number().int().min(0, "Age must be 0–100").max(100, "Age must be 0–100"),
-    gender: zod_1.z.enum(["Male", "Female", "Other"]),
+    // Profile fields — required only for new signups, optional for login
+    fullName: zod_1.z.string().min(2).max(255).optional(),
+    age: zod_1.z.number().int().min(0).max(100).optional(),
+    gender: zod_1.z.enum(["Male", "Female", "Other"]).optional(),
     caseType: zod_1.z.enum([
         "PERI_OPERATIVE",
         "POST_OPERATIVE",
         "FOLLOW_UP",
         "CHEMOTHERAPY",
         "RADIOLOGY",
-    ]),
-});
-const loginSchema = zod_1.z.object({
-    phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
-});
-const verifyLoginSchema = zod_1.z.object({
-    phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
-    otp: zod_1.z.string().length(6, "OTP must be 6 digits"),
+    ]).optional(),
 });
 // ── Controllers ──────────────────────────────────────────────────────────
 /**
  * POST /api/v1/patient/self-signup/send-otp
- * Step 1: Send OTP to phone for self-signup
+ * Unified Step 1: Send OTP to phone for both signup and login.
+ * Returns { isExistingUser } so the frontend knows whether to show
+ * the profile form (new user) or go straight to OTP verification (existing user).
  */
 const sendSignupOtp = async (req, res) => {
     try {
@@ -67,7 +63,9 @@ const sendSignupOtp = async (req, res) => {
             return;
         }
         const result = await signupService.sendSignupOtp(parsed.data.phone);
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, result.message);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, result.message, {
+            isExistingUser: result.isExistingUser,
+        });
     }
     catch (error) {
         if (error instanceof AppError_1.AppError) {
@@ -80,7 +78,9 @@ const sendSignupOtp = async (req, res) => {
 exports.sendSignupOtp = sendSignupOtp;
 /**
  * POST /api/v1/patient/self-signup/verify
- * Step 2: Verify OTP and create patient profile in one step
+ * Unified Step 2: Verify OTP — logs in existing users or signs up new users.
+ * - Existing user: send { phone, otp } → returns JWT
+ * - New user: send { phone, otp, fullName, age, gender, caseType } → creates account + returns JWT
  */
 const verifySignupOtp = async (req, res) => {
     try {
@@ -90,65 +90,16 @@ const verifySignupOtp = async (req, res) => {
             return;
         }
         const { phone, otp, fullName, age, gender, caseType } = parsed.data;
-        const result = await signupService.verifySignupOtpAndCreateProfile(phone, otp, {
-            fullName,
-            age,
-            gender,
-            caseType,
-        });
-        res.status(constants_1.HTTP_STATUS.CREATED).json({
+        // Build profile object only if profile fields are provided
+        const profile = fullName && age !== undefined && gender && caseType
+            ? { fullName, age, gender, caseType }
+            : undefined;
+        const result = await signupService.verifySignupOtp(phone, otp, profile);
+        const statusCode = result.isNewUser ? constants_1.HTTP_STATUS.CREATED : constants_1.HTTP_STATUS.OK;
+        const message = result.isNewUser ? "Account created successfully" : "Login successful";
+        res.status(statusCode).json({
             success: true,
-            message: "Account created successfully",
-            data: result,
-        });
-    }
-    catch (error) {
-        if (error instanceof AppError_1.AppError) {
-            (0, response_1.responseMiddleware)(res, error.statusCode, error.message);
-            return;
-        }
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to create account");
-    }
-};
-exports.verifySignupOtp = verifySignupOtp;
-/**
- * POST /api/v1/patient/self-signup/login
- * Self-signup patient login — sends OTP
- */
-const selfSignupLogin = async (req, res) => {
-    try {
-        const parsed = loginSchema.safeParse(req.body);
-        if (!parsed.success) {
-            (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
-            return;
-        }
-        const result = await signupService.selfSignupLogin(parsed.data.phone);
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, result.message, { patientId: result.patientId });
-    }
-    catch (error) {
-        if (error instanceof AppError_1.AppError) {
-            (0, response_1.responseMiddleware)(res, error.statusCode, error.message);
-            return;
-        }
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to send OTP");
-    }
-};
-exports.selfSignupLogin = selfSignupLogin;
-/**
- * POST /api/v1/patient/self-signup/verify-login
- * Self-signup patient verify OTP and get JWT
- */
-const verifySelfSignupLogin = async (req, res) => {
-    try {
-        const parsed = verifyLoginSchema.safeParse(req.body);
-        if (!parsed.success) {
-            (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
-            return;
-        }
-        const result = await signupService.verifySelfSignupLogin(parsed.data.phone, parsed.data.otp);
-        res.status(constants_1.HTTP_STATUS.OK).json({
-            success: true,
-            message: "Login successful",
+            message,
             data: result,
         });
     }
@@ -160,7 +111,7 @@ const verifySelfSignupLogin = async (req, res) => {
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to verify OTP");
     }
 };
-exports.verifySelfSignupLogin = verifySelfSignupLogin;
+exports.verifySignupOtp = verifySignupOtp;
 /**
  * GET /api/v1/patient/self-signup/doctors?page=1&limit=10&search=oncology
  * Public paginated list of available doctors for patient selection
