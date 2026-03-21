@@ -8,6 +8,8 @@ import { UserSubscription } from "../models/UserSubscription";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Diary } from "../models/Diary";
+import { GeneratedDiary } from "../models/GeneratedDiary";
+import { DoctorAssignmentRequest } from "../models/DoctorAssignmentRequest";
 import { Order } from "../models/Order";
 import { createPaymentOrder, getActiveGateway } from "./paymentGateway.service";
 
@@ -103,6 +105,12 @@ const generateOrderId = (): string => {
   return `SUB-${timestamp}-${random}`.toUpperCase();
 };
 
+const generateDiaryId = (): string => {
+  const year = new Date().getFullYear();
+  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `DRY-${year}-AUTO-${random}`;
+};
+
 /**
  * Step 1: Initiate subscription payment
  *
@@ -118,6 +126,16 @@ export const initiateSubscriptionPayment = async (params: {
   // 1. Validate patient
   const patient = await Patient.findByPk(patientId);
   if (!patient) throw new Error("Patient not found");
+
+  // 1b. Patient must have an accepted doctor request before subscribing
+  if (!patient.doctorId) {
+    const acceptedRequest = await DoctorAssignmentRequest.findOne({
+      where: { patientId, status: "ACCEPTED" },
+    });
+    if (!acceptedRequest) {
+      throw new Error("You must select a doctor and get approved before purchasing a subscription");
+    }
+  }
 
   // 2. Validate plan
   const plan = await SubscriptionPlan.findByPk(planId);
@@ -256,7 +274,58 @@ export const activateSubscriptionAfterPayment = async (
     order.paidAt = new Date();
     await order.save({ transaction: t });
 
-    // 4. Create the subscription
+    // 4. Get the patient and their accepted doctor
+    const patient = await Patient.findByPk(order.patientId, { transaction: t });
+    if (!patient) throw new Error("Patient not found");
+
+    const doctorId = patient.doctorId || null;
+
+    // 5. Assign diary from GeneratedDiary pool
+    let generatedDiary = await GeneratedDiary.findOne({
+      where: { status: "unassigned" },
+      order: [["createdAt", "ASC"]],
+      lock: t.LOCK.UPDATE,
+      transaction: t,
+    });
+
+    if (!generatedDiary) {
+      const diaryId = generateDiaryId();
+      generatedDiary = await GeneratedDiary.create(
+        {
+          id: diaryId,
+          diaryType: "peri-operative",
+          status: "unassigned",
+          generatedDate: new Date(),
+        },
+        { transaction: t }
+      );
+    }
+
+    // Mark generated diary as sold
+    generatedDiary.status = "sold";
+    generatedDiary.soldTo = order.patientId;
+    generatedDiary.soldDate = new Date();
+    await generatedDiary.save({ transaction: t });
+
+    // Create diary record
+    await Diary.create(
+      {
+        id: generatedDiary.id,
+        patientId: order.patientId,
+        doctorId,
+        status: "active",
+        activationDate: new Date(),
+        saleAmount: Number(plan.monthlyPrice),
+        commissionAmount: 0,
+      },
+      { transaction: t }
+    );
+
+    // Update patient with diaryId
+    patient.diaryId = generatedDiary.id;
+    await patient.save({ transaction: t });
+
+    // 6. Create the subscription (with diary and doctor linked)
     const now = new Date();
     const endDate = new Date(now);
     endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
@@ -265,6 +334,8 @@ export const activateSubscriptionAfterPayment = async (
       {
         patientId: order.patientId,
         planId: order.subscriptionPlanId,
+        diaryId: generatedDiary.id,
+        doctorId,
         status: "ACTIVE",
         paidAmount: plan.monthlyPrice,
         maxDiaryPages: plan.maxDiaryPages,
@@ -281,6 +352,7 @@ export const activateSubscriptionAfterPayment = async (
 
     return {
       subscription,
+      diaryId: generatedDiary.id,
       plan: {
         name: plan.name,
         maxDiaryPages: plan.maxDiaryPages,
@@ -309,6 +381,17 @@ export const subscribeToPlan = async (params: {
     const patient = await Patient.findByPk(patientId, { transaction: t });
     if (!patient) throw new Error("Patient not found");
 
+    // 1b. Patient must have an accepted doctor before subscribing
+    if (!patient.doctorId) {
+      const acceptedRequest = await DoctorAssignmentRequest.findOne({
+        where: { patientId, status: "ACCEPTED" },
+        transaction: t,
+      });
+      if (!acceptedRequest) {
+        throw new Error("You must select a doctor and get approved before purchasing a subscription");
+      }
+    }
+
     // 2. Validate plan
     const plan = await SubscriptionPlan.findByPk(planId, { transaction: t });
     if (!plan) throw new Error("Plan not found");
@@ -323,7 +406,51 @@ export const subscribeToPlan = async (params: {
       throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
     }
 
-    // 4. Create subscription with plan snapshot (no diary, no doctor yet)
+    // 4. Assign diary from GeneratedDiary pool
+    const doctorId = patient.doctorId || null;
+
+    let generatedDiary = await GeneratedDiary.findOne({
+      where: { status: "unassigned" },
+      order: [["createdAt", "ASC"]],
+      lock: t.LOCK.UPDATE,
+      transaction: t,
+    });
+
+    if (!generatedDiary) {
+      const diaryId = generateDiaryId();
+      generatedDiary = await GeneratedDiary.create(
+        {
+          id: diaryId,
+          diaryType: "peri-operative",
+          status: "unassigned",
+          generatedDate: new Date(),
+        },
+        { transaction: t }
+      );
+    }
+
+    generatedDiary.status = "sold";
+    generatedDiary.soldTo = patientId;
+    generatedDiary.soldDate = new Date();
+    await generatedDiary.save({ transaction: t });
+
+    await Diary.create(
+      {
+        id: generatedDiary.id,
+        patientId,
+        doctorId,
+        status: "active",
+        activationDate: new Date(),
+        saleAmount: Number(plan.monthlyPrice),
+        commissionAmount: 0,
+      },
+      { transaction: t }
+    );
+
+    patient.diaryId = generatedDiary.id;
+    await patient.save({ transaction: t });
+
+    // 5. Create subscription with diary and doctor linked
     const now = new Date();
     const endDate = new Date(now);
     endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
@@ -332,6 +459,8 @@ export const subscribeToPlan = async (params: {
       {
         patientId,
         planId,
+        diaryId: generatedDiary.id,
+        doctorId,
         status: "ACTIVE",
         paidAmount: plan.monthlyPrice,
         maxDiaryPages: plan.maxDiaryPages,
@@ -348,6 +477,7 @@ export const subscribeToPlan = async (params: {
 
     return {
       subscription,
+      diaryId: generatedDiary.id,
       plan: {
         name: plan.name,
         maxDiaryPages: plan.maxDiaryPages,

@@ -3,20 +3,15 @@ import { sequelize } from "../config/Dbconnetion";
 import { DoctorAssignmentRequest } from "../models/DoctorAssignmentRequest";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
-import { UserSubscription } from "../models/UserSubscription";
-import { SubscriptionPlan } from "../models/SubscriptionPlan";
-import { Diary } from "../models/Diary";
-import { GeneratedDiary } from "../models/GeneratedDiary";
 import { AppError } from "../utils/AppError";
 import { twilioService } from "./twilio.service";
 import { sendDoctorRequestEmail } from "./emailService";
-import crypto from "crypto";
 
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
 
 /**
  * Patient sends a request to a doctor for assignment.
- * Flow: Patient must have active subscription before choosing a doctor.
+ * Flow: Patient selects doctor first, then subscribes after approval.
  * Max 2 requests per patient→doctor pair.
  */
 export async function createRequest(
@@ -27,14 +22,6 @@ export async function createRequest(
   const patient = await Patient.findByPk(patientId);
   if (!patient) throw new AppError(404, "Patient not found");
   if (patient.doctorId) throw new AppError(400, "You already have a doctor assigned");
-
-  // Patient must have an active subscription before sending doctor request
-  const activeSubscription = await UserSubscription.findOne({
-    where: { patientId, status: "ACTIVE" },
-  });
-  if (!activeSubscription) {
-    throw new AppError(400, "You must purchase a subscription plan before choosing a doctor");
-  }
 
   // Verify doctor exists and is active
   const doctor = await AppUser.findOne({
@@ -110,9 +97,8 @@ export async function getRequestsForDoctor(
 }
 
 /**
- * Doctor accepts a request — assigns patient to doctor, assigns diary.
- * Flow: On acceptance, auto-assign a diary from GeneratedDiary pool,
- * link doctor to patient, subscription, and diary.
+ * Doctor accepts a request — links doctor to patient.
+ * Diary assignment happens later when the patient purchases a subscription.
  */
 export async function acceptRequest(
   requestId: string,
@@ -124,103 +110,34 @@ export async function acceptRequest(
       include: [{ model: Patient }],
       transaction: t,
     });
-    console.log(request,"request");
-    
+
     if (!request) throw new AppError(404, "Pending request not found");
 
     const patient = await Patient.findByPk(request.patientId, { transaction: t });
     if (!patient) throw new AppError(404, "Patient not found");
-    console.log(patient,"patient");
-    console.log(request.patientId,"request.patientId");
-    
-    // 1. Find the patient's active subscription
-    const subscription = await UserSubscription.findOne({
-      where: { patientId: request.patientId, status: "ACTIVE" },
-      include: [{ model: SubscriptionPlan }],
-      transaction: t,
-      // lock: t.LOCK.UPDATE,
-    });
-    console.log(subscription,"subscription");
-    
-    if (!subscription) throw new AppError(400, "Patient does not have an active subscription");
 
-    const plan = subscription.plan;
-
-    // 2. Find or create an unassigned diary
-    let generatedDiary = await GeneratedDiary.findOne({
-      where: { status: "unassigned" },
-      order: [["createdAt", "ASC"]],
-      lock: t.LOCK.UPDATE,
-      transaction: t,
-    });
-    console.log(generatedDiary,"generatedDiary");
-
-    if (!generatedDiary) {
-      const diaryId = generateDiaryId();
-      generatedDiary = await GeneratedDiary.create(
-        {
-          id: diaryId,
-          diaryType: "peri-operative", // default type, can be adjusted based on patient's caseType if needed
-          status: "unassigned",
-          generatedDate: new Date(),
-        },
-        { transaction: t }
-      );
-    }
-
-    // 3. Mark generated diary as sold
-    generatedDiary.status = "sold";
-    generatedDiary.soldTo = request.patientId;
-    generatedDiary.soldDate = new Date();
-    await generatedDiary.save({ transaction: t });
-
-    // 4. Create diary record with doctor
-    await Diary.create(
-      {
-        id: generatedDiary.id,
-        patientId: request.patientId,
-        doctorId,
-        status: "active",
-        activationDate: new Date(),
-        saleAmount: plan ? Number(plan.monthlyPrice) : 0,
-        commissionAmount: 0,
-      },
-      { transaction: t }
-    ).then((diary) => {
-      console.log(diary,"diary");
-    }).catch((err) => {
-      console.error("Failed to create diary record:", err);
-      throw new AppError(500, "Failed to assign diary to patient");
-    });
-
-    // 5. Update patient: assign doctorId and diaryId
+    // 1. Assign doctor to patient
     patient.doctorId = doctorId;
-    patient.diaryId = generatedDiary.id;
     await patient.save({ transaction: t });
 
-    // 6. Update subscription: link doctor and diary
-    subscription.doctorId = doctorId;
-    subscription.diaryId = generatedDiary.id;
-    await subscription.save({ transaction: t });
-
-    // 7. Mark request as accepted
+    // 2. Mark request as accepted
     request.status = "ACCEPTED";
     request.respondedAt = new Date();
     await request.save({ transaction: t });
 
-    // 8. Cancel any other pending requests from this patient
+    // 3. Cancel any other pending requests from this patient
     await DoctorAssignmentRequest.update(
       { status: "REJECTED", rejectionReason: "Another doctor accepted", respondedAt: new Date() },
       { where: { patientId: request.patientId, status: "PENDING", id: { [Op.ne]: requestId } }, transaction: t }
     );
 
-    // 9. Notify patient via SMS (fire-and-forget, outside transaction)
+    // 4. Notify patient via SMS (fire-and-forget)
     const doctor = await AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
     if (patient.phone && doctor) {
       twilioService
         .sendSMS(
           patient.phone,
-          `Good news! Dr. ${doctor.fullName} has accepted your request. Your diary (${generatedDiary.id}) has been assigned. You can now start using your Elvantia diary. - Elvantia`
+          `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`
         )
         .catch((err) => console.error("Failed to send acceptance SMS:", err));
     }
@@ -319,12 +236,3 @@ async function notifyDoctorOfRequest(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function generateDiaryId(): string {
-  const year = new Date().getFullYear();
-  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `DRY-${year}-AUTO-${random}`;
-}

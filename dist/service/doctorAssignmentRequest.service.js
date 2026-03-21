@@ -1,7 +1,4 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRequestsForPatient = exports.rejectRequest = exports.acceptRequest = exports.getRequestsForDoctor = exports.createRequest = void 0;
 const sequelize_1 = require("sequelize");
@@ -9,18 +6,13 @@ const Dbconnetion_1 = require("../config/Dbconnetion");
 const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
-const UserSubscription_1 = require("../models/UserSubscription");
-const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
-const Diary_1 = require("../models/Diary");
-const GeneratedDiary_1 = require("../models/GeneratedDiary");
 const AppError_1 = require("../utils/AppError");
 const twilio_service_1 = require("./twilio.service");
 const emailService_1 = require("./emailService");
-const crypto_1 = __importDefault(require("crypto"));
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
 /**
  * Patient sends a request to a doctor for assignment.
- * Flow: Patient must have active subscription before choosing a doctor.
+ * Flow: Patient selects doctor first, then subscribes after approval.
  * Max 2 requests per patient→doctor pair.
  */
 async function createRequest(patientId, doctorId) {
@@ -30,13 +22,6 @@ async function createRequest(patientId, doctorId) {
         throw new AppError_1.AppError(404, "Patient not found");
     if (patient.doctorId)
         throw new AppError_1.AppError(400, "You already have a doctor assigned");
-    // Patient must have an active subscription before sending doctor request
-    const activeSubscription = await UserSubscription_1.UserSubscription.findOne({
-        where: { patientId, status: "ACTIVE" },
-    });
-    if (!activeSubscription) {
-        throw new AppError_1.AppError(400, "You must purchase a subscription plan before choosing a doctor");
-    }
     // Verify doctor exists and is active
     const doctor = await Appuser_1.AppUser.findOne({
         where: { id: doctorId, role: "DOCTOR", isActive: true },
@@ -95,9 +80,8 @@ async function getRequestsForDoctor(doctorId, status) {
 }
 exports.getRequestsForDoctor = getRequestsForDoctor;
 /**
- * Doctor accepts a request — assigns patient to doctor, assigns diary.
- * Flow: On acceptance, auto-assign a diary from GeneratedDiary pool,
- * link doctor to patient, subscription, and diary.
+ * Doctor accepts a request — links doctor to patient.
+ * Diary assignment happens later when the patient purchases a subscription.
  */
 async function acceptRequest(requestId, doctorId) {
     return await Dbconnetion_1.sequelize.transaction(async (t) => {
@@ -106,81 +90,25 @@ async function acceptRequest(requestId, doctorId) {
             include: [{ model: Patient_1.Patient }],
             transaction: t,
         });
-        console.log(request, "request");
         if (!request)
             throw new AppError_1.AppError(404, "Pending request not found");
         const patient = await Patient_1.Patient.findByPk(request.patientId, { transaction: t });
         if (!patient)
             throw new AppError_1.AppError(404, "Patient not found");
-        console.log(patient, "patient");
-        console.log(request.patientId, "request.patientId");
-        // 1. Find the patient's active subscription
-        const subscription = await UserSubscription_1.UserSubscription.findOne({
-            where: { patientId: request.patientId, status: "ACTIVE" },
-            include: [{ model: SubscriptionPlan_1.SubscriptionPlan }],
-            transaction: t,
-            // lock: t.LOCK.UPDATE,
-        });
-        console.log(subscription, "subscription");
-        if (!subscription)
-            throw new AppError_1.AppError(400, "Patient does not have an active subscription");
-        const plan = subscription.plan;
-        // 2. Find or create an unassigned diary
-        let generatedDiary = await GeneratedDiary_1.GeneratedDiary.findOne({
-            where: { status: "unassigned" },
-            order: [["createdAt", "ASC"]],
-            lock: t.LOCK.UPDATE,
-            transaction: t,
-        });
-        console.log(generatedDiary, "generatedDiary");
-        if (!generatedDiary) {
-            const diaryId = generateDiaryId();
-            generatedDiary = await GeneratedDiary_1.GeneratedDiary.create({
-                id: diaryId,
-                diaryType: "peri-operative",
-                status: "unassigned",
-                generatedDate: new Date(),
-            }, { transaction: t });
-        }
-        // 3. Mark generated diary as sold
-        generatedDiary.status = "sold";
-        generatedDiary.soldTo = request.patientId;
-        generatedDiary.soldDate = new Date();
-        await generatedDiary.save({ transaction: t });
-        // 4. Create diary record with doctor
-        await Diary_1.Diary.create({
-            id: generatedDiary.id,
-            patientId: request.patientId,
-            doctorId,
-            status: "active",
-            activationDate: new Date(),
-            saleAmount: plan ? Number(plan.monthlyPrice) : 0,
-            commissionAmount: 0,
-        }, { transaction: t }).then((diary) => {
-            console.log(diary, "diary");
-        }).catch((err) => {
-            console.error("Failed to create diary record:", err);
-            throw new AppError_1.AppError(500, "Failed to assign diary to patient");
-        });
-        // 5. Update patient: assign doctorId and diaryId
+        // 1. Assign doctor to patient
         patient.doctorId = doctorId;
-        patient.diaryId = generatedDiary.id;
         await patient.save({ transaction: t });
-        // 6. Update subscription: link doctor and diary
-        subscription.doctorId = doctorId;
-        subscription.diaryId = generatedDiary.id;
-        await subscription.save({ transaction: t });
-        // 7. Mark request as accepted
+        // 2. Mark request as accepted
         request.status = "ACCEPTED";
         request.respondedAt = new Date();
         await request.save({ transaction: t });
-        // 8. Cancel any other pending requests from this patient
+        // 3. Cancel any other pending requests from this patient
         await DoctorAssignmentRequest_1.DoctorAssignmentRequest.update({ status: "REJECTED", rejectionReason: "Another doctor accepted", respondedAt: new Date() }, { where: { patientId: request.patientId, status: "PENDING", id: { [sequelize_1.Op.ne]: requestId } }, transaction: t });
-        // 9. Notify patient via SMS (fire-and-forget, outside transaction)
+        // 4. Notify patient via SMS (fire-and-forget)
         const doctor = await Appuser_1.AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
         if (patient.phone && doctor) {
             twilio_service_1.twilioService
-                .sendSMS(patient.phone, `Good news! Dr. ${doctor.fullName} has accepted your request. Your diary (${generatedDiary.id}) has been assigned. You can now start using your Elvantia diary. - Elvantia`)
+                .sendSMS(patient.phone, `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`)
                 .catch((err) => console.error("Failed to send acceptance SMS:", err));
         }
         return request;
@@ -246,12 +174,4 @@ async function notifyDoctorOfRequest(doctor, patient, request) {
     if (doctor.email) {
         await (0, emailService_1.sendDoctorRequestEmail)(doctor.email, doctor.fullName, patient.fullName, patient.age?.toString() || "N/A", patient.gender || "N/A", caseLabel, patient.phone || "N/A");
     }
-}
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-function generateDiaryId() {
-    const year = new Date().getFullYear();
-    const random = crypto_1.default.randomBytes(3).toString("hex").toUpperCase();
-    return `DRY-${year}-AUTO-${random}`;
 }
