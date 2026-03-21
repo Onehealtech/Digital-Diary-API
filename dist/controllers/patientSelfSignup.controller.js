@@ -34,7 +34,7 @@ const sendOtpSchema = zod_1.z.object({
     phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
 });
 const verifyOtpSchema = zod_1.z.object({
-    phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+    sessionId: zod_1.z.string().uuid("Invalid session ID"),
     otp: zod_1.z.string().min(4, "OTP must be at least 4 digits").max(6, "OTP must be at most 6 digits"),
     // Profile fields — required only for new signups, optional for login
     fullName: zod_1.z.string().min(2).max(255).optional(),
@@ -65,6 +65,7 @@ const sendSignupOtp = async (req, res) => {
         const result = await signupService.sendSignupOtp(parsed.data.phone);
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, result.message, {
             isExistingUser: result.isExistingUser,
+            sessionId: result.sessionId,
         });
     }
     catch (error) {
@@ -79,8 +80,8 @@ exports.sendSignupOtp = sendSignupOtp;
 /**
  * POST /api/v1/patient/self-signup/verify
  * Unified Step 2: Verify OTP — logs in existing users or signs up new users.
- * - Existing user: send { phone, otp } → returns JWT
- * - New user: send { phone, otp, fullName, age, gender, caseType } → creates account + returns JWT
+ * - Existing user: send { sessionId, otp } → returns JWT
+ * - New user: send { sessionId, otp, fullName, age, gender, caseType } → creates account + returns JWT
  */
 const verifySignupOtp = async (req, res) => {
     try {
@@ -89,12 +90,12 @@ const verifySignupOtp = async (req, res) => {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
             return;
         }
-        const { phone, otp, fullName, age, gender, caseType } = parsed.data;
+        const { sessionId, otp, fullName, age, gender, caseType } = parsed.data;
         // Build profile object only if profile fields are provided
         const profile = fullName && age !== undefined && gender && caseType
             ? { fullName, age, gender, caseType }
             : undefined;
-        const result = await signupService.verifySignupOtp(phone, otp, profile);
+        const result = await signupService.verifySignupOtp(sessionId, otp, profile);
         const statusCode = result.isNewUser ? constants_1.HTTP_STATUS.CREATED : constants_1.HTTP_STATUS.OK;
         const message = result.isNewUser ? "Account created successfully" : "Login successful";
         res.status(statusCode).json({
