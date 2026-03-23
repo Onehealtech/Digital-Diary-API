@@ -204,112 +204,434 @@ class DashboardService {
   /**
    * Doctor Dashboard Statistics
    */
-  async getDoctorDashboard(doctorId: string) {
-    // Get doctor info
+  // async getDoctorDashboard(doctorId: string) {
+  //   // Get doctor info
+  //   const doctor = await AppUser.findByPk(doctorId, {
+  //     attributes: ["id", "fullName", "email"],
+  //   });
+
+  //   // ── Patient counts by status ──────────────────────────────────────
+  //   const totalPatients = await Patient.count({ where: { doctorId } });
+
+  //   let ongoingPatients = 0;
+  //   let dormantPatients = 0;
+  //   let closedPatients = 0;
+  //   let doctorReassignedPatients = 0;
+  //   try {
+  //     [ongoingPatients, dormantPatients, closedPatients, doctorReassignedPatients ] = await Promise.all([
+  //       Patient.count({ where: { doctorId, status: { [Op.notIn]: ["inactive", "on_hold"] } } }),
+  //       Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
+  //       Patient.count({ where: { doctorId, status: "INACTIVE" } }),
+  //       Patient.count({ where: { doctorId, status: "DOCTOR_REASSIGNED" } }),
+  //     ]);
+  //   } catch (err) {
+  //     console.error("Patient status query failed:", err);
+  //   }
+
+  //   const activeCases = ongoingPatients;
+
+  //   // ── Diary entry stats (combine BubbleScanResult + ScanLog) ────────
+  //   const doctorPatientIds = (await Patient.findAll({
+  //     where: { doctorId },
+  //     attributes: ["id"],
+  //     raw: true,
+  //   })).map((p: { id: string }) => p.id);
+
+  //   let totalEntries = 0;
+  //   let pendingReviews = 0;
+  //   let flaggedEntries = 0;
+  //   let weekEntries = 0;
+  //   let scanTypeCount = { scan: 0, manual: 0 };
+  //   let recentEntries: unknown[] = [];
+
+  //   if (doctorPatientIds.length > 0) {
+  //     const oneWeekAgo = new Date();
+  //     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  //     const patientWhere = { patientId: { [Op.in]: doctorPatientIds } };
+
+  //     // ── BubbleScanResult counts ──
+  //     let bsTotal = 0, bsPending = 0, bsFlagged = 0, bsWeek = 0, bsScanType = 0;
+  //     try {
+  //       [bsPending, bsTotal, bsFlagged, bsWeek] = await Promise.all([
+  //         BubbleScanResult.count({ where: { ...patientWhere, doctorReviewed: false } }),
+  //         BubbleScanResult.count({ where: patientWhere }),
+  //         BubbleScanResult.count({ where: { ...patientWhere, flagged: true } }),
+  //         BubbleScanResult.count({ where: { ...patientWhere, scannedAt: { [Op.gte]: oneWeekAgo } } }),
+  //       ]);
+  //       bsScanType = await BubbleScanResult.count({
+  //         where: { ...patientWhere, submissionType: "scan" },
+  //       });
+  //     } catch (err) {
+  //       console.error("BubbleScanResult query failed:", err);
+  //     }
+
+  //     // ── ScanLog counts ──
+  //     let slTotal = 0, slPending = 0, slFlagged = 0, slWeek = 0;
+  //     try {
+  //       [slPending, slTotal, slFlagged, slWeek] = await Promise.all([
+  //         ScanLog.count({ where: { ...patientWhere, doctorReviewed: false } }),
+  //         ScanLog.count({ where: patientWhere }),
+  //         ScanLog.count({ where: { ...patientWhere, flagged: true } }),
+  //         ScanLog.count({ where: { ...patientWhere, scannedAt: { [Op.gte]: oneWeekAgo } } }),
+  //       ]);
+  //     } catch (err) {
+  //       console.error("ScanLog query failed:", err);
+  //     }
+
+  //     // ── Combine both sources ──
+  //     totalEntries = bsTotal + slTotal;
+  //     pendingReviews = bsPending + slPending;
+  //     flaggedEntries = bsFlagged + slFlagged;
+  //     weekEntries = bsWeek + slWeek;
+  //     scanTypeCount = { scan: bsScanType, manual: (bsTotal - bsScanType) + slTotal };
+
+  //     // Recent entries — prefer BubbleScanResult, fall back to ScanLog
+  //     try {
+  //       recentEntries = await BubbleScanResult.findAll({
+  //         where: patientWhere,
+  //         order: [["scannedAt", "DESC"]],
+  //         limit: 10,
+  //         attributes: ["id", "patientId", "pageNumber", "submissionType", "processingStatus", "doctorReviewed", "flagged", "scannedAt", "createdAt"],
+  //         include: [{ model: Patient, as: "patient", attributes: ["id", "fullName", "phone"] }],
+  //       });
+  //     } catch (err) {
+  //       console.error("BubbleScanResult recent entries failed:", err);
+  //     }
+
+  //     if ((recentEntries as unknown[]).length === 0) {
+  //       try {
+  //         recentEntries = await ScanLog.findAll({
+  //           where: patientWhere,
+  //           order: [["scannedAt", "DESC"]],
+  //           limit: 10,
+  //           include: [{ model: Patient, as: "patient", attributes: ["id", "fullName", "phone"] }],
+  //         });
+  //       } catch (err) {
+  //         console.error("ScanLog recent entries failed:", err);
+  //       }
+  //     }
+  //   }
+
+  //   // Tasks
+  //   let totalTasks = 0;
+  //   let pendingTasks = 0;
+  //   try {
+  //     [totalTasks, pendingTasks] = await Promise.all([
+  //       Task.count({ where: { createdBy: doctorId } }),
+  //       Task.count({ where: { createdBy: doctorId, status: { [Op.in]: ["pending", "in-progress"] } } }),
+  //     ]);
+  //   } catch (err) {
+  //     console.error("Task query failed:", err);
+  //   }
+
+  //   // Total assistants under this doctor
+  //   const totalAssistants = await AppUser.count({
+  //     where: { role: "ASSISTANT", parentId: doctorId },
+  //   });
+
+  //   // Patients needing follow-up
+  //   let patientsNeedingFollowUp = 0;
+  //   try {
+  //     patientsNeedingFollowUp = await Patient.count({
+  //       where: {
+  //         doctorId,
+  //         testCompletionPercentage: { [Op.lt]: 100 },
+  //         totalTestsPrescribed: { [Op.gt]: 0 },
+  //       },
+  //     });
+  //   } catch (err) {
+  //     console.error("Follow-up query failed:", err);
+  //   }
+  //   const data = {
+  //     doctorName: doctor?.fullName || null,
+  //     patients: {
+  //       total: totalPatients,
+  //       ongoing: ongoingPatients,
+  //       dormant: dormantPatients,
+  //       closedCases: closedPatients,
+  //       activeCases,
+  //       needingFollowUp: patientsNeedingFollowUp,
+  //     },
+  //     diaryEntries: {
+  //       total: totalEntries,
+  //       thisWeek: weekEntries,
+  //       pendingReviews,
+  //       reviewed: totalEntries - pendingReviews,
+  //       flagged: flaggedEntries,
+  //       byType: scanTypeCount,
+  //     },
+  //     tasks: {
+  //       total: totalTasks,
+  //       pending: pendingTasks,
+  //       completed: totalTasks - pendingTasks,
+  //     },
+  //     team: {
+  //       totalAssistants,
+  //     },
+  //     recentEntries,
+  //   };
+  //   console.log(data);
+    
+  //   return {
+  //     doctorName: doctor?.fullName || null,
+  //     patients: {
+  //       total: totalPatients,
+  //       ongoing: ongoingPatients,
+  //       dormant: dormantPatients,
+  //       closedCases: closedPatients,
+  //       activeCases,
+  //       needingFollowUp: patientsNeedingFollowUp,
+  //     },
+  //     diaryEntries: {
+  //       total: totalEntries,
+  //       thisWeek: weekEntries,
+  //       pendingReviews,
+  //       reviewed: totalEntries - pendingReviews,
+  //       flagged: flaggedEntries,
+  //       byType: scanTypeCount,
+  //     },
+  //     tasks: {
+  //       total: totalTasks,
+  //       pending: pendingTasks,
+  //       completed: totalTasks - pendingTasks,
+  //     },
+  //     team: {
+  //       totalAssistants,
+  //     },
+  //     recentEntries,
+  //   };
+  // }
+async getDoctorDashboard(doctorId: string) {
+  try {
+    // ─────────────────────────────────────────────────────────────
+    // Doctor Info
+    // ─────────────────────────────────────────────────────────────
     const doctor = await AppUser.findByPk(doctorId, {
       attributes: ["id", "fullName", "email"],
     });
 
-    // ── Patient counts by status ──────────────────────────────────────
+    // Normalize statuses (IMPORTANT)
+    const STATUS = {
+      INACTIVE: "INACTIVE",
+      ON_HOLD: "ON_HOLD",
+      DOCTOR_REASSIGNED: "DOCTOR_REASSIGNED",
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Patient Counts
+    // ─────────────────────────────────────────────────────────────
     const totalPatients = await Patient.count({ where: { doctorId } });
 
     let ongoingPatients = 0;
     let dormantPatients = 0;
     let closedPatients = 0;
+    let doctorReassignedPatients = 0;
+
     try {
-      [ongoingPatients, dormantPatients, closedPatients] = await Promise.all([
-        Patient.count({ where: { doctorId, status: { [Op.notIn]: ["INACTIVE", "ON_HOLD"] } } }),
-        Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
-        Patient.count({ where: { doctorId, status: "INACTIVE" } }),
+      [
+        ongoingPatients,
+        dormantPatients,
+        closedPatients,
+        doctorReassignedPatients,
+      ] = await Promise.all([
+        Patient.count({
+          where: {
+            doctorId,
+            status: {
+              [Op.notIn]: [
+                STATUS.INACTIVE,
+                STATUS.ON_HOLD,
+                STATUS.DOCTOR_REASSIGNED,
+              ],
+            },
+          },
+        }),
+        Patient.count({ where: { doctorId, status: STATUS.ON_HOLD } }),
+        Patient.count({ where: { doctorId, status: STATUS.INACTIVE } }),
+        Patient.count({
+          where: { doctorId, status: STATUS.DOCTOR_REASSIGNED },
+        }),
       ]);
-    } catch {
-      // status column may have older enum values
+    } catch (err) {
+      console.error("Patient status query failed:", err);
     }
 
-    // Active cases (patients with active diaries) — kept for backwards compat
-    let activeCases = ongoingPatients;
+    const activeCases = ongoingPatients;
 
-    // ── Bubble scan stats (primary diary response tracking) ─────────
-    // Get all patient IDs for this doctor to scope BubbleScanResult queries
-    const doctorPatientIds = (await Patient.findAll({
+    // ─────────────────────────────────────────────────────────────
+    // Get Patient IDs
+    // ─────────────────────────────────────────────────────────────
+    const doctorPatients = await Patient.findAll({
       where: { doctorId },
       attributes: ["id"],
       raw: true,
-    })).map((p: { id: string }) => p.id);
+    });
 
+    const doctorPatientIds = doctorPatients.map(
+      (p: { id: string }) => p.id
+    );
+
+    // Debug (remove later)
+
+    // ─────────────────────────────────────────────────────────────
+    // Diary Stats
+    // ─────────────────────────────────────────────────────────────
+    let totalEntries = 0;
     let pendingReviews = 0;
-    let totalScans = 0;
-    let scanTypeCount = { scan: 0, manual: 0 };
     let flaggedEntries = 0;
     let weekEntries = 0;
+    let scanTypeCount = { scan: 0, manual: 0 };
     let recentEntries: unknown[] = [];
 
     if (doctorPatientIds.length > 0) {
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
+      const patientWhere = {
+        patientId: { [Op.in]: doctorPatientIds },
+      };
+
       try {
-        [pendingReviews, totalScans, flaggedEntries, weekEntries] = await Promise.all([
+        const [
+          bsPending,
+          bsTotal,
+          bsFlagged,
+          bsWeek,
+          bsScanType,
+          slPending,
+          slTotal,
+          slFlagged,
+          slWeek,
+        ] = await Promise.all([
           BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds }, doctorReviewed: false },
+            where: { ...patientWhere, doctorReviewed: false },
+          }),
+          BubbleScanResult.count({ where: patientWhere }),
+          BubbleScanResult.count({
+            where: { ...patientWhere, flagged: true },
           }),
           BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds } },
+            where: {
+              ...patientWhere,
+              scannedAt: { [Op.gte]: oneWeekAgo },
+            },
           }),
           BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds }, flagged: true },
+            where: { ...patientWhere, submissionType: "scan" },
           }),
-          BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds }, createdAt: { [Op.gte]: oneWeekAgo } },
+
+          ScanLog.count({
+            where: { ...patientWhere, doctorReviewed: false },
+          }),
+          ScanLog.count({ where: patientWhere }),
+          ScanLog.count({
+            where: { ...patientWhere, flagged: true },
+          }),
+          ScanLog.count({
+            where: {
+              ...patientWhere,
+              scannedAt: { [Op.gte]: oneWeekAgo },
+            },
           }),
         ]);
 
-        // Count by submission type
-        const scanCount = await BubbleScanResult.count({
-          where: { patientId: { [Op.in]: doctorPatientIds }, submissionType: "scan" },
-        });
-        scanTypeCount = { scan: scanCount, manual: totalScans - scanCount };
+        // Combine
+        totalEntries = bsTotal + slTotal;
+        pendingReviews = bsPending + slPending;
+        flaggedEntries = bsFlagged + slFlagged;
+        weekEntries = bsWeek + slWeek;
 
-        // Recent entries
+        scanTypeCount = {
+          scan: bsScanType,
+          manual: bsTotal - bsScanType + slTotal,
+        };
+      } catch (err) {
+        console.error("Diary stats query failed:", err);
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // Recent Entries
+      // ─────────────────────────────────────────────────────────────
+      try {
         recentEntries = await BubbleScanResult.findAll({
-          where: { patientId: { [Op.in]: doctorPatientIds } },
-          order: [["createdAt", "DESC"]],
+          where: patientWhere,
+          order: [["scannedAt", "DESC"]],
           limit: 10,
-          attributes: ["id", "patientId", "pageNumber", "submissionType", "processingStatus", "doctorReviewed", "flagged", "scannedAt", "createdAt"],
-          include: [{ model: Patient, as: "patient", attributes: ["id", "fullName", "phone"] }],
+          attributes: [
+            "id",
+            "patientId",
+            "pageNumber",
+            "submissionType",
+            "processingStatus",
+            "doctorReviewed",
+            "flagged",
+            "scannedAt",
+            "createdAt",
+          ],
+          include: [
+            {
+              model: Patient,
+              as: "patient",
+              attributes: ["id", "fullName", "phone"],
+            },
+          ],
         });
-      } catch {
-        // BubbleScanResult table or columns may not exist
+      } catch (err) {
+        console.error("Recent BubbleScanResult failed:", err);
+      }
+
+      if (recentEntries.length === 0) {
+        try {
+          recentEntries = await ScanLog.findAll({
+            where: patientWhere,
+            order: [["scannedAt", "DESC"]],
+            limit: 10,
+            include: [
+              {
+                model: Patient,
+                as: "patient",
+                attributes: ["id", "fullName", "phone"],
+              },
+            ],
+          });
+        } catch (err) {
+          console.error("Recent ScanLog failed:", err);
+        }
       }
     }
 
+    // ─────────────────────────────────────────────────────────────
     // Tasks
-    let totalTasks = 0;
-    let pendingTasks = 0;
-    try {
-      totalTasks = await Task.count({
-        where: { createdBy: doctorId },
-      });
-      pendingTasks = await Task.count({
-        where: {
-          createdBy: doctorId,
-          status: { [Op.in]: ["pending", "in-progress"] },
-        },
-      });
-    } catch {
-      // Tasks table may not exist
-    }
+    // ─────────────────────────────────────────────────────────────
+    // let totalTasks = 0;
+    // let pendingTasks = 0;
 
-    // Total assistants under this doctor
+    // try {
+    //   [totalTasks, pendingTasks] = await Promise.all([
+    //     Task.count({ where: { createdBy: doctorId } }),
+    //     Task.count({
+    //       where: {
+    //         createdBy: doctorId,
+    //         status: { [Op.in]: ["pending", "in-progress"] },
+    //       },
+    //     }),
+    //   ]);
+    // } catch (err) {
+    //   console.error("Task query failed:", err);
+    // }
+
+    // ─────────────────────────────────────────────────────────────
+    // Team
+    // ─────────────────────────────────────────────────────────────
     const totalAssistants = await AppUser.count({
-      where: {
-        role: "ASSISTANT",
-        parentId: doctorId,
-      },
+      where: { role: "ASSISTANT", parentId: doctorId },
     });
 
-    // Patients needing follow-up
+    // ─────────────────────────────────────────────────────────────
+    // Follow-up Patients
+    // ─────────────────────────────────────────────────────────────
     let patientsNeedingFollowUp = 0;
+
     try {
       patientsNeedingFollowUp = await Patient.count({
         where: {
@@ -318,40 +640,56 @@ class DashboardService {
           totalTestsPrescribed: { [Op.gt]: 0 },
         },
       });
-    } catch {
-      // These columns may not exist
+    } catch (err) {
+      console.error("Follow-up query failed:", err);
     }
 
-    return {
+    // ─────────────────────────────────────────────────────────────
+    // FINAL RESPONSE
+    // ─────────────────────────────────────────────────────────────
+    const response = {
       doctorName: doctor?.fullName || null,
+
       patients: {
         total: totalPatients,
         ongoing: ongoingPatients,
         dormant: dormantPatients,
         closedCases: closedPatients,
+        doctorReassigned: doctorReassignedPatients,
         activeCases,
         needingFollowUp: patientsNeedingFollowUp,
       },
+
       diaryEntries: {
-        total: totalScans,
+        total: totalEntries,
         thisWeek: weekEntries,
         pendingReviews,
-        reviewed: totalScans - pendingReviews,
+        reviewed: totalEntries - pendingReviews,
         flagged: flaggedEntries,
         byType: scanTypeCount,
       },
-      tasks: {
-        total: totalTasks,
-        pending: pendingTasks,
-        completed: totalTasks - pendingTasks,
-      },
+
+      // tasks: {
+      //   total: totalTasks,
+      //   pending: pendingTasks,
+      //   completed: totalTasks - pendingTasks,
+      // },
+
       team: {
         totalAssistants,
       },
+
       recentEntries,
     };
-  }
 
+    console.log("Dashboard Response:", response);
+
+    return response;
+  } catch (error) {
+    console.error("Dashboard API failed:", error);
+    throw error;
+  }
+}
   /**
    * Assistant Dashboard Statistics
    */
@@ -381,111 +719,122 @@ class DashboardService {
         Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
         Patient.count({ where: { doctorId, status: "INACTIVE" } }),
       ]);
-    } catch {
-      // status enum may not have all values yet
+    } catch (err) {
+      console.error("Assistant patient status query failed:", err);
     }
 
     const activeCases = ongoingPatients;
 
-    // ── Bubble scan stats ───────────────────────────────────────────
+    // ── Diary entry stats (combine BubbleScanResult + ScanLog) ────────
     const doctorPatientIds = (await Patient.findAll({
       where: { doctorId },
       attributes: ["id"],
       raw: true,
     })).map((p: { id: string }) => p.id);
 
+    let totalEntries = 0;
     let pendingReviews = 0;
-    let totalScans = 0;
+    let flaggedEntries = 0;
+    let weekEntries = 0;
     let scanTypeCount = { scan: 0, manual: 0 };
-    let flaggedScans = 0;
 
     if (doctorPatientIds.length > 0) {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      const patientWhere = { patientId: { [Op.in]: doctorPatientIds } };
+
+      // ── BubbleScanResult counts ──
+      let bsTotal = 0, bsPending = 0, bsFlagged = 0, bsWeek = 0, bsScanType = 0;
       try {
-        [pendingReviews, totalScans, flaggedScans] = await Promise.all([
-          BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds }, doctorReviewed: false },
-          }),
-          BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds } },
-          }),
-          BubbleScanResult.count({
-            where: { patientId: { [Op.in]: doctorPatientIds }, flagged: true },
-          }),
+        [bsPending, bsTotal, bsFlagged, bsWeek] = await Promise.all([
+          BubbleScanResult.count({ where: { ...patientWhere, doctorReviewed: false } }),
+          BubbleScanResult.count({ where: patientWhere }),
+          BubbleScanResult.count({ where: { ...patientWhere, flagged: true } }),
+          BubbleScanResult.count({ where: { ...patientWhere, scannedAt: { [Op.gte]: oneWeekAgo } } }),
         ]);
-        const scanCount = await BubbleScanResult.count({
-          where: { patientId: { [Op.in]: doctorPatientIds }, submissionType: "scan" },
+        bsScanType = await BubbleScanResult.count({
+          where: { ...patientWhere, submissionType: "scan" },
         });
-        scanTypeCount = { scan: scanCount, manual: totalScans - scanCount };
-      } catch {
-        // BubbleScanResult may not exist
+      } catch (err) {
+        console.error("Assistant BubbleScanResult query failed:", err);
       }
+
+      // ── ScanLog counts ──
+      let slTotal = 0, slPending = 0, slFlagged = 0, slWeek = 0;
+      try {
+        [slPending, slTotal, slFlagged, slWeek] = await Promise.all([
+          ScanLog.count({ where: { ...patientWhere, doctorReviewed: false } }),
+          ScanLog.count({ where: patientWhere }),
+          ScanLog.count({ where: { ...patientWhere, flagged: true } }),
+          ScanLog.count({ where: { ...patientWhere, scannedAt: { [Op.gte]: oneWeekAgo } } }),
+        ]);
+      } catch (err) {
+        console.error("Assistant ScanLog query failed:", err);
+      }
+
+      // ── Combine both sources ──
+      totalEntries = bsTotal + slTotal;
+      pendingReviews = bsPending + slPending;
+      flaggedEntries = bsFlagged + slFlagged;
+      weekEntries = bsWeek + slWeek;
+      scanTypeCount = { scan: bsScanType, manual: (bsTotal - bsScanType) + slTotal };
     }
 
     // Tasks assigned to this assistant
-    const totalTasks = await Task.count({
-      where: { assignedTo: assistantId },
-    });
-
-    // Pending tasks
-    const pendingTasks = await Task.count({
-      where: {
-        assignedTo: assistantId,
-        status: "pending",
-      },
-    });
-
-    // In-progress tasks
-    const inProgressTasks = await Task.count({
-      where: {
-        assignedTo: assistantId,
-        status: "in-progress",
-      },
-    });
-
-    // Completed tasks
-    const completedTasks = await Task.count({
-      where: {
-        assignedTo: assistantId,
-        status: "completed",
-      },
-    });
-
-    // Overdue tasks
-    const overdueTasks = await Task.count({
-      where: {
-        assignedTo: assistantId,
-        status: { [Op.in]: ["pending", "in-progress"] },
-        dueDate: { [Op.lt]: new Date() },
-      },
-    });
-
-    // Recent tasks
-    const recentTasks = await Task.findAll({
-      where: { assignedTo: assistantId },
-      order: [["createdAt", "DESC"]],
-      limit: 10,
-    });
+    let totalTasks = 0;
+    let pendingTasks = 0;
+    let inProgressTasks = 0;
+    let completedTasks = 0;
+    let overdueTasks = 0;
+    let recentTasks: unknown[] = [];
+    try {
+      [totalTasks, pendingTasks, inProgressTasks, completedTasks, overdueTasks] = await Promise.all([
+        Task.count({ where: { assignedTo: assistantId } }),
+        Task.count({ where: { assignedTo: assistantId, status: "pending" } }),
+        Task.count({ where: { assignedTo: assistantId, status: "in-progress" } }),
+        Task.count({ where: { assignedTo: assistantId, status: "completed" } }),
+        Task.count({
+          where: {
+            assignedTo: assistantId,
+            status: { [Op.in]: ["pending", "in-progress"] },
+            dueDate: { [Op.lt]: new Date() },
+          },
+        }),
+      ]);
+      recentTasks = await Task.findAll({
+        where: { assignedTo: assistantId },
+        order: [["createdAt", "DESC"]],
+        limit: 10,
+      });
+    } catch (err) {
+      console.error("Assistant task query failed:", err);
+    }
 
     // Patients needing follow-up calls
-    const patientsNeedingCalls = await Patient.count({
-      where: {
-        doctorId,
-        lastDoctorContact: {
-          [Op.or]: [
-            { [Op.is]: null },
-            { [Op.lt]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }, // 7 days ago
-          ],
+    let patientsNeedingCalls = 0;
+    try {
+      patientsNeedingCalls = await Patient.count({
+        where: {
+          doctorId,
+          lastDoctorContact: {
+            [Op.or]: [
+              { [Op.is]: null },
+              { [Op.lt]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+            ],
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      console.error("Assistant follow-up query failed:", err);
+    }
 
     // Fetch parent doctor name for the assistant banner
     let doctorName = '';
     if (doctorId) {
-      const doctor = await AppUser.findByPk(doctorId, {
+      const doctorRecord = await AppUser.findByPk(doctorId, {
         attributes: ['id', 'fullName'],
       });
-      doctorName = doctor?.fullName ? `Dr. ${doctor.fullName}` : '';
+      doctorName = doctorRecord?.fullName ? `Dr. ${doctorRecord.fullName}` : '';
     }
 
     return {
@@ -499,10 +848,11 @@ class DashboardService {
         needingCalls: patientsNeedingCalls,
       },
       diaryEntries: {
-        total: totalScans,
+        total: totalEntries,
+        thisWeek: weekEntries,
         pendingReviews,
-        reviewed: totalScans - pendingReviews,
-        flagged: flaggedScans,
+        reviewed: totalEntries - pendingReviews,
+        flagged: flaggedEntries,
         byType: scanTypeCount,
       },
       tasks: {
