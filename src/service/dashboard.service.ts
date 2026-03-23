@@ -5,6 +5,7 @@ import { GeneratedDiary } from "../models/GeneratedDiary";
 import { Diary } from "../models/Diary";
 import { Transaction } from "../models/Transaction";
 import { ScanLog } from "../models/ScanLog";
+import { BubbleScanResult } from "../models/BubbleScanResult";
 import { Task } from "../models/Task";
 import { Op } from "sequelize";
 
@@ -209,84 +210,77 @@ class DashboardService {
       attributes: ["id", "fullName", "email"],
     });
 
-    // Total patients under this doctor
-    const totalPatients = await Patient.count({
-      where: { doctorId },
-    });
+    // ── Patient counts by status ──────────────────────────────────────
+    const totalPatients = await Patient.count({ where: { doctorId } });
 
-    // Active cases (patients with active diaries)
-    let activeCases = 0;
+    let ongoingPatients = 0;
+    let dormantPatients = 0;
+    let closedPatients = 0;
     try {
-      activeCases = await Patient.count({
-        where: {
-          doctorId,
-          "$diary.status$": "active",
-        },
-        include: [
-          {
-            model: Diary,
-            as: "diary",
-            required: true,
-          },
-        ],
-      });
+      [ongoingPatients, dormantPatients, closedPatients] = await Promise.all([
+        Patient.count({ where: { doctorId, status: { [Op.notIn]: ["INACTIVE", "ON_HOLD"] } } }),
+        Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
+        Patient.count({ where: { doctorId, status: "INACTIVE" } }),
+      ]);
     } catch {
-      // Diary association may not exist
+      // status column may have older enum values
     }
 
-    // This week's diary entries
-    let weekEntries = 0;
+    // Active cases (patients with active diaries) — kept for backwards compat
+    let activeCases = ongoingPatients;
+
+    // ── Bubble scan stats (primary diary response tracking) ─────────
+    // Get all patient IDs for this doctor to scope BubbleScanResult queries
+    const doctorPatientIds = (await Patient.findAll({
+      where: { doctorId },
+      attributes: ["id"],
+      raw: true,
+    })).map((p: { id: string }) => p.id);
+
     let pendingReviews = 0;
+    let totalScans = 0;
+    let scanTypeCount = { scan: 0, manual: 0 };
     let flaggedEntries = 0;
-    let recentEntries: any[] = [];
-    try {
+    let weekEntries = 0;
+    let recentEntries: unknown[] = [];
+
+    if (doctorPatientIds.length > 0) {
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      weekEntries = await ScanLog.count({
-        where: {
-          doctorId,
-          createdAt: { [Op.gte]: oneWeekAgo },
-        },
-      });
-
-      // Pending reviews (diary entries not reviewed)
       try {
-        pendingReviews = await ScanLog.count({
-          where: { doctorId, doctorReviewed: false },
+        [pendingReviews, totalScans, flaggedEntries, weekEntries] = await Promise.all([
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds }, doctorReviewed: false },
+          }),
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds } },
+          }),
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds }, flagged: true },
+          }),
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds }, createdAt: { [Op.gte]: oneWeekAgo } },
+          }),
+        ]);
+
+        // Count by submission type
+        const scanCount = await BubbleScanResult.count({
+          where: { patientId: { [Op.in]: doctorPatientIds }, submissionType: "scan" },
         });
-      } catch {
-        // doctorReviewed column may not exist
-      }
+        scanTypeCount = { scan: scanCount, manual: totalScans - scanCount };
 
-      // Flagged entries
-      try {
-        flaggedEntries = await ScanLog.count({
-          where: { doctorId, flagged: true },
-        });
-      } catch {
-        // flagged column may not exist
-      }
-
-      // Recent diary entries
-      try {
-        recentEntries = await ScanLog.findAll({
-          where: { doctorId },
+        // Recent entries
+        recentEntries = await BubbleScanResult.findAll({
+          where: { patientId: { [Op.in]: doctorPatientIds } },
           order: [["createdAt", "DESC"]],
           limit: 10,
-          include: [
-            {
-              model: Patient,
-              as: "patient",
-              attributes: ["id", "name", "phoneNumber"],
-            },
-          ],
+          attributes: ["id", "patientId", "pageNumber", "submissionType", "processingStatus", "doctorReviewed", "flagged", "scannedAt", "createdAt"],
+          include: [{ model: Patient, as: "patient", attributes: ["id", "fullName", "phone"] }],
         });
       } catch {
-        // patient association may differ
+        // BubbleScanResult table or columns may not exist
       }
-    } catch {
-      // ScanLog table may not exist
     }
 
     // Tasks
@@ -332,13 +326,19 @@ class DashboardService {
       doctorName: doctor?.fullName || null,
       patients: {
         total: totalPatients,
+        ongoing: ongoingPatients,
+        dormant: dormantPatients,
+        closedCases: closedPatients,
         activeCases,
         needingFollowUp: patientsNeedingFollowUp,
       },
       diaryEntries: {
+        total: totalScans,
         thisWeek: weekEntries,
         pendingReviews,
+        reviewed: totalScans - pendingReviews,
         flagged: flaggedEntries,
+        byType: scanTypeCount,
       },
       tasks: {
         total: totalTasks,
@@ -369,25 +369,57 @@ class DashboardService {
       throw new Error("Assistant is not assigned to a doctor");
     }
 
-    // Total patients under the doctor
-    const totalPatients = await Patient.count({
-      where: { doctorId },
-    });
+    // ── Patient counts by status ──────────────────────────────────────
+    const totalPatients = await Patient.count({ where: { doctorId } });
 
-    // Active cases
-    const activeCases = await Patient.count({
-      where: {
-        doctorId,
-        "$diary.status$": "active",
-      },
-      include: [
-        {
-          model: Diary,
-          as: "diary",
-          required: true,
-        },
-      ],
-    });
+    let ongoingPatients = 0;
+    let dormantPatients = 0;
+    let closedPatients = 0;
+    try {
+      [ongoingPatients, dormantPatients, closedPatients] = await Promise.all([
+        Patient.count({ where: { doctorId, status: { [Op.notIn]: ["INACTIVE", "ON_HOLD"] } } }),
+        Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
+        Patient.count({ where: { doctorId, status: "INACTIVE" } }),
+      ]);
+    } catch {
+      // status enum may not have all values yet
+    }
+
+    const activeCases = ongoingPatients;
+
+    // ── Bubble scan stats ───────────────────────────────────────────
+    const doctorPatientIds = (await Patient.findAll({
+      where: { doctorId },
+      attributes: ["id"],
+      raw: true,
+    })).map((p: { id: string }) => p.id);
+
+    let pendingReviews = 0;
+    let totalScans = 0;
+    let scanTypeCount = { scan: 0, manual: 0 };
+    let flaggedScans = 0;
+
+    if (doctorPatientIds.length > 0) {
+      try {
+        [pendingReviews, totalScans, flaggedScans] = await Promise.all([
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds }, doctorReviewed: false },
+          }),
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds } },
+          }),
+          BubbleScanResult.count({
+            where: { patientId: { [Op.in]: doctorPatientIds }, flagged: true },
+          }),
+        ]);
+        const scanCount = await BubbleScanResult.count({
+          where: { patientId: { [Op.in]: doctorPatientIds }, submissionType: "scan" },
+        });
+        scanTypeCount = { scan: scanCount, manual: totalScans - scanCount };
+      } catch {
+        // BubbleScanResult may not exist
+      }
+    }
 
     // Tasks assigned to this assistant
     const totalTasks = await Task.count({
@@ -460,8 +492,18 @@ class DashboardService {
       doctorName,
       patients: {
         total: totalPatients,
+        ongoing: ongoingPatients,
+        dormant: dormantPatients,
+        closedCases: closedPatients,
         activeCases,
         needingCalls: patientsNeedingCalls,
+      },
+      diaryEntries: {
+        total: totalScans,
+        pendingReviews,
+        reviewed: totalScans - pendingReviews,
+        flagged: flaggedScans,
+        byType: scanTypeCount,
       },
       tasks: {
         total: totalTasks,
