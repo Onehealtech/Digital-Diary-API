@@ -8,6 +8,7 @@ const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const Diary_1 = require("../models/Diary");
 const UserSubscription_1 = require("../models/UserSubscription");
+const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const AppError_1 = require("../utils/AppError");
 const twilio_service_1 = require("./twilio.service");
 const emailService_1 = require("./emailService");
@@ -109,14 +110,14 @@ async function acceptRequest(requestId, doctorId) {
             throw new AppError_1.AppError(404, "Patient not found");
         const oldDoctorId = patient.doctorId;
         const isDoctorChange = !!oldDoctorId && oldDoctorId !== doctorId;
-        // 1. Assign new doctor to patient and restore ACTIVE status
-        patient.doctorId = doctorId;
-        if (patient.status === "ON_HOLD") {
-            patient.status = "ACTIVE";
-        }
-        await patient.save({ transaction: t });
-        // 2. If doctor change, reassign diary and subscription to new doctor
+        const now = new Date();
+        // 1. Record assignment history
         if (isDoctorChange) {
+            // Close old doctor's history record
+            await DoctorPatientHistory_1.DoctorPatientHistory.update({ unassignedAt: now }, {
+                where: { patientId: request.patientId, doctorId: oldDoctorId, unassignedAt: null },
+                transaction: t,
+            });
             // Reassign diary so new doctor sees all patient history
             if (patient.diaryId) {
                 await Diary_1.Diary.update({ doctorId }, { where: { id: patient.diaryId }, transaction: t });
@@ -124,6 +125,19 @@ async function acceptRequest(requestId, doctorId) {
             // Reassign active subscription to new doctor
             await UserSubscription_1.UserSubscription.update({ doctorId }, { where: { patientId: request.patientId, status: "ACTIVE" }, transaction: t });
         }
+        // Create new history record for the new doctor
+        await DoctorPatientHistory_1.DoctorPatientHistory.create({
+            patientId: request.patientId,
+            doctorId,
+            assignedAt: now,
+            unassignedAt: null,
+        }, { transaction: t });
+        // 2. Assign new doctor to patient and restore ACTIVE status
+        patient.doctorId = doctorId;
+        if (patient.status === "ON_HOLD") {
+            patient.status = "ACTIVE";
+        }
+        await patient.save({ transaction: t });
         // 3. Mark request as accepted
         request.status = "ACCEPTED";
         request.respondedAt = new Date();

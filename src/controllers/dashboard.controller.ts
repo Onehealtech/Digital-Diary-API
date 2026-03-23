@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Op } from "sequelize";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
+import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { AuthenticatedRequest, AuthRequest } from "../middleware/authMiddleware";
 import { dashboardService } from "../service/dashboard.service";
 import { sendResponse, sendError } from "../utils/response";
@@ -35,10 +36,22 @@ export const getPatients = async (
     }
 
     /**
-     * DOCTOR → own patients
+     * DOCTOR → current patients + historical patients (transferred away)
      */
     else if (role === UserRole.DOCTOR) {
-      whereClause.doctorId = req.user!.id;
+      // Find patients previously assigned to this doctor (now transferred)
+      const historicalRecords = await DoctorPatientHistory.findAll({
+        where: { doctorId: req.user!.id, unassignedAt: { [Op.ne]: null } },
+        attributes: ["patientId"],
+      });
+      const historicalPatientIds = historicalRecords.map((r) => r.patientId);
+
+      whereClause[Op.or] = [
+        { doctorId: req.user!.id },
+        ...(historicalPatientIds.length > 0
+          ? [{ id: { [Op.in]: historicalPatientIds } }]
+          : []),
+      ];
     }
 
     /**
@@ -114,11 +127,48 @@ export const getPatients = async (
       order: [["createdAt", "DESC"]],
     });
 
+    // For doctors: enrich each patient with assignment period info
+    let enrichedPatients = patients.map((p) => p.toJSON());
+
+    if (role === UserRole.DOCTOR) {
+      const myDoctorId = req.user!.id;
+      const patientIds = patients.map((p) => p.id);
+
+      // Get all history records for these patients with this doctor
+      const historyRecords = await DoctorPatientHistory.findAll({
+        where: { doctorId: myDoctorId, patientId: { [Op.in]: patientIds } },
+        order: [["assignedAt", "DESC"]],
+      });
+
+      const historyMap = new Map<string, { assignedAt: Date; unassignedAt: Date | null }>();
+      for (const h of historyRecords) {
+        // Use the most recent record per patient
+        if (!historyMap.has(h.patientId)) {
+          historyMap.set(h.patientId, {
+            assignedAt: h.assignedAt,
+            unassignedAt: h.unassignedAt || null,
+          });
+        }
+      }
+
+      enrichedPatients = enrichedPatients.map((p: any) => {
+        const history = historyMap.get(p.id);
+        const isCurrentPatient = p.doctorId === myDoctorId;
+        return {
+          ...p,
+          isCurrentPatient,
+          // Old doctor sees "DOCTOR_REASSIGNED" status for transferred patients
+          status: isCurrentPatient ? p.status : "DOCTOR_REASSIGNED",
+          assignmentPeriod: history || null,
+        };
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Patients retrieved successfully",
       data: {
-        patients,
+        patients: enrichedPatients,
         pagination: {
           total,
           page: Number(page),

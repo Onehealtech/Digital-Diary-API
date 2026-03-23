@@ -36,6 +36,7 @@ const UserSubscription_1 = require("../models/UserSubscription");
 const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
 const PatientDoctorSuggestion_1 = require("../models/PatientDoctorSuggestion");
 const PaymentConfig_1 = require("../models/PaymentConfig");
+const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 // Load environment variables from .env file
 dotenv_1.default.config();
 /**
@@ -90,6 +91,7 @@ exports.sequelize = new sequelize_typescript_1.Sequelize({
         DoctorAssignmentRequest_1.DoctorAssignmentRequest,
         PatientDoctorSuggestion_1.PatientDoctorSuggestion,
         PaymentConfig_1.PaymentConfig,
+        DoctorPatientHistory_1.DoctorPatientHistory,
     ],
     // Logging configuration
     logging: true,
@@ -124,6 +126,11 @@ const initializeDatabase = async () => {
 
         BEGIN
           ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'ON_HOLD';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        BEGIN
+          ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'DOCTOR_REASSIGNED';
         EXCEPTION WHEN duplicate_object THEN NULL;
         END;
 
@@ -325,6 +332,20 @@ const initializeDatabase = async () => {
       );
     `).catch((err) => {
             console.warn('⚠️ patient_doctor_suggestions migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Create doctor_patient_history table for tracking assignment periods
+        await exports.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "doctor_patient_history" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorId" UUID NOT NULL REFERENCES "app-users"("id"),
+        "assignedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "unassignedAt" TIMESTAMP WITH TIME ZONE,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err) => {
+            console.warn('⚠️ doctor_patient_history migration warning:', err instanceof Error ? err.message : err);
         });
         // Create doctor_assignment_requests table
         await exports.sequelize.query(`

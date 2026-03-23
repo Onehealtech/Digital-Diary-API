@@ -6,6 +6,7 @@ import { ScanLog } from "../models/ScanLog";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { DiaryPage } from "../models/DiaryPage";
+import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
 const pythonPath = path.join(__dirname, "../../python/venv/bin/python3");
@@ -409,19 +410,44 @@ class BubbleScanService {
     }
 
     /**
-     * Get a single scan result by ID
+     * Get a single scan result by ID.
+     * When called with doctorId/role, enforces assignment period for old doctors.
      */
-    async getScanById(scanId: string) {
+    async getScanById(scanId: string, doctorId?: string, role?: string) {
         const scan = await BubbleScanResult.findByPk(scanId, {
             include: [
                 {
                     model: Patient,
                     as: "patient",
-                    attributes: ["id", "age", "gender", "stage"],
+                    attributes: ["id", "age", "gender", "stage", "doctorId"],
                 },
             ],
         });
         if (!scan) throw new Error("Bubble scan result not found");
+
+        // If doctor context provided, enforce date cutoff for old doctors
+        if (doctorId && role) {
+            let resolvedDoctorId = doctorId;
+            if (role === "ASSISTANT") {
+                const assistant = await AppUser.findByPk(doctorId);
+                if (!assistant || !assistant.parentId) throw new Error("Assistant not linked to a doctor");
+                resolvedDoctorId = assistant.parentId;
+            }
+
+            const patient = (scan as any).patient;
+            if (patient && patient.doctorId !== resolvedDoctorId) {
+                // Old doctor — check history cutoff
+                const history = await DoctorPatientHistory.findOne({
+                    where: { patientId: scan.patientId, doctorId: resolvedDoctorId, unassignedAt: { [Op.ne]: null } },
+                    order: [["unassignedAt", "DESC"]],
+                });
+                if (!history) throw new Error("Bubble scan result not found or access denied");
+                if (scan.scannedAt > history.unassignedAt!) {
+                    throw new Error("Bubble scan result not found or access denied");
+                }
+            }
+        }
+
         return scan;
     }
 
@@ -507,7 +533,9 @@ class BubbleScanService {
     }
 
     /**
-     * Get all bubble scans for doctor review (with filters)
+     * Get all bubble scans for doctor review (with filters).
+     * Current patients: all scans visible.
+     * Historical patients: only scans up to unassignment date.
      */
     async getAllBubbleScans(
         doctorId: string,
@@ -538,27 +566,100 @@ class BubbleScanService {
             resolvedDoctorId = assistant.parentId;
         }
 
-        // Get patient IDs belonging to this doctor
-        const patients = await Patient.findAll({
+        // If filtering by specific patient, apply date cutoff for old doctors
+        if (patientId) {
+            const patient = await Patient.findByPk(patientId, { attributes: ["doctorId"] });
+            let cutoff: Date | null = null;
+
+            if (!patient || patient.doctorId !== resolvedDoctorId) {
+                // Check history for old doctor
+                const history = await DoctorPatientHistory.findOne({
+                    where: { patientId, doctorId: resolvedDoctorId, unassignedAt: { [Op.ne]: null } },
+                    order: [["unassignedAt", "DESC"]],
+                });
+                if (!history) throw new Error("Access denied");
+                cutoff = history.unassignedAt!;
+            }
+
+            const whereClause: any = { patientId };
+            if (cutoff) {
+                whereClause.scannedAt = { [Op.lte]: cutoff };
+            }
+            if (templateName) whereClause.templateName = templateName;
+            if (processingStatus) whereClause.processingStatus = processingStatus;
+            if (reviewed !== undefined) whereClause.doctorReviewed = reviewed;
+            if (flagged !== undefined) whereClause.flagged = flagged;
+            if (startDate || endDate) {
+                whereClause.scannedAt = { ...(whereClause.scannedAt || {}) };
+                if (startDate) whereClause.scannedAt[Op.gte] = startDate;
+                if (endDate && (!cutoff || new Date(endDate as any) < cutoff)) {
+                    whereClause.scannedAt[Op.lte] = endDate;
+                }
+            }
+
+            const { rows, count } = await BubbleScanResult.findAndCountAll({
+                where: whereClause,
+                include: [{ model: Patient, as: "patient", attributes: ["id", "age", "gender", "stage"] }],
+                order: [["scannedAt", "DESC"]],
+                limit,
+                offset,
+            });
+
+            return {
+                scans: rows,
+                pagination: { total: count, page, limit, totalPages: Math.ceil(count / limit) },
+            };
+        }
+
+        // No specific patient — get current + historical patients
+        const currentPatients = await Patient.findAll({
             where: { doctorId: resolvedDoctorId },
             attributes: ["id"],
             raw: true,
         });
-        const patientIds = patients.map((p: any) => p.id);
+        const currentPatientIds = currentPatients.map((p: any) => p.id);
 
-        const whereClause: any = {
-            patientId: { [Op.in]: patientIds },
-        };
+        const historyRecords = await DoctorPatientHistory.findAll({
+            where: { doctorId: resolvedDoctorId, unassignedAt: { [Op.ne]: null } },
+            attributes: ["patientId", "unassignedAt"],
+        });
+
+        const currentSet = new Set(currentPatientIds);
+        const historicalMap = new Map<string, Date>();
+        for (const h of historyRecords) {
+            if (!currentSet.has(h.patientId) && h.unassignedAt) {
+                const existing = historicalMap.get(h.patientId);
+                if (!existing || h.unassignedAt > existing) {
+                    historicalMap.set(h.patientId, h.unassignedAt);
+                }
+            }
+        }
+
+        // Build OR conditions
+        const patientConditions: any[] = [];
+        if (currentPatientIds.length > 0) {
+            patientConditions.push({ patientId: { [Op.in]: currentPatientIds } });
+        }
+        for (const [hpId, cutoffDate] of historicalMap) {
+            patientConditions.push({
+                patientId: hpId,
+                scannedAt: { [Op.lte]: cutoffDate },
+            });
+        }
+
+        if (patientConditions.length === 0) {
+            return { scans: [], pagination: { total: 0, page, limit, totalPages: 0 } };
+        }
+
+        const whereClause: any = { [Op.or]: patientConditions };
 
         if (templateName) whereClause.templateName = templateName;
-        if (processingStatus)
-            whereClause.processingStatus = processingStatus;
-        if (patientId) whereClause.patientId = patientId;
+        if (processingStatus) whereClause.processingStatus = processingStatus;
         if (reviewed !== undefined) whereClause.doctorReviewed = reviewed;
         if (flagged !== undefined) whereClause.flagged = flagged;
 
         if (startDate || endDate) {
-            whereClause.scannedAt = {};
+            whereClause.scannedAt = { ...(whereClause.scannedAt || {}) };
             if (startDate) whereClause.scannedAt[Op.gte] = startDate;
             if (endDate) whereClause.scannedAt[Op.lte] = endDate;
         }
