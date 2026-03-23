@@ -177,6 +177,7 @@ export async function verifySignupOtp(
 /**
  * List doctors available for patient selection (public — no auth needed on mobile)
  * Supports pagination and optional search by name, specialization, hospital, city.
+ * Includes totalPatients count for each doctor.
  */
 export async function listAvailableDoctors(params: {
   page: number;
@@ -205,14 +206,42 @@ export async function listAvailableDoctors(params: {
 
   const { rows, count } = await AppUser.findAndCountAll({
     where,
-    attributes: ["id", "fullName", "specialization", "hospital", "location", "city", "state"],
+    attributes: [
+      "id",
+      "fullName",
+      "phone",
+      "email",
+      "specialization",
+      "hospital",
+      "location",
+      "address",
+      "city",
+      "state",
+      "license",
+    ],
     order: [["fullName", "ASC"]],
     limit,
     offset: (page - 1) * limit,
   });
 
+  // Get patient counts per doctor in a single query
+  const doctorIds = rows.map((d) => d.id);
+  const patientCounts = await Patient.count({
+    where: { doctorId: { [Op.in]: doctorIds } },
+    group: ["doctorId"],
+  });
+
+  const countMap = new Map(
+    (patientCounts as unknown as { doctorId: string; count: string }[]).map(
+      (r) => [r.doctorId, Number(r.count)]
+    )
+  );
+
   return {
-    doctors: rows.map((d) => d.toJSON()),
+    doctors: rows.map((d) => ({
+      ...d.toJSON(),
+      totalPatients: countMap.get(d.id) || 0,
+    })),
     total: count,
     page,
     limit,
