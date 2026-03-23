@@ -3,6 +3,8 @@ import { sequelize } from "../config/Dbconnetion";
 import { DoctorAssignmentRequest } from "../models/DoctorAssignmentRequest";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
+import { Diary } from "../models/Diary";
+import { UserSubscription } from "../models/UserSubscription";
 import { AppError } from "../utils/AppError";
 import { twilioService } from "./twilio.service";
 import { sendDoctorRequestEmail } from "./emailService";
@@ -10,18 +12,22 @@ import { sendDoctorRequestEmail } from "./emailService";
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
 
 /**
- * Patient sends a request to a doctor for assignment.
- * Flow: Patient selects doctor first, then subscribes after approval.
+ * Patient sends a request to a doctor for assignment or doctor change.
+ * - New patient (no doctor): sends first request
+ * - Existing patient (has doctor): requests doctor change, status set to ON_HOLD
  * Max 2 requests per patient→doctor pair.
  */
 export async function createRequest(
   patientId: any,
   doctorId: string
 ): Promise<DoctorAssignmentRequest> {
-  // Verify patient exists and has no doctor yet
   const patient = await Patient.findByPk(patientId);
   if (!patient) throw new AppError(404, "Patient not found");
-  if (patient.doctorId) throw new AppError(400, "You already have a doctor assigned");
+
+  // Cannot request your current doctor
+  if (patient.doctorId === doctorId) {
+    throw new AppError(400, "This doctor is already assigned to you");
+  }
 
   // Verify doctor exists and is active
   const doctor = await AppUser.findOne({
@@ -57,6 +63,13 @@ export async function createRequest(
       400,
       "You already have a pending request with another doctor. Please wait for a response."
     );
+  }
+
+  // If patient already has a doctor, this is a doctor-change request → set ON_HOLD
+  const isDoctorChange = !!patient.doctorId;
+  if (isDoctorChange) {
+    patient.status = "ON_HOLD";
+    await patient.save();
   }
 
   const request = await DoctorAssignmentRequest.create({
@@ -98,7 +111,9 @@ export async function getRequestsForDoctor(
 
 /**
  * Doctor accepts a request — links doctor to patient.
- * Diary assignment happens later when the patient purchases a subscription.
+ * For new patients: diary assignment happens when subscription is purchased.
+ * For doctor-change: reassigns existing diary/subscription to the new doctor,
+ * so the new doctor sees the patient's full history immediately.
  */
 export async function acceptRequest(
   requestId: string,
@@ -116,29 +131,53 @@ export async function acceptRequest(
     const patient = await Patient.findByPk(request.patientId, { transaction: t });
     if (!patient) throw new AppError(404, "Patient not found");
 
-    // 1. Assign doctor to patient
+    const oldDoctorId = patient.doctorId;
+    const isDoctorChange = !!oldDoctorId && oldDoctorId !== doctorId;
+
+    // 1. Assign new doctor to patient and restore ACTIVE status
     patient.doctorId = doctorId;
+    if (patient.status === "ON_HOLD") {
+      patient.status = "ACTIVE";
+    }
     await patient.save({ transaction: t });
 
-    // 2. Mark request as accepted
+    // 2. If doctor change, reassign diary and subscription to new doctor
+    if (isDoctorChange) {
+      // Reassign diary so new doctor sees all patient history
+      if (patient.diaryId) {
+        await Diary.update(
+          { doctorId },
+          { where: { id: patient.diaryId }, transaction: t }
+        );
+      }
+
+      // Reassign active subscription to new doctor
+      await UserSubscription.update(
+        { doctorId },
+        { where: { patientId: request.patientId, status: "ACTIVE" }, transaction: t }
+      );
+    }
+
+    // 3. Mark request as accepted
     request.status = "ACCEPTED";
     request.respondedAt = new Date();
     await request.save({ transaction: t });
 
-    // 3. Cancel any other pending requests from this patient
+    // 4. Cancel any other pending requests from this patient
     await DoctorAssignmentRequest.update(
       { status: "REJECTED", rejectionReason: "Another doctor accepted", respondedAt: new Date() },
       { where: { patientId: request.patientId, status: "PENDING", id: { [Op.ne]: requestId } }, transaction: t }
     );
 
-    // 4. Notify patient via SMS (fire-and-forget)
+    // 5. Notify patient via SMS (fire-and-forget)
     const doctor = await AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
     if (patient.phone && doctor) {
+      const smsMessage = isDoctorChange
+        ? `Good news! Dr. ${doctor.fullName} has accepted your request. Your care has been transferred and all your diary history is now available to your new doctor. - Elvantia`
+        : `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`;
+
       twilioService
-        .sendSMS(
-          patient.phone,
-          `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`
-        )
+        .sendSMS(patient.phone, smsMessage)
         .catch((err) => console.error("Failed to send acceptance SMS:", err));
     }
 
@@ -147,7 +186,9 @@ export async function acceptRequest(
 }
 
 /**
- * Doctor rejects a request
+ * Doctor rejects a request.
+ * If this was a doctor-change request and no other pending requests remain,
+ * restore the patient status from ON_HOLD back to ACTIVE.
  */
 export async function rejectRequest(
   requestId: string,
@@ -165,20 +206,33 @@ export async function rejectRequest(
   request.respondedAt = new Date();
   await request.save();
 
-  // Notify patient via SMS
   const patient = await Patient.findByPk(request.patientId);
-  if (patient?.phone) {
-    const canRetry = request.attemptNumber < MAX_ATTEMPTS_PER_DOCTOR;
-    const retryMsg = canRetry
-      ? " You may send one more request to this doctor, or choose a different doctor."
-      : " You have used both attempts with this doctor. Please choose a different doctor.";
+  if (patient) {
+    // If patient is ON_HOLD (doctor-change) and no other pending requests remain, restore ACTIVE
+    if (patient.status === "ON_HOLD") {
+      const remainingPending = await DoctorAssignmentRequest.count({
+        where: { patientId: request.patientId, status: "PENDING" },
+      });
+      if (remainingPending === 0) {
+        patient.status = "ACTIVE";
+        await patient.save();
+      }
+    }
 
-    twilioService
-      .sendSMS(
-        patient.phone,
-        `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`
-      )
-      .catch((err) => console.error("❌ Failed to send rejection SMS:", err));
+    // Notify patient via SMS
+    if (patient.phone) {
+      const canRetry = request.attemptNumber < MAX_ATTEMPTS_PER_DOCTOR;
+      const retryMsg = canRetry
+        ? " You may send one more request to this doctor, or choose a different doctor."
+        : " You have used both attempts with this doctor. Please choose a different doctor.";
+
+      twilioService
+        .sendSMS(
+          patient.phone,
+          `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`
+        )
+        .catch((err) => console.error("Failed to send rejection SMS:", err));
+    }
   }
 
   return request;
