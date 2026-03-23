@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRequestsForPatient = exports.rejectRequest = exports.acceptRequest = exports.getRequestsForDoctor = exports.createRequest = void 0;
+exports.getRequestsForPatient = exports.cancelRequest = exports.rejectRequest = exports.acceptRequest = exports.getRequestsForDoctor = exports.createRequest = void 0;
 const sequelize_1 = require("sequelize");
 const Dbconnetion_1 = require("../config/Dbconnetion");
 const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
@@ -200,6 +200,34 @@ async function rejectRequest(requestId, doctorId, rejectionReason) {
     return request;
 }
 exports.rejectRequest = rejectRequest;
+/**
+ * Patient cancels their own PENDING request.
+ * If this was a doctor-change request and no other pending requests remain,
+ * restore the patient status from ON_HOLD back to ACTIVE.
+ */
+async function cancelRequest(requestId, patientId) {
+    const request = await DoctorAssignmentRequest_1.DoctorAssignmentRequest.findOne({
+        where: { id: requestId, patientId, status: "PENDING" },
+    });
+    if (!request)
+        throw new AppError_1.AppError(404, "Pending request not found");
+    request.status = "CANCELLED";
+    request.respondedAt = new Date();
+    await request.save();
+    // If patient is ON_HOLD and no other pending requests remain, restore ACTIVE
+    const patient = await Patient_1.Patient.findByPk(patientId);
+    if (patient && patient.status === "ON_HOLD") {
+        const remainingPending = await DoctorAssignmentRequest_1.DoctorAssignmentRequest.count({
+            where: { patientId, status: "PENDING" },
+        });
+        if (remainingPending === 0) {
+            patient.status = "ACTIVE";
+            await patient.save();
+        }
+    }
+    return request;
+}
+exports.cancelRequest = cancelRequest;
 /**
  * Get requests for a specific patient (for the mobile app)
  */

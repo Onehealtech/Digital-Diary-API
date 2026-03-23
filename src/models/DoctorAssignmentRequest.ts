@@ -42,11 +42,11 @@ export class DoctorAssignmentRequest extends Model {
   doctor!: AppUser;
 
   @Column({
-    type: DataType.ENUM("PENDING", "ACCEPTED", "REJECTED"),
+    type: DataType.ENUM("PENDING", "ACCEPTED", "REJECTED", "CANCELLED"),
     defaultValue: "PENDING",
     allowNull: false,
   })
-  status!: "PENDING" | "ACCEPTED" | "REJECTED";
+  status!: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
 
   @Column({
     type: DataType.TEXT,

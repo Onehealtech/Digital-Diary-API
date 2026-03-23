@@ -261,6 +261,39 @@ export async function rejectRequest(
 }
 
 /**
+ * Patient cancels their own PENDING request.
+ * If this was a doctor-change request and no other pending requests remain,
+ * restore the patient status from ON_HOLD back to ACTIVE.
+ */
+export async function cancelRequest(
+  requestId: string,
+  patientId: string
+): Promise<DoctorAssignmentRequest> {
+  const request = await DoctorAssignmentRequest.findOne({
+    where: { id: requestId, patientId, status: "PENDING" },
+  });
+  if (!request) throw new AppError(404, "Pending request not found");
+
+  request.status = "CANCELLED";
+  request.respondedAt = new Date();
+  await request.save();
+
+  // If patient is ON_HOLD and no other pending requests remain, restore ACTIVE
+  const patient = await Patient.findByPk(patientId);
+  if (patient && patient.status === "ON_HOLD") {
+    const remainingPending = await DoctorAssignmentRequest.count({
+      where: { patientId, status: "PENDING" },
+    });
+    if (remainingPending === 0) {
+      patient.status = "ACTIVE";
+      await patient.save();
+    }
+  }
+
+  return request;
+}
+
+/**
  * Get requests for a specific patient (for the mobile app)
  */
 export async function getRequestsForPatient(

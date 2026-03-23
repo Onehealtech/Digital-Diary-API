@@ -38,6 +38,8 @@ const router = express_1.default.Router();
 router.post("/", authMiddleware_1.patientAuthCheck, controller.createRequest);
 // GET /api/v1/doctor-requests/my-requests — patient views their requests
 router.get("/my-requests", authMiddleware_1.patientAuthCheck, controller.getMyRequests);
+// PUT /api/v1/doctor-requests/:id/cancel — patient cancels their pending request
+router.put("/:id/cancel", authMiddleware_1.patientAuthCheck, controller.cancelRequest);
 // POST /api/v1/doctor-requests/suggest-doctor — patient suggests a new doctor to admin
 router.post("/suggest-doctor", authMiddleware_1.patientAuthCheck, suggestionController.createSuggestion);
 // GET /api/v1/doctor-requests/my-suggestions — patient views their suggestions

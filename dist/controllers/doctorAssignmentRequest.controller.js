@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectRequest = exports.acceptRequest = exports.getRequests = exports.getMyRequests = exports.createRequest = void 0;
+exports.rejectRequest = exports.acceptRequest = exports.getRequests = exports.cancelRequest = exports.getMyRequests = exports.createRequest = void 0;
 const zod_1 = require("zod");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
@@ -78,6 +78,27 @@ const getMyRequests = async (req, res) => {
     }
 };
 exports.getMyRequests = getMyRequests;
+/**
+ * PUT /api/v1/doctor-requests/:id/cancel
+ * Patient cancels their own pending request
+ */
+const cancelRequest = async (req, res) => {
+    try {
+        const patientId = req.user ? req.user.id : null;
+        const requestId = req.params.id;
+        const result = await requestService.cancelRequest(requestId, patientId);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Request cancelled successfully", result);
+    }
+    catch (error) {
+        if (error instanceof AppError_1.AppError) {
+            (0, response_1.responseMiddleware)(res, error.statusCode, error.message);
+            return;
+        }
+        const message = error instanceof Error ? error.message : "Failed to cancel request";
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.INTERNAL_SERVER_ERROR, message);
+    }
+};
+exports.cancelRequest = cancelRequest;
 // ── Doctor/Assistant-facing endpoints (called from web dashboard) ────────
 /** Resolve the actual doctorId — assistants act on behalf of their parent doctor */
 function resolveDoctorId(req) {

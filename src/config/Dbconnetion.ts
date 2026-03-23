@@ -378,6 +378,13 @@ export const initializeDatabase = async (): Promise<void> => {
       console.warn('⚠️ doctor_assignment_requests migration warning:', err instanceof Error ? err.message : err);
     });
 
+    // Add CANCELLED to doctor_assignment_requests status enum
+    await sequelize.query(`
+      ALTER TYPE "enum_doctor_assignment_requests_status" ADD VALUE IF NOT EXISTS 'CANCELLED';
+    `).catch((err: unknown) => {
+      console.warn('⚠️ doctor_assignment_requests status enum migration warning:', err instanceof Error ? err.message : err);
+    });
+
     console.log('✅ Database models synchronized');
 
   } catch (error) {

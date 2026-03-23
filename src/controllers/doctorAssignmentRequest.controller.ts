@@ -59,6 +59,28 @@ export const getMyRequests = async (req: AuthenticatedRequest, res: Response): P
   }
 };
 
+/**
+ * PUT /api/v1/doctor-requests/:id/cancel
+ * Patient cancels their own pending request
+ */
+export const cancelRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const patientId = req.user ? (req.user as { id: string }).id : null;
+    const requestId = req.params.id as string;
+
+    const result = await requestService.cancelRequest(requestId, patientId!);
+
+    responseMiddleware(res, HTTP_STATUS.OK, "Request cancelled successfully", result);
+  } catch (error: unknown) {
+    if (error instanceof AppError) {
+      responseMiddleware(res, error.statusCode, error.message);
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Failed to cancel request";
+    responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, message);
+  }
+};
+
 // ── Doctor/Assistant-facing endpoints (called from web dashboard) ────────
 
 /** Resolve the actual doctorId — assistants act on behalf of their parent doctor */

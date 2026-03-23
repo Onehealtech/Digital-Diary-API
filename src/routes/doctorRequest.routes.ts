@@ -15,6 +15,9 @@ router.post("/", patientAuthCheck, controller.createRequest);
 // GET /api/v1/doctor-requests/my-requests — patient views their requests
 router.get("/my-requests", patientAuthCheck, controller.getMyRequests);
 
+// PUT /api/v1/doctor-requests/:id/cancel — patient cancels their pending request
+router.put("/:id/cancel", patientAuthCheck, controller.cancelRequest);
+
 // POST /api/v1/doctor-requests/suggest-doctor — patient suggests a new doctor to admin
 router.post("/suggest-doctor", patientAuthCheck, suggestionController.createSuggestion);
 
