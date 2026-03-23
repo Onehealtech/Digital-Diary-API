@@ -49,7 +49,7 @@ __decorate([
 ], DoctorAssignmentRequest.prototype, "doctor", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("PENDING", "ACCEPTED", "REJECTED"),
+        type: sequelize_typescript_1.DataType.ENUM("PENDING", "ACCEPTED", "REJECTED", "CANCELLED"),
         defaultValue: "PENDING",
         allowNull: false,
     }),
