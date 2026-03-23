@@ -43,6 +43,17 @@ const createSuggestionSchema = zod_1.z.object({
 });
 const approveSuggestionSchema = zod_1.z.object({
     onboardedDoctorId: zod_1.z.string().uuid("Invalid doctor ID").optional(),
+    newDoctor: zod_1.z.object({
+        fullName: zod_1.z.string().min(1, "Doctor name is required").max(100),
+        email: zod_1.z.string().email("Invalid email"),
+        phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits").optional(),
+        hospital: zod_1.z.string().max(100).optional(),
+        specialization: zod_1.z.string().max(100).optional(),
+        license: zod_1.z.string().max(30).optional(),
+        address: zod_1.z.string().max(500).optional(),
+        city: zod_1.z.string().max(100).optional(),
+        state: zod_1.z.string().max(100).optional(),
+    }).optional(),
 });
 const rejectSuggestionSchema = zod_1.z.object({
     rejectionReason: zod_1.z.string().max(500).optional(),
@@ -139,15 +150,22 @@ const approveSuggestion = async (req, res) => {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, parsed.error.issues[0].message);
             return;
         }
-        const result = await suggestionService.approveSuggestion(req.params.id, req.user.id, parsed.data.onboardedDoctorId);
+        const result = await suggestionService.approveSuggestion(req.params.id, req.user.id, parsed.data.onboardedDoctorId, parsed.data.newDoctor);
+        const message = result.doctorCreated
+            ? "Doctor suggestion approved and new doctor profile created"
+            : "Doctor suggestion approved";
         (0, activityLogger_1.logActivity)({
             req,
             userId: req.user.id,
             userRole: "SUPER_ADMIN",
             action: "DOCTOR_SUGGESTION_APPROVED",
-            details: { suggestionId: req.params.id, onboardedDoctorId: parsed.data.onboardedDoctorId },
+            details: {
+                suggestionId: req.params.id,
+                onboardedDoctorId: result.suggestion.onboardedDoctorId,
+                doctorCreated: result.doctorCreated,
+            },
         });
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Doctor suggestion approved", result);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, message, result);
     }
     catch (error) {
         if (error instanceof AppError_1.AppError) {

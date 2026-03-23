@@ -6,6 +6,10 @@ const PatientDoctorSuggestion_1 = require("../models/PatientDoctorSuggestion");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const AppError_1 = require("../utils/AppError");
+const passwordUtils_1 = require("../utils/passwordUtils");
+const emailService_1 = require("./emailService");
+const wallet_service_1 = require("./wallet.service");
+const cashfree_vendor_service_1 = require("./cashfree-vendor.service");
 // ═══════════════════════════════════════════════════════════════════════════
 // PATIENT-FACING
 // ═══════════════════════════════════════════════════════════════════════════
@@ -91,29 +95,94 @@ async function getSuggestionById(id) {
 }
 exports.getSuggestionById = getSuggestionById;
 /**
- * Super Admin approves and optionally links the created doctor.
+ * Super Admin approves and optionally links an existing doctor OR creates a new one.
+ *
+ * - onboardedDoctorId: link to an existing doctor
+ * - newDoctor: create a new doctor profile, then link
  */
-async function approveSuggestion(id, reviewerId, onboardedDoctorId) {
+async function approveSuggestion(id, reviewerId, onboardedDoctorId, newDoctor) {
     const suggestion = await PatientDoctorSuggestion_1.PatientDoctorSuggestion.findByPk(id);
     if (!suggestion)
         throw new AppError_1.AppError(404, "Suggestion not found");
     if (suggestion.status !== "PENDING") {
         throw new AppError_1.AppError(400, "This suggestion has already been reviewed");
     }
-    // If a doctorId is provided, verify the doctor exists
-    if (onboardedDoctorId) {
+    let doctorId = onboardedDoctorId;
+    let doctorCreated = false;
+    const warnings = [];
+    // If linking to an existing doctor, verify it exists
+    if (doctorId) {
         const doctor = await Appuser_1.AppUser.findOne({
-            where: { id: onboardedDoctorId, role: "DOCTOR" },
+            where: { id: doctorId, role: "DOCTOR" },
         });
         if (!doctor)
             throw new AppError_1.AppError(404, "Doctor not found with the given ID");
     }
+    // If creating a new doctor profile
+    if (newDoctor && !doctorId) {
+        if (!newDoctor.fullName || !newDoctor.email) {
+            throw new AppError_1.AppError(400, "Doctor full name and email are required");
+        }
+        // Check duplicate email
+        const existing = await Appuser_1.AppUser.findOne({
+            where: { email: newDoctor.email.toLowerCase() },
+        });
+        if (existing) {
+            throw new AppError_1.AppError(409, "A user with this email already exists");
+        }
+        const plainPassword = (0, passwordUtils_1.generateSecurePassword)();
+        const newUser = await Appuser_1.AppUser.create({
+            fullName: newDoctor.fullName,
+            email: newDoctor.email.toLowerCase(),
+            password: plainPassword,
+            phone: newDoctor.phone,
+            role: "DOCTOR",
+            parentId: reviewerId,
+            isEmailVerified: false,
+            license: newDoctor.license,
+            hospital: newDoctor.hospital,
+            specialization: newDoctor.specialization,
+            address: newDoctor.address,
+            city: newDoctor.city,
+            state: newDoctor.state,
+        });
+        // Create wallet
+        try {
+            await (0, wallet_service_1.createWallet)(newUser.id, "DOCTOR");
+        }
+        catch (err) {
+            warnings.push(`Wallet creation failed: ${err.message}`);
+        }
+        // Register on Cashfree
+        try {
+            const cfResult = await (0, cashfree_vendor_service_1.createCashfreeVendor)({
+                vendorId: newUser.id,
+                name: newDoctor.fullName,
+                email: newDoctor.email.toLowerCase(),
+                phone: newDoctor.phone,
+                role: "DOCTOR",
+            });
+            await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
+        }
+        catch (err) {
+            warnings.push(`Cashfree registration failed: ${err.message}`);
+        }
+        // Send credentials email
+        try {
+            await (0, emailService_1.sendPasswordEmail)(newDoctor.email, plainPassword, "DOCTOR", newDoctor.fullName);
+        }
+        catch (err) {
+            warnings.push(`Credential email failed: ${err.message}`);
+        }
+        doctorId = newUser.id;
+        doctorCreated = true;
+    }
     suggestion.status = "APPROVED";
     suggestion.reviewedBy = reviewerId;
     suggestion.reviewedAt = new Date();
-    suggestion.onboardedDoctorId = onboardedDoctorId || undefined;
+    suggestion.onboardedDoctorId = doctorId || undefined;
     await suggestion.save();
-    return suggestion;
+    return { suggestion, doctorCreated, warnings: warnings.length > 0 ? warnings : undefined };
 }
 exports.approveSuggestion = approveSuggestion;
 /**

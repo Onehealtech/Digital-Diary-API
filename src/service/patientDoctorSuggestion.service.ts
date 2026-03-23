@@ -5,6 +5,10 @@ import { PatientDoctorSuggestion } from "../models/PatientDoctorSuggestion";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AppError } from "../utils/AppError";
+import { generateSecurePassword } from "../utils/passwordUtils";
+import { sendPasswordEmail } from "./emailService";
+import { createWallet } from "./wallet.service";
+import { createCashfreeVendor } from "./cashfree-vendor.service";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PATIENT-FACING
@@ -119,34 +123,116 @@ export async function getSuggestionById(
 }
 
 /**
- * Super Admin approves and optionally links the created doctor.
+ * Super Admin approves and optionally links an existing doctor OR creates a new one.
+ *
+ * - onboardedDoctorId: link to an existing doctor
+ * - newDoctor: create a new doctor profile, then link
  */
 export async function approveSuggestion(
   id: string,
   reviewerId: string,
-  onboardedDoctorId?: string
-): Promise<PatientDoctorSuggestion> {
+  onboardedDoctorId?: string,
+  newDoctor?: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    hospital?: string;
+    specialization?: string;
+    license?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+  }
+): Promise<{ suggestion: PatientDoctorSuggestion; doctorCreated?: boolean; warnings?: string[] }> {
   const suggestion = await PatientDoctorSuggestion.findByPk(id);
   if (!suggestion) throw new AppError(404, "Suggestion not found");
   if (suggestion.status !== "PENDING") {
     throw new AppError(400, "This suggestion has already been reviewed");
   }
 
-  // If a doctorId is provided, verify the doctor exists
-  if (onboardedDoctorId) {
+  let doctorId = onboardedDoctorId;
+  let doctorCreated = false;
+  const warnings: string[] = [];
+
+  // If linking to an existing doctor, verify it exists
+  if (doctorId) {
     const doctor = await AppUser.findOne({
-      where: { id: onboardedDoctorId, role: "DOCTOR" },
+      where: { id: doctorId, role: "DOCTOR" },
     });
     if (!doctor) throw new AppError(404, "Doctor not found with the given ID");
+  }
+
+  // If creating a new doctor profile
+  if (newDoctor && !doctorId) {
+    if (!newDoctor.fullName || !newDoctor.email) {
+      throw new AppError(400, "Doctor full name and email are required");
+    }
+
+    // Check duplicate email
+    const existing = await AppUser.findOne({
+      where: { email: newDoctor.email.toLowerCase() },
+    });
+    if (existing) {
+      throw new AppError(409, "A user with this email already exists");
+    }
+
+    const plainPassword = generateSecurePassword();
+
+    const newUser = await AppUser.create({
+      fullName: newDoctor.fullName,
+      email: newDoctor.email.toLowerCase(),
+      password: plainPassword,
+      phone: newDoctor.phone,
+      role: "DOCTOR",
+      parentId: reviewerId,
+      isEmailVerified: false,
+      license: newDoctor.license,
+      hospital: newDoctor.hospital,
+      specialization: newDoctor.specialization,
+      address: newDoctor.address,
+      city: newDoctor.city,
+      state: newDoctor.state,
+    });
+
+    // Create wallet
+    try {
+      await createWallet(newUser.id, "DOCTOR");
+    } catch (err: any) {
+      warnings.push(`Wallet creation failed: ${err.message}`);
+    }
+
+    // Register on Cashfree
+    try {
+      const cfResult = await createCashfreeVendor({
+        vendorId: newUser.id,
+        name: newDoctor.fullName,
+        email: newDoctor.email.toLowerCase(),
+        phone: newDoctor.phone,
+        role: "DOCTOR",
+      });
+      await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
+    } catch (err: any) {
+      warnings.push(`Cashfree registration failed: ${err.message}`);
+    }
+
+    // Send credentials email
+    try {
+      await sendPasswordEmail(newDoctor.email, plainPassword, "DOCTOR", newDoctor.fullName);
+    } catch (err: any) {
+      warnings.push(`Credential email failed: ${err.message}`);
+    }
+
+    doctorId = newUser.id;
+    doctorCreated = true;
   }
 
   suggestion.status = "APPROVED";
   suggestion.reviewedBy = reviewerId;
   suggestion.reviewedAt = new Date();
-  suggestion.onboardedDoctorId = onboardedDoctorId || undefined;
+  suggestion.onboardedDoctorId = doctorId || undefined;
   await suggestion.save();
 
-  return suggestion;
+  return { suggestion, doctorCreated, warnings: warnings.length > 0 ? warnings : undefined };
 }
 
 /**

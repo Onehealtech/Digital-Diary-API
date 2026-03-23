@@ -23,6 +23,17 @@ const createSuggestionSchema = z.object({
 
 const approveSuggestionSchema = z.object({
   onboardedDoctorId: z.string().uuid("Invalid doctor ID").optional(),
+  newDoctor: z.object({
+    fullName: z.string().min(1, "Doctor name is required").max(100),
+    email: z.string().email("Invalid email"),
+    phone: z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits").optional(),
+    hospital: z.string().max(100).optional(),
+    specialization: z.string().max(100).optional(),
+    license: z.string().max(30).optional(),
+    address: z.string().max(500).optional(),
+    city: z.string().max(100).optional(),
+    state: z.string().max(100).optional(),
+  }).optional(),
 });
 
 const rejectSuggestionSchema = z.object({
@@ -126,18 +137,27 @@ export const approveSuggestion = async (req: AuthenticatedRequest, res: Response
     const result = await suggestionService.approveSuggestion(
       req.params.id as string,
       req.user!.id,
-      parsed.data.onboardedDoctorId
+      parsed.data.onboardedDoctorId,
+      parsed.data.newDoctor
     );
+
+    const message = result.doctorCreated
+      ? "Doctor suggestion approved and new doctor profile created"
+      : "Doctor suggestion approved";
 
     logActivity({
       req,
       userId: req.user!.id,
       userRole: "SUPER_ADMIN",
       action: "DOCTOR_SUGGESTION_APPROVED",
-      details: { suggestionId: req.params.id as string, onboardedDoctorId: parsed.data.onboardedDoctorId },
+      details: {
+        suggestionId: req.params.id as string,
+        onboardedDoctorId: result.suggestion.onboardedDoctorId,
+        doctorCreated: result.doctorCreated,
+      },
     });
 
-    responseMiddleware(res, HTTP_STATUS.OK, "Doctor suggestion approved", result);
+    responseMiddleware(res, HTTP_STATUS.OK, message, result);
   } catch (error: unknown) {
     if (error instanceof AppError) {
       responseMiddleware(res, error.statusCode, error.message);
