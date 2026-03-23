@@ -119,7 +119,7 @@ __decorate([
 ], Patient.prototype, "registeredDate", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD"),
+        type: sequelize_typescript_1.DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD", "DOCTOR_REASSIGNED"),
         defaultValue: "ACTIVE",
     }),
     __metadata("design:type", String)

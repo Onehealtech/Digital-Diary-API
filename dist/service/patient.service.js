@@ -5,31 +5,52 @@ const Patient_1 = require("../models/Patient");
 const Diary_1 = require("../models/Diary");
 const ScanLog_1 = require("../models/ScanLog");
 const Appuser_1 = require("../models/Appuser");
+const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const sequelize_1 = require("sequelize");
 class PatientService {
     /**
-     * Get patient by ID with full details
-     * Includes test status, diary info, scan logs
+     * Get patient by ID with full details.
+     * Current doctor sees ALL scan data from the start.
+     * Old doctor sees scan data only up to their unassignment date.
      */
     async getPatientById(patientId, requesterId, role) {
-        const whereClause = { id: patientId };
-        // Role-based filtering
+        let doctorId = null;
+        // Role-based access resolution
         if (role === "DOCTOR") {
-            whereClause.doctorId = requesterId;
+            doctorId = requesterId;
         }
         else if (role === "ASSISTANT") {
-            // Assistant can view their doctor's patients
             const assistant = await Appuser_1.AppUser.findByPk(requesterId);
             if (!assistant || !assistant.parentId) {
                 throw new Error("Assistant not linked to a doctor");
             }
-            whereClause.doctorId = assistant.parentId;
+            doctorId = assistant.parentId;
         }
-        else if (role === "VENDOR") {
-            // Vendor can only view patients they sold diaries to
+        // For doctors/assistants: check current or historical access
+        let dateCutoff = null;
+        if (doctorId) {
+            const patient = await Patient_1.Patient.findByPk(patientId, { attributes: ["doctorId"] });
+            if (patient && patient.doctorId === doctorId) {
+                // Current doctor — full access, no cutoff
+            }
+            else {
+                // Check history for old doctor
+                const history = await DoctorPatientHistory_1.DoctorPatientHistory.findOne({
+                    where: { patientId, doctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
+                    order: [["unassignedAt", "DESC"]],
+                });
+                if (!history) {
+                    throw new Error("Patient not found or access denied");
+                }
+                dateCutoff = history.unassignedAt;
+            }
+        }
+        // Build patient query (no doctorId filter — access already validated above)
+        const whereClause = { id: patientId };
+        if (role === "VENDOR") {
             whereClause.vendorId = requesterId;
         }
-        const patient = await Patient_1.Patient.findOne({
+        const patientRecord = await Patient_1.Patient.findOne({
             where: whereClause,
             include: [
                 {
@@ -44,28 +65,34 @@ class PatientService {
                 },
             ],
         });
-        if (!patient) {
+        if (!patientRecord) {
             throw new Error("Patient not found or access denied");
         }
-        // Get scan logs count
-        const totalScans = await ScanLog_1.ScanLog.count({
-            where: { patientId },
-        });
+        // Build scan log filter (apply date cutoff for old doctors)
+        const scanWhere = { patientId };
+        if (dateCutoff) {
+            scanWhere.scannedAt = { [sequelize_1.Op.lte]: dateCutoff };
+        }
+        const totalScans = await ScanLog_1.ScanLog.count({ where: scanWhere });
         const unreviewed = await ScanLog_1.ScanLog.count({
-            where: { patientId, doctorReviewed: false },
+            where: { ...scanWhere, doctorReviewed: false },
         });
         const flagged = await ScanLog_1.ScanLog.count({
-            where: { patientId, flagged: true },
+            where: { ...scanWhere, flagged: true },
         });
-        // Get recent scans
         const recentScans = await ScanLog_1.ScanLog.findAll({
-            where: { patientId },
+            where: scanWhere,
             order: [["createdAt", "DESC"]],
             limit: 5,
             attributes: ["id", "pageType", "doctorReviewed", "flagged", "createdAt"],
         });
+        const patientJson = patientRecord.toJSON();
         return {
-            ...patient.toJSON(),
+            ...patientJson,
+            isCurrentDoctor: !dateCutoff,
+            assignmentCutoff: dateCutoff,
+            // Old doctor sees "DOCTOR_REASSIGNED" status
+            status: dateCutoff ? "DOCTOR_REASSIGNED" : patientJson.status,
             scanStats: {
                 total: totalScans,
                 unreviewed,

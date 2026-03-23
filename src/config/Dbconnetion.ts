@@ -30,6 +30,7 @@ import { UserSubscription } from '../models/UserSubscription';
 import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
 import { PatientDoctorSuggestion } from '../models/PatientDoctorSuggestion';
 import { PaymentConfig } from '../models/PaymentConfig';
+import { DoctorPatientHistory } from '../models/DoctorPatientHistory';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -89,6 +90,7 @@ export const sequelize = new Sequelize({
     DoctorAssignmentRequest,
     PatientDoctorSuggestion,
     PaymentConfig,
+    DoctorPatientHistory,
   ],
 
   // Logging configuration
@@ -128,6 +130,11 @@ export const initializeDatabase = async (): Promise<void> => {
 
         BEGIN
           ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'ON_HOLD';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        BEGIN
+          ALTER TYPE "enum_patients_status" ADD VALUE IF NOT EXISTS 'DOCTOR_REASSIGNED';
         EXCEPTION WHEN duplicate_object THEN NULL;
         END;
 
@@ -337,6 +344,21 @@ export const initializeDatabase = async (): Promise<void> => {
       );
     `).catch((err: unknown) => {
       console.warn('⚠️ patient_doctor_suggestions migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Create doctor_patient_history table for tracking assignment periods
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "doctor_patient_history" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "patientId" UUID NOT NULL REFERENCES "patients"("id"),
+        "doctorId" UUID NOT NULL REFERENCES "app-users"("id"),
+        "assignedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "unassignedAt" TIMESTAMP WITH TIME ZONE,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ doctor_patient_history migration warning:', err instanceof Error ? err.message : err);
     });
 
     // Create doctor_assignment_requests table

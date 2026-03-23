@@ -4,6 +4,7 @@ exports.getAssistantDashboard = exports.getDoctorDashboard = exports.getVendorDa
 const sequelize_1 = require("sequelize");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
+const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const dashboard_service_1 = require("../service/dashboard.service");
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
@@ -27,10 +28,21 @@ const getPatients = async (req, res) => {
             // no filter
         }
         /**
-         * DOCTOR → own patients
+         * DOCTOR → current patients + historical patients (transferred away)
          */
         else if (role === constants_1.UserRole.DOCTOR) {
-            whereClause.doctorId = req.user.id;
+            // Find patients previously assigned to this doctor (now transferred)
+            const historicalRecords = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
+                where: { doctorId: req.user.id, unassignedAt: { [sequelize_1.Op.ne]: null } },
+                attributes: ["patientId"],
+            });
+            const historicalPatientIds = historicalRecords.map((r) => r.patientId);
+            whereClause[sequelize_1.Op.or] = [
+                { doctorId: req.user.id },
+                ...(historicalPatientIds.length > 0
+                    ? [{ id: { [sequelize_1.Op.in]: historicalPatientIds } }]
+                    : []),
+            ];
         }
         /**
          * ASSISTANT → doctor's patients
@@ -97,11 +109,43 @@ const getPatients = async (req, res) => {
             offset,
             order: [["createdAt", "DESC"]],
         });
+        // For doctors: enrich each patient with assignment period info
+        let enrichedPatients = patients.map((p) => p.toJSON());
+        if (role === constants_1.UserRole.DOCTOR) {
+            const myDoctorId = req.user.id;
+            const patientIds = patients.map((p) => p.id);
+            // Get all history records for these patients with this doctor
+            const historyRecords = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
+                where: { doctorId: myDoctorId, patientId: { [sequelize_1.Op.in]: patientIds } },
+                order: [["assignedAt", "DESC"]],
+            });
+            const historyMap = new Map();
+            for (const h of historyRecords) {
+                // Use the most recent record per patient
+                if (!historyMap.has(h.patientId)) {
+                    historyMap.set(h.patientId, {
+                        assignedAt: h.assignedAt,
+                        unassignedAt: h.unassignedAt || null,
+                    });
+                }
+            }
+            enrichedPatients = enrichedPatients.map((p) => {
+                const history = historyMap.get(p.id);
+                const isCurrentPatient = p.doctorId === myDoctorId;
+                return {
+                    ...p,
+                    isCurrentPatient,
+                    // Old doctor sees "DOCTOR_REASSIGNED" status for transferred patients
+                    status: isCurrentPatient ? p.status : "DOCTOR_REASSIGNED",
+                    assignmentPeriod: history || null,
+                };
+            });
+        }
         res.status(200).json({
             success: true,
             message: "Patients retrieved successfully",
             data: {
-                patients,
+                patients: enrichedPatients,
                 pagination: {
                     total,
                     page: Number(page),

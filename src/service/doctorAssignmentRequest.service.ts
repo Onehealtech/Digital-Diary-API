@@ -5,6 +5,7 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Diary } from "../models/Diary";
 import { UserSubscription } from "../models/UserSubscription";
+import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { AppError } from "../utils/AppError";
 import { twilioService } from "./twilio.service";
 import { sendDoctorRequestEmail } from "./emailService";
@@ -133,16 +134,19 @@ export async function acceptRequest(
 
     const oldDoctorId = patient.doctorId;
     const isDoctorChange = !!oldDoctorId && oldDoctorId !== doctorId;
+    const now = new Date();
 
-    // 1. Assign new doctor to patient and restore ACTIVE status
-    patient.doctorId = doctorId;
-    if (patient.status === "ON_HOLD") {
-      patient.status = "ACTIVE";
-    }
-    await patient.save({ transaction: t });
-
-    // 2. If doctor change, reassign diary and subscription to new doctor
+    // 1. Record assignment history
     if (isDoctorChange) {
+      // Close old doctor's history record
+      await DoctorPatientHistory.update(
+        { unassignedAt: now },
+        {
+          where: { patientId: request.patientId, doctorId: oldDoctorId, unassignedAt: null },
+          transaction: t,
+        }
+      );
+
       // Reassign diary so new doctor sees all patient history
       if (patient.diaryId) {
         await Diary.update(
@@ -157,6 +161,24 @@ export async function acceptRequest(
         { where: { patientId: request.patientId, status: "ACTIVE" }, transaction: t }
       );
     }
+
+    // Create new history record for the new doctor
+    await DoctorPatientHistory.create(
+      {
+        patientId: request.patientId,
+        doctorId,
+        assignedAt: now,
+        unassignedAt: null,
+      },
+      { transaction: t }
+    );
+
+    // 2. Assign new doctor to patient and restore ACTIVE status
+    patient.doctorId = doctorId;
+    if (patient.status === "ON_HOLD") {
+      patient.status = "ACTIVE";
+    }
+    await patient.save({ transaction: t });
 
     // 3. Mark request as accepted
     request.status = "ACCEPTED";
