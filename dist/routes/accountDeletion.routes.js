@@ -31,6 +31,8 @@ const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const controller = __importStar(require("../controllers/accountDeletion.controller"));
 const router = express_1.default.Router();
-// DELETE /api/v1/account/delete — patient deletes their own account
+// POST /api/v1/account/request-delete-otp — Step 1: send OTP before deletion
+router.post("/request-delete-otp", authMiddleware_1.patientAuthCheck, controller.requestDeleteOTP);
+// DELETE /api/v1/account/delete — Step 2: verify OTP and delete account
 router.delete("/delete", authMiddleware_1.patientAuthCheck, controller.deleteAccount);
 exports.default = router;
