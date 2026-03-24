@@ -15,8 +15,9 @@ const otpStore = new Map();
  * @returns Generated OTP string
  */
 const generateOTP = (key) => {
-    // Use fixed OTP for testing environment
-    const otp = process.env.NODE_ENV === 'test'
+    // Use fixed OTP for testing environment or when FALLBACK_OTP is enabled
+    const useFallback = process.env.NODE_ENV === 'test' || process.env.FALLBACK_OTP === 'true';
+    const otp = useFallback
         ? '123456'
         : crypto_1.default.randomInt(100000, 999999).toString();
     const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES || "5");

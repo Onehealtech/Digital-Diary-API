@@ -16,8 +16,9 @@ const otpStore = new Map<string, OTPData>();
  * @returns Generated OTP string
  */
 export const generateOTP = (key: string): string => {
-    // Use fixed OTP for testing environment
-    const otp = process.env.NODE_ENV === 'test'
+    // Use fixed OTP for testing environment or when FALLBACK_OTP is enabled
+    const useFallback = process.env.NODE_ENV === 'test' || process.env.FALLBACK_OTP === 'true';
+    const otp = useFallback
         ? '123456'
         : crypto.randomInt(100000, 999999).toString();
 
