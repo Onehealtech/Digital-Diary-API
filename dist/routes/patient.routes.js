@@ -4,6 +4,7 @@ const express_1 = require("express");
 const patient_controller_1 = require("../controllers/patient.controller");
 const patientProfile_controller_1 = require("../controllers/patientProfile.controller");
 const patientAccess_controller_1 = require("../controllers/patientAccess.controller");
+const onboarding_controller_1 = require("../controllers/onboarding.controller");
 const reminder_controller_1 = require("../controllers/reminder.controller");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const authMiddleware_2 = require("../middleware/authMiddleware");
@@ -22,6 +23,9 @@ router.get("/diary-catalog", authMiddleware_1.patientAuthCheck, patientAccess_co
 router.post("/request-edit-otp", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.requestEditOTP);
 router.post("/update-profile", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.updateProfile);
 router.get("/profile", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.getProfile);
+// Onboarding instructions (Accessed by Patients)
+router.get("/onboarding-status", authMiddleware_1.patientAuthCheck, onboarding_controller_1.getOnboardingStatus);
+router.post("/onboarding-viewed", authMiddleware_1.patientAuthCheck, onboarding_controller_1.recordOnboardingView);
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", authMiddleware_1.patientAuthCheck, reminder_controller_1.getPatientReminders);
 router.patch("/reminders/:id/read", authMiddleware_1.patientAuthCheck, reminder_controller_1.markReminderAsRead);

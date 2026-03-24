@@ -161,6 +161,14 @@ __decorate([
 ], Patient.prototype, "fcmToken", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.INTEGER,
+        defaultValue: 0,
+        allowNull: false,
+    }),
+    __metadata("design:type", Number)
+], Patient.prototype, "onboardingViewCount", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
         defaultValue: "VENDOR_ASSIGNED",
         allowNull: false,
