@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearOTP = exports.verifyOTPMultiKey = exports.verifyOTP = exports.storeOTP = exports.generateOTP = void 0;
 const crypto_1 = __importDefault(require("crypto"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 // In-memory OTP storage (use Redis in production)
 const otpStore = new Map();
 /**
