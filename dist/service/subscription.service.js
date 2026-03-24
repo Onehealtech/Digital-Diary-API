@@ -125,7 +125,7 @@ const initiateSubscriptionPayment = async (params) => {
         where: {
             patientId,
             subscriptionPlanId: planId,
-            status: "PENDING",
+            // status: "PENDING",
         },
     });
     if (existingPending) {
