@@ -1,5 +1,7 @@
 import crypto from "crypto";
+import dotenv from "dotenv";
 
+dotenv.config();
 interface OTPData {
     otp: string;
     expiresAt: Date;
