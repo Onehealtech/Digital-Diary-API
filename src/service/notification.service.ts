@@ -557,7 +557,7 @@ class NotificationService {
 
     // In-app notification to the specific staff member
     await this.createNotification({
-      senderId: patientId,
+      senderId: notification.senderId,  // staff member's AppUser ID (valid FK)
       recipientId: notification.senderId,
       recipientType: "staff",
       type: "info",

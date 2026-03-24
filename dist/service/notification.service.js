@@ -417,7 +417,7 @@ class NotificationService {
         const responseText = `Patient ${patient.fullName} responded: ${message}`;
         // In-app notification to the specific staff member
         await this.createNotification({
-            senderId: patientId,
+            senderId: notification.senderId,
             recipientId: notification.senderId,
             recipientType: "staff",
             type: "info",
