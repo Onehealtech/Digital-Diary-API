@@ -274,6 +274,11 @@ export const initializeDatabase = async (): Promise<void> => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'registrationSource') THEN
           ALTER TABLE "patients" ADD COLUMN "registrationSource" VARCHAR(20) NOT NULL DEFAULT 'VENDOR_ASSIGNED';
         END IF;
+
+        -- Add onboardingViewCount column
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'onboardingViewCount') THEN
+          ALTER TABLE "patients" ADD COLUMN "onboardingViewCount" INTEGER NOT NULL DEFAULT 0;
+        END IF;
       END
       $$;
     `).catch((err: unknown) => {

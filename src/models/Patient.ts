@@ -157,6 +157,13 @@ export class Patient extends Model {
   fcmToken?: string;
 
   @Column({
+    type: DataType.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+  })
+  onboardingViewCount!: number;
+
+  @Column({
     type: DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
     defaultValue: "VENDOR_ASSIGNED",
     allowNull: false,
