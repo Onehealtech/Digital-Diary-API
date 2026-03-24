@@ -27,6 +27,10 @@ import {
     getDiaryCatalog,
 } from "../controllers/patientAccess.controller";
 import {
+    getOnboardingStatus,
+    recordOnboardingView,
+} from "../controllers/onboarding.controller";
+import {
     getPatientReminders,
     markReminderAsRead,
     respondToReminder
@@ -52,6 +56,10 @@ router.get("/diary-catalog", patientAuthCheck, getDiaryCatalog);
 router.post("/request-edit-otp", patientAuthCheck, requestEditOTP);
 router.post("/update-profile", patientAuthCheck, updateProfile);
 router.get("/profile", patientAuthCheck, getProfile);
+
+// Onboarding instructions (Accessed by Patients)
+router.get("/onboarding-status", patientAuthCheck, getOnboardingStatus);
+router.post("/onboarding-viewed", patientAuthCheck, recordOnboardingView);
 
 // Patient reminders (Accessed by Patients)
 router.get("/reminders", patientAuthCheck, getPatientReminders);
