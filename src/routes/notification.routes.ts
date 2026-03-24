@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { notificationController } from "../controllers/notification.controller";
-import { authCheck } from "../middleware/authMiddleware";
+import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
 
@@ -107,7 +107,7 @@ router.delete(
 
 router.post(
   "/:id/respond",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR , UserRole.PATIENT]),
+  patientAuthCheck,
   notificationController.respondToNotification
 );
 

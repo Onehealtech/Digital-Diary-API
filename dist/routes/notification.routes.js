@@ -37,5 +37,5 @@ router.put("/bulk-read", (0, authMiddleware_1.authCheck)([constants_1.UserRole.S
 router.put("/mark-all-read", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), notification_controller_1.notificationController.markAllAsRead);
 // Delete notification
 router.delete("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), notification_controller_1.notificationController.deleteNotification);
-router.post("/:id/respond", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR, constants_1.UserRole.PATIENT]), notification_controller_1.notificationController.respondToNotification);
+router.post("/:id/respond", authMiddleware_1.patientAuthCheck, notification_controller_1.notificationController.respondToNotification);
 exports.default = router;
