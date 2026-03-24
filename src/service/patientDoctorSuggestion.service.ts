@@ -142,6 +142,14 @@ export async function approveSuggestion(
     address?: string;
     city?: string;
     state?: string;
+    commissionType?: string;
+    commissionRate?: number;
+    bank?: {
+      accountHolder: string;
+      accountNumber: string;
+      ifsc: string;
+      bankName: string;
+    };
   }
 ): Promise<{ suggestion: PatientDoctorSuggestion; doctorCreated?: boolean; warnings?: string[] }> {
   const suggestion = await PatientDoctorSuggestion.findByPk(id);
@@ -192,6 +200,8 @@ export async function approveSuggestion(
       address: newDoctor.address,
       city: newDoctor.city,
       state: newDoctor.state,
+      commissionType: newDoctor.commissionType,
+      commissionRate: newDoctor.commissionRate,
     });
 
     // Create wallet
@@ -209,6 +219,7 @@ export async function approveSuggestion(
         email: newDoctor.email.toLowerCase(),
         phone: newDoctor.phone,
         role: "DOCTOR",
+        bank: newDoctor.bank,
       });
       await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
     } catch (err: any) {
