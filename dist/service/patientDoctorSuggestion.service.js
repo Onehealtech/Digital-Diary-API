@@ -145,6 +145,8 @@ async function approveSuggestion(id, reviewerId, onboardedDoctorId, newDoctor) {
             address: newDoctor.address,
             city: newDoctor.city,
             state: newDoctor.state,
+            commissionType: newDoctor.commissionType,
+            commissionRate: newDoctor.commissionRate,
         });
         // Create wallet
         try {
@@ -161,6 +163,7 @@ async function approveSuggestion(id, reviewerId, onboardedDoctorId, newDoctor) {
                 email: newDoctor.email.toLowerCase(),
                 phone: newDoctor.phone,
                 role: "DOCTOR",
+                bank: newDoctor.bank,
             });
             await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
         }
