@@ -176,6 +176,14 @@ __decorate([
     __metadata("design:type", String)
 ], Patient.prototype, "registrationSource", void 0);
 __decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.ENUM("en", "hi"),
+        defaultValue: "en",
+        allowNull: false,
+    }),
+    __metadata("design:type", String)
+], Patient.prototype, "language", void 0);
+__decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
