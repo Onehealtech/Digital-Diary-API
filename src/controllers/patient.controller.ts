@@ -8,6 +8,7 @@ import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import { logActivity } from "../utils/activityLogger";
+import { t, getPatientLanguage } from "../utils/translations";
 
 export const createPatient = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -454,7 +455,8 @@ export const getPatientNotifications = async (req: CustomRequest, res: Response)
       }
     );
 
-    return sendResponse(res, result, "Notifications fetched successfully");
+    const lang = await getPatientLanguage(patientId!);
+    return sendResponse(res, result, t("msg.notificationsRetrieved", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }
@@ -473,8 +475,9 @@ export const getPatientNotificationStats = async (req: CustomRequest, res: Respo
     }
 
     const stats = await notificationService.getNotificationStats(patientId, "patient");
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, stats, "Notification stats fetched successfully");
+    return sendResponse(res, stats, t("msg.notificationsRetrieved", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }
@@ -494,8 +497,9 @@ export const markPatientNotificationAsRead = async (req: CustomRequest, res: Res
     }
 
     const notification = await notificationService.markAsRead(notificationId, patientId);
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, notification, "Notification marked as read");
+    return sendResponse(res, notification, t("msg.notificationMarkedRead", lang));
   } catch (error: any) {
     return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
   }
@@ -514,8 +518,9 @@ export const markAllPatientNotificationsAsRead = async (req: CustomRequest, res:
     }
 
     const result = await notificationService.markAllAsRead(patientId, "patient");
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, result, "All notifications marked as read");
+    return sendResponse(res, result, t("msg.allNotificationsRead", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }

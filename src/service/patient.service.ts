@@ -176,6 +176,7 @@ class PatientService {
       "gender",
       "stage",
       "treatmentPlan",
+      "language",
     ];
 
     const updateData: any = {};
