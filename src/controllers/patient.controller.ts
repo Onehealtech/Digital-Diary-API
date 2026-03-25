@@ -8,7 +8,7 @@ import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import { logActivity } from "../utils/activityLogger";
-import { t, getPatientLanguage } from "../utils/translations";
+import { t, getPatientLanguage, translateArrayFields } from "../utils/translations";
 
 export const createPatient = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -456,6 +456,13 @@ export const getPatientNotifications = async (req: CustomRequest, res: Response)
     );
 
     const lang = await getPatientLanguage(patientId!);
+
+    // Translate notification titles and messages for Hindi
+    if (lang === "hi" && result.notifications.length > 0) {
+      const notifData = result.notifications.map((n: any) => n.toJSON ? n.toJSON() : n);
+      result.notifications = await translateArrayFields(notifData, ["title", "message"], lang);
+    }
+
     return sendResponse(res, result, t("msg.notificationsRetrieved", lang));
   } catch (error: any) {
     return sendError(res, error.message);

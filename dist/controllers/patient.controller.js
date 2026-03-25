@@ -401,6 +401,11 @@ const getPatientNotifications = async (req, res) => {
             severity: severity,
         });
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
+        // Translate notification titles and messages for Hindi
+        if (lang === "hi" && result.notifications.length > 0) {
+            const notifData = result.notifications.map((n) => n.toJSON ? n.toJSON() : n);
+            result.notifications = await (0, translations_1.translateArrayFields)(notifData, ["title", "message"], lang);
+        }
         return (0, response_1.sendResponse)(res, result, (0, translations_1.t)("msg.notificationsRetrieved", lang));
     }
     catch (error) {

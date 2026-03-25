@@ -6,7 +6,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { twilioService } from "../service/twilio.service";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
 import { notificationService } from "../service/notification.service";
-import { t, translateReminderType, translateReminderStatus, getPatientLanguage } from "../utils/translations";
+import { t, translateReminderType, translateReminderStatus, getPatientLanguage, translateArrayFields } from "../utils/translations";
 
 /**
  * POST /api/v1/clinic/create-reminder
@@ -149,7 +149,7 @@ export const getPatientReminders = async (
 
         const lang = await getPatientLanguage(patientId);
 
-        const translatedReminders = reminders.map((r) => {
+        let translatedReminders = reminders.map((r) => {
             const data = r.toJSON();
             return {
                 ...data,
@@ -157,6 +157,11 @@ export const getPatientReminders = async (
                 statusLabel: translateReminderStatus(data.status, lang),
             };
         });
+
+        // Translate dynamic message content for Hindi
+        if (lang === "hi") {
+            translatedReminders = await translateArrayFields(translatedReminders, ["message"], lang);
+        }
 
         res.status(200).json({
             success: true,

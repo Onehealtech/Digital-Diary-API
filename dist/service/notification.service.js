@@ -125,6 +125,10 @@ class NotificationService {
             fcmToken = patient.fcmToken || null;
             patientName = patient.fullName || "";
             patientPhone = patient.phone || null;
+            // Auto-use patient's language preference if not explicitly set
+            if (!data.language) {
+                data.language = patient.language || "en";
+            }
         }
         else {
             const staff = await Appuser_1.AppUser.findByPk(data.recipientId);
@@ -194,7 +198,7 @@ class NotificationService {
         // Get all matching patients with all needed attributes in a single query
         const patients = await Patient_1.Patient.findAll({
             where: whereClause,
-            attributes: ["id", "fullName", "fcmToken", "phone"],
+            attributes: ["id", "fullName", "fcmToken", "phone", "language"],
         });
         if (patients.length === 0) {
             throw new Error("No patients found matching the filters");
@@ -207,8 +211,9 @@ class NotificationService {
                 // Build personalized greeting for this specific patient
                 let finalMessage = data.message;
                 const patientName = patient.fullName || "";
+                const patientLang = (patient.language || data.language || "en");
                 if (patientName) {
-                    const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+                    const greeting = await this.buildGreeting(data.senderId, patientName, patientLang);
                     if (greeting) {
                         finalMessage = `${greeting}\n\n${data.message}`;
                     }

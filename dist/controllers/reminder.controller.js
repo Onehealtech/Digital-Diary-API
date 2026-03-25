@@ -131,7 +131,7 @@ const getPatientReminders = async (req, res) => {
             ],
         });
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
-        const translatedReminders = reminders.map((r) => {
+        let translatedReminders = reminders.map((r) => {
             const data = r.toJSON();
             return {
                 ...data,
@@ -139,6 +139,10 @@ const getPatientReminders = async (req, res) => {
                 statusLabel: (0, translations_1.translateReminderStatus)(data.status, lang),
             };
         });
+        // Translate dynamic message content for Hindi
+        if (lang === "hi") {
+            translatedReminders = await (0, translations_1.translateArrayFields)(translatedReminders, ["message"], lang);
+        }
         res.status(200).json({
             success: true,
             message: (0, translations_1.t)("msg.remindersRetrieved", lang),
