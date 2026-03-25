@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Patient } from "../models/Patient";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { generateOTP, verifyOTP } from "../service/otpService";
+import { t, translateStatus, translateCaseType, SupportedLanguage } from "../utils/translations";
 
 /**
  * POST /api/v1/patient/request-edit-otp
@@ -40,9 +41,11 @@ export const requestEditOTP = async (
         console.log(`📱 OTP for ${patient.phone}: ${otp}`);
         console.log(`⚠️  For testing, use hardcoded OTP: 1234`);
 
+        const lang = (patient.language || "en") as SupportedLanguage;
+
         res.status(200).json({
             success: true,
-            message: "OTP sent to your registered mobile number",
+            message: t("msg.otpSent", lang),
             data: {
                 phone: patient.phone.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2"), // Mask phone
             },
@@ -66,7 +69,7 @@ export const updateProfile = async (
 ): Promise<void> => {
     try {
         const patientId = req.user!.id;
-        const { fullName, age, gender, phone } = req.body;
+        const { fullName, age, gender, phone, language } = req.body;
 
         // if (!otp) {
         //     res.status(400).json({
@@ -104,12 +107,15 @@ export const updateProfile = async (
         if (age) patient.age = age;
         if (gender) patient.gender = gender;
         if (phone) patient.phone = phone;
+        if (language) patient.language = language;
 
         await patient.save();
 
+        const lang = (patient.language || "en") as SupportedLanguage;
+
         res.status(200).json({
             success: true,
-            message: "Profile updated successfully",
+            message: t("msg.profileUpdated", lang),
             data: {
                 id: patient.id,
                 diaryId: patient.diaryId,
@@ -117,8 +123,11 @@ export const updateProfile = async (
                 age: patient.age,
                 gender: patient.gender,
                 phone: patient.phone,
+                language: patient.language,
                 caseType: patient.caseType,
+                caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
                 status: patient.status,
+                statusLabel: translateStatus(patient.status, lang),
             },
         });
     } catch (error: any) {
@@ -149,6 +158,7 @@ export const getProfile = async (
                 "age",
                 "gender",
                 "phone",
+                "language",
                 "caseType",
                 "status",
                 "createdAt",
@@ -164,10 +174,17 @@ export const getProfile = async (
             return;
         }
 
+        const lang = (patient.language || "en") as SupportedLanguage;
+        const patientData = patient.toJSON();
+
         res.status(200).json({
             success: true,
-            message: "Profile retrieved successfully",
-            data: patient,
+            message: t("msg.profileRetrieved", lang),
+            data: {
+                ...patientData,
+                statusLabel: translateStatus(patient.status, lang),
+                caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
+            },
         });
     } catch (error: any) {
         console.error("Get profile error:", error);

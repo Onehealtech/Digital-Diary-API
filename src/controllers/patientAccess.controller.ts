@@ -6,6 +6,7 @@ import { responseMiddleware } from "../utils/response";
 import { HTTP_STATUS } from "../utils/constants";
 import { AppError } from "../utils/AppError";
 import * as patientAccessService from "../service/patientAccess.service";
+import { t, getPatientLanguage } from "../utils/translations";
 
 /**
  * GET /api/v1/patient/access-info
@@ -15,8 +16,9 @@ import * as patientAccessService from "../service/patientAccess.service";
 export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const patientId = (req.user as { id: string }).id;
+    const lang = await getPatientLanguage(patientId);
     const result = await patientAccessService.getPatientAccessInfo(patientId);
-    responseMiddleware(res, HTTP_STATUS.OK, "Access info fetched successfully", result);
+    responseMiddleware(res, HTTP_STATUS.OK, t("msg.accessInfoFetched", lang), result);
   } catch (error: unknown) {
     if (error instanceof AppError) {
       responseMiddleware(res, error.statusCode, error.message);
@@ -34,8 +36,10 @@ export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): P
  */
 export const getDiaryCatalog = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    const patientId = (req.user as { id: string }).id;
+    const lang = await getPatientLanguage(patientId);
     const result = patientAccessService.getDiaryModuleCatalog();
-    responseMiddleware(res, HTTP_STATUS.OK, "Diary catalog fetched successfully", result);
+    responseMiddleware(res, HTTP_STATUS.OK, t("msg.catalogFetched", lang), result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to fetch catalog";
     responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, message);

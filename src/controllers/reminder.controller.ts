@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { twilioService } from "../service/twilio.service";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
 import { notificationService } from "../service/notification.service";
+import { t, translateReminderType, translateReminderStatus, getPatientLanguage } from "../utils/translations";
 
 /**
  * POST /api/v1/clinic/create-reminder
@@ -146,12 +147,23 @@ export const getPatientReminders = async (
             ],
         });
 
+        const lang = await getPatientLanguage(patientId);
+
+        const translatedReminders = reminders.map((r) => {
+            const data = r.toJSON();
+            return {
+                ...data,
+                typeLabel: translateReminderType(data.type, lang),
+                statusLabel: translateReminderStatus(data.status, lang),
+            };
+        });
+
         res.status(200).json({
             success: true,
-            message: "Reminders retrieved successfully",
+            message: t("msg.remindersRetrieved", lang),
             data: {
-                reminders,
-                total: reminders.length,
+                reminders: translatedReminders,
+                total: translatedReminders.length,
             },
         });
     } catch (error: any) {
@@ -228,12 +240,15 @@ export const markReminderAsRead = async (
         reminder.status = "READ";
         await reminder.save();
 
+        const lang = await getPatientLanguage(patientId);
+
         res.status(200).json({
             success: true,
-            message: "Reminder marked as read",
+            message: t("msg.reminderMarkedRead", lang),
             data: {
                 id: reminder.id,
                 status: reminder.status,
+                statusLabel: translateReminderStatus(reminder.status, lang),
             },
         });
     } catch (error: any) {
@@ -391,9 +406,12 @@ export const respondToReminder = async (
             }
         }
 
+        const lang = await getPatientLanguage(patientId);
+        const msgKey = status === "ACCEPTED" ? "msg.reminderAccepted" : "msg.reminderRejected";
+
         res.status(200).json({
             success: true,
-            message: `Reminder ${status.toLowerCase()} successfully`,
+            message: t(msgKey, lang),
             data: reminder,
         });
 
