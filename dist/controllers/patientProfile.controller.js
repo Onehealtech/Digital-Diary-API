@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProfile = exports.updateProfile = exports.requestEditOTP = void 0;
 const Patient_1 = require("../models/Patient");
+const Appuser_1 = require("../models/Appuser");
 const otpService_1 = require("../service/otpService");
 const translations_1 = require("../utils/translations");
 /**
@@ -97,22 +98,29 @@ const updateProfile = async (req, res) => {
             patient.language = language;
         await patient.save();
         const lang = (patient.language || "en");
+        // Build response with translated labels
+        let responseData = {
+            id: patient.id,
+            diaryId: patient.diaryId,
+            fullName: patient.fullName,
+            age: patient.age,
+            gender: patient.gender,
+            genderLabel: (0, translations_1.t)(`gender.${patient.gender}`, lang),
+            phone: patient.phone,
+            language: patient.language,
+            caseType: patient.caseType,
+            caseTypeLabel: patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null,
+            status: patient.status,
+            statusLabel: (0, translations_1.translateStatus)(patient.status, lang),
+        };
+        // Translate dynamic fields (fullName, etc.) for Hindi
+        if (lang === "hi") {
+            responseData = await (0, translations_1.translateFields)(responseData, ["fullName"], lang);
+        }
         res.status(200).json({
             success: true,
             message: (0, translations_1.t)("msg.profileUpdated", lang),
-            data: {
-                id: patient.id,
-                diaryId: patient.diaryId,
-                fullName: patient.fullName,
-                age: patient.age,
-                gender: patient.gender,
-                phone: patient.phone,
-                language: patient.language,
-                caseType: patient.caseType,
-                caseTypeLabel: patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null,
-                status: patient.status,
-                statusLabel: (0, translations_1.translateStatus)(patient.status, lang),
-            },
+            data: responseData,
         });
     }
     catch (error) {
@@ -142,6 +150,10 @@ const getProfile = async (req, res) => {
                 "language",
                 "caseType",
                 "status",
+                "doctorId",
+                "stage",
+                "treatmentPlan",
+                "address",
                 "createdAt",
                 "updatedAt",
             ],
@@ -155,14 +167,42 @@ const getProfile = async (req, res) => {
         }
         const lang = (patient.language || "en");
         const patientData = patient.toJSON();
+        // Add static translated labels
+        patientData.statusLabel = (0, translations_1.translateStatus)(patient.status, lang);
+        patientData.caseTypeLabel = patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null;
+        patientData.genderLabel = patient.gender ? (0, translations_1.t)(`gender.${patient.gender}`, lang) : null;
+        // Fetch doctor info
+        if (patient.doctorId) {
+            const doctor = await Appuser_1.AppUser.findByPk(patient.doctorId, {
+                attributes: ["id", "fullName", "specialization", "hospital"],
+            });
+            if (doctor) {
+                patientData.doctor = {
+                    id: doctor.id,
+                    fullName: doctor.fullName,
+                    specialization: doctor.specialization || null,
+                    hospital: doctor.hospital || null,
+                };
+            }
+        }
+        // Translate dynamic text fields for Hindi
+        if (lang === "hi") {
+            const fieldsToTranslate = [
+                "fullName",
+                "address",
+                "stage",
+                "treatmentPlan",
+                "doctor.fullName",
+                "doctor.specialization",
+                "doctor.hospital",
+            ];
+            const translated = await (0, translations_1.translateFields)(patientData, fieldsToTranslate, lang);
+            Object.assign(patientData, translated);
+        }
         res.status(200).json({
             success: true,
             message: (0, translations_1.t)("msg.profileRetrieved", lang),
-            data: {
-                ...patientData,
-                statusLabel: (0, translations_1.translateStatus)(patient.status, lang),
-                caseTypeLabel: patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null,
-            },
+            data: patientData,
         });
     }
     catch (error) {

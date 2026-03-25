@@ -1,8 +1,12 @@
 import { Response } from "express";
 import { Patient } from "../models/Patient";
+import { AppUser } from "../models/Appuser";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { generateOTP, verifyOTP } from "../service/otpService";
-import { t, translateStatus, translateCaseType, SupportedLanguage } from "../utils/translations";
+import {
+    t, translateStatus, translateCaseType, translateFields,
+    SupportedLanguage,
+} from "../utils/translations";
 
 /**
  * POST /api/v1/patient/request-edit-otp
@@ -113,22 +117,31 @@ export const updateProfile = async (
 
         const lang = (patient.language || "en") as SupportedLanguage;
 
+        // Build response with translated labels
+        let responseData: any = {
+            id: patient.id,
+            diaryId: patient.diaryId,
+            fullName: patient.fullName,
+            age: patient.age,
+            gender: patient.gender,
+            genderLabel: t(`gender.${patient.gender}`, lang),
+            phone: patient.phone,
+            language: patient.language,
+            caseType: patient.caseType,
+            caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
+            status: patient.status,
+            statusLabel: translateStatus(patient.status, lang),
+        };
+
+        // Translate dynamic fields (fullName, etc.) for Hindi
+        if (lang === "hi") {
+            responseData = await translateFields(responseData, ["fullName"], lang);
+        }
+
         res.status(200).json({
             success: true,
             message: t("msg.profileUpdated", lang),
-            data: {
-                id: patient.id,
-                diaryId: patient.diaryId,
-                fullName: patient.fullName,
-                age: patient.age,
-                gender: patient.gender,
-                phone: patient.phone,
-                language: patient.language,
-                caseType: patient.caseType,
-                caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
-                status: patient.status,
-                statusLabel: translateStatus(patient.status, lang),
-            },
+            data: responseData,
         });
     } catch (error: any) {
         console.error("Update profile error:", error);
@@ -161,6 +174,10 @@ export const getProfile = async (
                 "language",
                 "caseType",
                 "status",
+                "doctorId",
+                "stage",
+                "treatmentPlan",
+                "address",
                 "createdAt",
                 "updatedAt",
             ],
@@ -175,16 +192,47 @@ export const getProfile = async (
         }
 
         const lang = (patient.language || "en") as SupportedLanguage;
-        const patientData = patient.toJSON();
+        const patientData = patient.toJSON() as any;
+
+        // Add static translated labels
+        patientData.statusLabel = translateStatus(patient.status, lang);
+        patientData.caseTypeLabel = patient.caseType ? translateCaseType(patient.caseType, lang) : null;
+        patientData.genderLabel = patient.gender ? t(`gender.${patient.gender}`, lang) : null;
+
+        // Fetch doctor info
+        if (patient.doctorId) {
+            const doctor = await AppUser.findByPk(patient.doctorId, {
+                attributes: ["id", "fullName", "specialization", "hospital"],
+            });
+            if (doctor) {
+                patientData.doctor = {
+                    id: doctor.id,
+                    fullName: doctor.fullName,
+                    specialization: doctor.specialization || null,
+                    hospital: doctor.hospital || null,
+                };
+            }
+        }
+
+        // Translate dynamic text fields for Hindi
+        if (lang === "hi") {
+            const fieldsToTranslate = [
+                "fullName",
+                "address",
+                "stage",
+                "treatmentPlan",
+                "doctor.fullName",
+                "doctor.specialization",
+                "doctor.hospital",
+            ];
+            const translated = await translateFields(patientData, fieldsToTranslate, lang);
+            Object.assign(patientData, translated);
+        }
 
         res.status(200).json({
             success: true,
             message: t("msg.profileRetrieved", lang),
-            data: {
-                ...patientData,
-                statusLabel: translateStatus(patient.status, lang),
-                caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
-            },
+            data: patientData,
         });
     } catch (error: any) {
         console.error("Get profile error:", error);

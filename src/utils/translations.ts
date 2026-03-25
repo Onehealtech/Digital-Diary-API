@@ -135,3 +135,163 @@ export async function getPatientLanguage(patientId: string): Promise<SupportedLa
   const patient = await Patient.findByPk(patientId, { attributes: ["language"] });
   return (patient?.language as SupportedLanguage) || "en";
 }
+
+// ── Dynamic translation via Google Translate API ─────────────────
+
+/**
+ * Lazy-loaded google-translate-api-x module.
+ * Caches the import so we only do the dynamic ESM import once.
+ */
+let _translateFn: ((text: string, opts: { to: string }) => Promise<{ text: string }>) | null = null;
+
+async function getTranslateFn() {
+  if (!_translateFn) {
+    const { default: translate } = await (Function(
+      'return import("google-translate-api-x")'
+    )() as Promise<any>);
+    _translateFn = translate;
+  }
+  return _translateFn!;
+}
+
+/**
+ * Translate a single text string to the target language using Google Translate.
+ * Returns original text on failure.
+ */
+export async function translateText(
+  text: string,
+  targetLang: SupportedLanguage = "hi"
+): Promise<string> {
+  if (!text || targetLang === "en") return text;
+  try {
+    const translate = await getTranslateFn();
+    const result = await translate(text, { to: targetLang });
+    return result.text;
+  } catch (err) {
+    console.error("Translation error:", err);
+    return text;
+  }
+}
+
+/**
+ * Batch-translate multiple strings in one call for efficiency.
+ * Returns translations in the same order as input.
+ */
+export async function translateBatch(
+  texts: string[],
+  targetLang: SupportedLanguage = "hi"
+): Promise<string[]> {
+  if (targetLang === "en" || texts.length === 0) return texts;
+
+  // Filter out empty strings, translate non-empty ones
+  const nonEmpty = texts.map((txt, i) => ({ txt, i })).filter((x) => x.txt && x.txt.trim());
+  if (nonEmpty.length === 0) return texts;
+
+  try {
+    const translate = await getTranslateFn();
+    const results = await Promise.all(
+      nonEmpty.map((x) => translate(x.txt, { to: targetLang }))
+    );
+
+    const output = [...texts];
+    nonEmpty.forEach((x, idx) => {
+      output[x.i] = results[idx].text;
+    });
+    return output;
+  } catch (err) {
+    console.error("Batch translation error:", err);
+    return texts;
+  }
+}
+
+/**
+ * Translate specified fields of an object using Google Translate.
+ * Only translates when language is "hi". Fields not found are skipped.
+ *
+ * @example
+ *   const data = { fullName: "Dr. Sharma", message: "Hello", id: "abc" };
+ *   const translated = await translateFields(data, ["fullName", "message"], "hi");
+ *   // { fullName: "डॉ. शर्मा", message: "नमस्ते", id: "abc" }
+ */
+export async function translateFields<T extends Record<string, any>>(
+  obj: T,
+  fields: string[],
+  lang: SupportedLanguage
+): Promise<T> {
+  if (lang === "en" || !obj) return obj;
+
+  const values: string[] = [];
+  const validFields: string[] = [];
+
+  for (const field of fields) {
+    const val = getNestedValue(obj, field);
+    if (typeof val === "string" && val.trim()) {
+      values.push(val);
+      validFields.push(field);
+    }
+  }
+
+  if (values.length === 0) return obj;
+
+  const translated = await translateBatch(values, lang);
+  const result = { ...obj };
+
+  validFields.forEach((field, i) => {
+    setNestedValue(result, field, translated[i]);
+  });
+
+  return result;
+}
+
+/**
+ * Translate specified fields across an array of objects.
+ * Batches all translations into minimal API calls for efficiency.
+ */
+export async function translateArrayFields<T extends Record<string, any>>(
+  arr: T[],
+  fields: string[],
+  lang: SupportedLanguage
+): Promise<T[]> {
+  if (lang === "en" || arr.length === 0) return arr;
+
+  // Collect all values to translate with their positions
+  const allValues: string[] = [];
+  const mapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
+
+  for (let arrIdx = 0; arrIdx < arr.length; arrIdx++) {
+    for (const field of fields) {
+      const val = getNestedValue(arr[arrIdx], field);
+      if (typeof val === "string" && val.trim()) {
+        mapping.push({ arrIdx, field, batchIdx: allValues.length });
+        allValues.push(val);
+      }
+    }
+  }
+
+  if (allValues.length === 0) return arr;
+
+  const translated = await translateBatch(allValues, lang);
+  const result = arr.map((item) => ({ ...item }));
+
+  for (const m of mapping) {
+    setNestedValue(result[m.arrIdx], m.field, translated[m.batchIdx]);
+  }
+
+  return result;
+}
+
+// ── Nested field helpers ─────────────────────────────────────────
+
+function getNestedValue(obj: any, path: string): any {
+  return path.split(".").reduce((o, key) => o?.[key], obj);
+}
+
+function setNestedValue(obj: any, path: string, value: any): void {
+  const keys = path.split(".");
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!current[keys[i]]) return;
+    current = current[keys[i]];
+  }
+  current[keys[keys.length - 1]] = value;
+}

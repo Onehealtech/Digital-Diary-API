@@ -40,7 +40,26 @@ const getAccessInfo = async (req, res) => {
         const patientId = req.user.id;
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
         const result = await patientAccessService.getPatientAccessInfo(patientId);
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.accessInfoFetched", lang), result);
+        // Add static translated labels
+        const data = { ...result };
+        data.patient = {
+            ...data.patient,
+            statusLabel: (0, translations_1.translateStatus)(data.patient.status, lang),
+            caseTypeLabel: data.patient.caseType ? (0, translations_1.translateCaseType)(data.patient.caseType, lang) : null,
+        };
+        // Translate dynamic text fields for Hindi
+        if (lang === "hi") {
+            const translated = await (0, translations_1.translateFields)(data, [
+                "patient.fullName",
+                "doctor.fullName",
+                "doctor.specialization",
+                "doctor.hospital",
+                "diaryModule.moduleName",
+                "subscription.planName",
+            ], lang);
+            Object.assign(data, translated);
+        }
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.accessInfoFetched", lang), data);
     }
     catch (error) {
         if (error instanceof AppError_1.AppError) {
@@ -62,7 +81,13 @@ const getDiaryCatalog = async (req, res) => {
         const patientId = req.user.id;
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
         const result = patientAccessService.getDiaryModuleCatalog();
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.catalogFetched", lang), result);
+        let data = { ...result };
+        // Translate module and bundle names for Hindi
+        if (lang === "hi") {
+            data.modules = await (0, translations_1.translateArrayFields)(data.modules, ["moduleName"], lang);
+            data.bundles = await (0, translations_1.translateArrayFields)(data.bundles, ["bundleName"], lang);
+        }
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.catalogFetched", lang), data);
     }
     catch (error) {
         const message = error instanceof Error ? error.message : "Failed to fetch catalog";
