@@ -7,6 +7,7 @@ const Appuser_1 = require("../models/Appuser");
 const twilio_service_1 = require("../service/twilio.service");
 const emailService_1 = require("../service/emailService");
 const notification_service_1 = require("../service/notification.service");
+const translations_1 = require("../utils/translations");
 /**
  * POST /api/v1/clinic/create-reminder
  * Doctor or Assistant creates a reminder for a patient
@@ -129,12 +130,21 @@ const getPatientReminders = async (req, res) => {
                 "createdAt",
             ],
         });
+        const lang = await (0, translations_1.getPatientLanguage)(patientId);
+        const translatedReminders = reminders.map((r) => {
+            const data = r.toJSON();
+            return {
+                ...data,
+                typeLabel: (0, translations_1.translateReminderType)(data.type, lang),
+                statusLabel: (0, translations_1.translateReminderStatus)(data.status, lang),
+            };
+        });
         res.status(200).json({
             success: true,
-            message: "Reminders retrieved successfully",
+            message: (0, translations_1.t)("msg.remindersRetrieved", lang),
             data: {
-                reminders,
-                total: reminders.length,
+                reminders: translatedReminders,
+                total: translatedReminders.length,
             },
         });
     }
@@ -198,12 +208,14 @@ const markReminderAsRead = async (req, res) => {
         }
         reminder.status = "READ";
         await reminder.save();
+        const lang = await (0, translations_1.getPatientLanguage)(patientId);
         res.status(200).json({
             success: true,
-            message: "Reminder marked as read",
+            message: (0, translations_1.t)("msg.reminderMarkedRead", lang),
             data: {
                 id: reminder.id,
                 status: reminder.status,
+                statusLabel: (0, translations_1.translateReminderStatus)(reminder.status, lang),
             },
         });
     }
@@ -329,9 +341,11 @@ const respondToReminder = async (req, res) => {
                 }
             }
         }
+        const lang = await (0, translations_1.getPatientLanguage)(patientId);
+        const msgKey = status === "ACCEPTED" ? "msg.reminderAccepted" : "msg.reminderRejected";
         res.status(200).json({
             success: true,
-            message: `Reminder ${status.toLowerCase()} successfully`,
+            message: (0, translations_1.t)(msgKey, lang),
             data: reminder,
         });
     }

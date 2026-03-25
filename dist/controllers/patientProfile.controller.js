@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProfile = exports.updateProfile = exports.requestEditOTP = void 0;
 const Patient_1 = require("../models/Patient");
 const otpService_1 = require("../service/otpService");
+const translations_1 = require("../utils/translations");
 /**
  * POST /api/v1/patient/request-edit-otp
  * Request OTP to edit patient profile
@@ -31,9 +32,10 @@ const requestEditOTP = async (req, res) => {
         // For MVP: Log OTP to console (in production, send via SMS)
         console.log(`📱 OTP for ${patient.phone}: ${otp}`);
         console.log(`⚠️  For testing, use hardcoded OTP: 1234`);
+        const lang = (patient.language || "en");
         res.status(200).json({
             success: true,
-            message: "OTP sent to your registered mobile number",
+            message: (0, translations_1.t)("msg.otpSent", lang),
             data: {
                 phone: patient.phone.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2"), // Mask phone
             },
@@ -55,7 +57,7 @@ exports.requestEditOTP = requestEditOTP;
 const updateProfile = async (req, res) => {
     try {
         const patientId = req.user.id;
-        const { fullName, age, gender, phone } = req.body;
+        const { fullName, age, gender, phone, language } = req.body;
         // if (!otp) {
         //     res.status(400).json({
         //         success: false,
@@ -91,10 +93,13 @@ const updateProfile = async (req, res) => {
             patient.gender = gender;
         if (phone)
             patient.phone = phone;
+        if (language)
+            patient.language = language;
         await patient.save();
+        const lang = (patient.language || "en");
         res.status(200).json({
             success: true,
-            message: "Profile updated successfully",
+            message: (0, translations_1.t)("msg.profileUpdated", lang),
             data: {
                 id: patient.id,
                 diaryId: patient.diaryId,
@@ -102,8 +107,11 @@ const updateProfile = async (req, res) => {
                 age: patient.age,
                 gender: patient.gender,
                 phone: patient.phone,
+                language: patient.language,
                 caseType: patient.caseType,
+                caseTypeLabel: patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null,
                 status: patient.status,
+                statusLabel: (0, translations_1.translateStatus)(patient.status, lang),
             },
         });
     }
@@ -131,6 +139,7 @@ const getProfile = async (req, res) => {
                 "age",
                 "gender",
                 "phone",
+                "language",
                 "caseType",
                 "status",
                 "createdAt",
@@ -144,10 +153,16 @@ const getProfile = async (req, res) => {
             });
             return;
         }
+        const lang = (patient.language || "en");
+        const patientData = patient.toJSON();
         res.status(200).json({
             success: true,
-            message: "Profile retrieved successfully",
-            data: patient,
+            message: (0, translations_1.t)("msg.profileRetrieved", lang),
+            data: {
+                ...patientData,
+                statusLabel: (0, translations_1.translateStatus)(patient.status, lang),
+                caseTypeLabel: patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null,
+            },
         });
     }
     catch (error) {
