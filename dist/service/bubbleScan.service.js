@@ -557,10 +557,11 @@ class BubbleScanService {
                 };
             }
         }
-        await scan.update({
-            scanResults: existingResults,
-            doctorReviewed: false, // Reset review since answers changed
-        });
+        // Spread to create a new reference so Sequelize detects JSONB change
+        scan.scanResults = { ...existingResults };
+        scan.doctorReviewed = false; // Reset review since answers changed
+        scan.changed('scanResults', true);
+        await scan.save();
         // Sync corrected answers to ScanLog
         if (scan.pageNumber) {
             const scanLogPageId = `backend_page_${scan.pageNumber}`;
