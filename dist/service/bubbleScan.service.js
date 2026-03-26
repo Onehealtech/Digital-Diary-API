@@ -15,6 +15,7 @@ const DiaryPage_1 = require("../models/DiaryPage");
 const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const sequelize_1 = require("sequelize");
 const constants_1 = require("../utils/constants");
+const AppError_1 = require("../utils/AppError");
 const pythonPath = path_1.default.join(__dirname, "../../python/venv/bin/python3");
 class BubbleScanService {
     constructor() {
@@ -521,6 +522,70 @@ class BubbleScanService {
                 totalPages: Math.ceil(count / limit),
             },
         };
+    }
+    /**
+     * Edit a scan entry's answers.
+     * Only scan-type submissions (submissionType: "scan") can be edited by the patient.
+     * Updates scanResults with the new answers and marks it as edited.
+     */
+    async editScanEntry(scanId, patientId, answers) {
+        const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+        if (!scan) {
+            throw new AppError_1.AppError(404, "Scan entry not found");
+        }
+        if (scan.submissionType !== "scan") {
+            throw new AppError_1.AppError(400, "Only scan entries can be edited. Manual entries should be resubmitted.");
+        }
+        if (scan.processingStatus !== "completed") {
+            throw new AppError_1.AppError(400, "Can only edit completed scan entries");
+        }
+        // Merge new answers into existing scanResults
+        const existingResults = (scan.scanResults || {});
+        for (const [qId, answer] of Object.entries(answers)) {
+            if (existingResults[qId]) {
+                existingResults[qId].answer = answer;
+                existingResults[qId].confidence = 1.0; // Patient-corrected = full confidence
+                existingResults[qId].editedByPatient = true;
+            }
+            else {
+                existingResults[qId] = {
+                    answer,
+                    confidence: 1.0,
+                    editedByPatient: true,
+                };
+            }
+        }
+        await scan.update({
+            scanResults: existingResults,
+            doctorReviewed: false, // Reset review since answers changed
+        });
+        // Sync corrected answers to ScanLog
+        if (scan.pageNumber) {
+            const scanLogPageId = `backend_page_${scan.pageNumber}`;
+            const scanData = {};
+            for (const [qId, qResult] of Object.entries(existingResults)) {
+                const r = qResult;
+                scanData[qId] = r.answer;
+                if (r.questionText) {
+                    scanData[`${qId}_text`] = r.questionText;
+                }
+            }
+            const existingScanLog = await ScanLog_1.ScanLog.findOne({
+                where: { patientId, pageId: scanLogPageId },
+            });
+            if (existingScanLog) {
+                await existingScanLog.update({
+                    scanData,
+                    scannedAt: new Date(),
+                    isUpdated: true,
+                    updatedCount: existingScanLog.updatedCount + 1,
+                    doctorReviewed: false,
+                });
+            }
+        }
+        return scan;
     }
 }
 exports.bubbleScanService = new BubbleScanService();

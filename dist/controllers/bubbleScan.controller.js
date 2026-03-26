@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllBubbleScans = exports.reviewBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
+exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
 const bubbleScan_service_1 = require("../service/bubbleScan.service");
 const visionScan_service_1 = require("../modules/visionScan/visionScan.service");
 const response_1 = require("../utils/response");
@@ -150,6 +150,36 @@ const retryBubbleScan = async (req, res) => {
     }
 };
 exports.retryBubbleScan = retryBubbleScan;
+/**
+ * PUT /api/v1/bubble-scan/:id/edit
+ * Patient edits a scan entry's answers (only submissionType: "scan" allowed)
+ */
+const editBubbleScan = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const scanId = req.params.id;
+        const { answers } = req.body;
+        if (!answers || typeof answers !== "object") {
+            (0, response_1.sendError)(res, 400, "answers (object) is required");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.editScanEntry(scanId, patientId, answers);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "SCAN_ENTRY_EDITED",
+            details: { scanId, editedFields: Object.keys(answers) },
+        });
+        (0, response_1.sendResponse)(res, 200, "Scan entry updated successfully", result);
+    }
+    catch (error) {
+        console.error("Edit scan entry error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to edit scan entry");
+    }
+};
+exports.editBubbleScan = editBubbleScan;
 /**
  * PUT /api/v1/bubble-scan/:id/review
  * Doctor reviews and optionally overrides bubble scan results
