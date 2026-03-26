@@ -133,9 +133,9 @@ export const updateProfile = async (
             statusLabel: translateStatus(patient.status, lang),
         };
 
-        // Translate dynamic fields (fullName, etc.) for Hindi
+        // Transliterate name for Hindi (phonetic script conversion)
         if (lang === "hi") {
-            responseData = await translateFields(responseData, ["fullName"], lang);
+            responseData = await translateFields(responseData, [], lang, ["fullName"]);
         }
 
         res.status(200).json({
@@ -216,16 +216,12 @@ export const getProfile = async (
 
         // Translate dynamic text fields for Hindi
         if (lang === "hi") {
-            const fieldsToTranslate = [
-                "fullName",
-                "address",
-                "stage",
-                "treatmentPlan",
-                "doctor.fullName",
-                "doctor.specialization",
-                "doctor.hospital",
-            ];
-            const translated = await translateFields(patientData, fieldsToTranslate, lang);
+            const translated = await translateFields(
+                patientData,
+                ["address", "stage", "treatmentPlan", "doctor.specialization", "doctor.hospital"],
+                lang,
+                ["fullName", "doctor.fullName"]  // names → transliterate (phonetic)
+            );
             Object.assign(patientData, translated);
         }
 

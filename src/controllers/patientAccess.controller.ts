@@ -32,14 +32,12 @@ export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): P
 
     // Translate dynamic text fields for Hindi
     if (lang === "hi") {
-      const translated = await translateFields(data, [
-        "patient.fullName",
-        "doctor.fullName",
-        "doctor.specialization",
-        "doctor.hospital",
-        "diaryModule.moduleName",
-        "subscription.planName",
-      ], lang);
+      const translated = await translateFields(
+        data,
+        ["doctor.specialization", "doctor.hospital", "diaryModule.moduleName", "subscription.planName"],
+        lang,
+        ["patient.fullName", "doctor.fullName"]  // names → transliterate (phonetic)
+      );
       Object.assign(data, translated);
     }
 

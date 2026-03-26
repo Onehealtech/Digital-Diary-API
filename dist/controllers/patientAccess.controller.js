@@ -49,14 +49,8 @@ const getAccessInfo = async (req, res) => {
         };
         // Translate dynamic text fields for Hindi
         if (lang === "hi") {
-            const translated = await (0, translations_1.translateFields)(data, [
-                "patient.fullName",
-                "doctor.fullName",
-                "doctor.specialization",
-                "doctor.hospital",
-                "diaryModule.moduleName",
-                "subscription.planName",
-            ], lang);
+            const translated = await (0, translations_1.translateFields)(data, ["doctor.specialization", "doctor.hospital", "diaryModule.moduleName", "subscription.planName"], lang, ["patient.fullName", "doctor.fullName"] // names → transliterate (phonetic)
+            );
             Object.assign(data, translated);
         }
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.accessInfoFetched", lang), data);

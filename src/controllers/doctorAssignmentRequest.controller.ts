@@ -6,6 +6,7 @@ import { HTTP_STATUS } from "../utils/constants";
 import { responseMiddleware } from "../utils/response";
 import { logActivity } from "../utils/activityLogger";
 import * as requestService from "../service/doctorAssignmentRequest.service";
+import { getPatientLanguage, translateArrayFields } from "../utils/translations";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────
 
@@ -43,13 +44,29 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response): P
 
 /**
  * GET /api/v1/doctor-requests/my-requests
- * Patient views their own requests
+ * Patient views their own requests — translates doctor names for Hindi patients
  */
 export const getMyRequests = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const patientId = req.user ? (req.user as { id: string }).id : null;
     const requests = await requestService.getRequestsForPatient(patientId);
-    responseMiddleware(res, HTTP_STATUS.OK, "Requests fetched", requests);
+
+    let data = requests.map((r: any) => (r.toJSON ? r.toJSON() : r));
+
+    // Translate doctor names, specialization, hospital for Hindi patients
+    if (patientId) {
+      const lang = await getPatientLanguage(patientId);
+      if (lang === "hi") {
+        data = await translateArrayFields(
+          data,
+          ["AppUser.specialization", "AppUser.hospital", "AppUser.location"],
+          lang,
+          ["AppUser.fullName"]  // names → transliterate (phonetic)
+        );
+      }
+    }
+
+    responseMiddleware(res, HTTP_STATUS.OK, "Requests fetched", data);
   } catch (error: unknown) {
     if (error instanceof AppError) {
       responseMiddleware(res, error.statusCode, error.message);
