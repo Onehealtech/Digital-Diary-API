@@ -8,6 +8,7 @@ const sequelize_1 = require("sequelize");
 const fcm_service_1 = require("./fcm.service");
 const notification_repository_1 = require("../repositories/notification.repository");
 const twilio_service_1 = require("./twilio.service");
+const translations_1 = require("../utils/translations");
 class NotificationService {
     /**
      * Get all notifications for a user
@@ -78,9 +79,29 @@ class NotificationService {
         });
         if (!sender)
             return "";
-        let greeting = "";
+        if (language === "hi") {
+            // Transliterate names to Hindi script (phonetic), then build Hindi greeting
+            const [hiPatient, hiSender] = await Promise.all([
+                (0, translations_1.transliterateName)(patientName, "hi"),
+                (0, translations_1.transliterateName)(sender.fullName, "hi"),
+            ]);
+            if (sender.role === "ASSISTANT") {
+                let hiDoctor = "आपके डॉक्टर";
+                if (sender.parentId) {
+                    const doctor = await Appuser_1.AppUser.findByPk(sender.parentId, {
+                        attributes: ["id", "fullName"],
+                    });
+                    if (doctor?.fullName) {
+                        const translitDoc = await (0, translations_1.transliterateName)(doctor.fullName, "hi");
+                        hiDoctor = `डॉ. ${translitDoc}`;
+                    }
+                }
+                return `नमस्ते ${hiPatient}, मैं ${hiSender}, ${hiDoctor} की सहायक हूँ।`;
+            }
+            return `नमस्ते ${hiPatient}, मैं डॉ. ${hiSender} हूँ।`;
+        }
+        // English greeting
         if (sender.role === "ASSISTANT") {
-            // Look up parent doctor name
             let doctorName = "your Doctor";
             if (sender.parentId) {
                 const doctor = await Appuser_1.AppUser.findByPk(sender.parentId, {
@@ -89,24 +110,9 @@ class NotificationService {
                 if (doctor?.fullName)
                     doctorName = `Dr. ${doctor.fullName}`;
             }
-            greeting = `Hello ${patientName}, this is ${sender.fullName}, assistant to ${doctorName}.`;
+            return `Hello ${patientName}, this is ${sender.fullName}, assistant to ${doctorName}.`;
         }
-        else {
-            greeting = `Hello ${patientName}, this is Dr. ${sender.fullName}.`;
-        }
-        // Translate greeting to Hindi if needed
-        if (language === "hi") {
-            try {
-                const { default: translate } = await Function('return import("google-translate-api-x")')();
-                const result = await translate(greeting, { to: "hi" });
-                greeting = result.text;
-            }
-            catch (err) {
-                console.error("Greeting translation error:", err);
-                // Fall back to English greeting
-            }
-        }
-        return greeting;
+        return `Hello ${patientName}, this is Dr. ${sender.fullName}.`;
     }
     /**
      * Create single notification for an individual patient or staff member.
