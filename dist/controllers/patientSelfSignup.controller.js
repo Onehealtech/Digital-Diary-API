@@ -29,6 +29,7 @@ const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
 const response_1 = require("../utils/response");
 const signupService = __importStar(require("../service/patientSelfSignup.service"));
+const translations_1 = require("../utils/translations");
 // ── Zod Schemas ──────────────────────────────────────────────────────────
 const sendOtpSchema = zod_1.z.object({
     phone: zod_1.z.string().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
@@ -122,7 +123,13 @@ const listDoctors = async (req, res) => {
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
         const search = req.query.search || undefined;
+        const lang = (req.user?.language || "en");
         const result = await signupService.listAvailableDoctors({ page, limit, search });
+        // Translate doctor info for Hindi (?lang=hi)
+        if (lang === "hi") {
+            result.doctors = await (0, translations_1.translateArrayFields)(result.doctors, ["specialization", "hospital", "location", "address", "city", "state"], lang, ["fullName"] // names → transliterate (phonetic)
+            );
+        }
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Doctors fetched", result);
     }
     catch (error) {
