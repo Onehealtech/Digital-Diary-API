@@ -8,7 +8,6 @@ const notification_service_1 = require("../service/notification.service");
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
 const activityLogger_1 = require("../utils/activityLogger");
-const translations_1 = require("../utils/translations");
 const createPatient = async (req, res) => {
     try {
         let vendorId = req.user.id; // from auth middleware
@@ -400,13 +399,11 @@ const getPatientNotifications = async (req, res) => {
             read: read === "true" ? true : read === "false" ? false : undefined,
             severity: severity,
         });
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
-        // Translate notification titles and messages for Hindi
-        if (lang === "hi" && result.notifications.length > 0) {
-            const notifData = result.notifications.map((n) => n.toJSON ? n.toJSON() : n);
-            result.notifications = await (0, translations_1.translateArrayFields)(notifData, ["title", "message"], lang);
+        // Convert Sequelize instances to plain objects so middleware can translate
+        if (result.notifications.length > 0) {
+            result.notifications = result.notifications.map((n) => n.toJSON ? n.toJSON() : n);
         }
-        return (0, response_1.sendResponse)(res, result, (0, translations_1.t)("msg.notificationsRetrieved", lang));
+        return (0, response_1.sendResponse)(res, result, "Notifications retrieved");
     }
     catch (error) {
         return (0, response_1.sendError)(res, error.message);
@@ -424,8 +421,7 @@ const getPatientNotificationStats = async (req, res) => {
             return (0, response_1.sendError)(res, "Unauthorized", 401);
         }
         const stats = await notification_service_1.notificationService.getNotificationStats(patientId, "patient");
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
-        return (0, response_1.sendResponse)(res, stats, (0, translations_1.t)("msg.notificationsRetrieved", lang));
+        return (0, response_1.sendResponse)(res, stats, "Notifications retrieved");
     }
     catch (error) {
         return (0, response_1.sendError)(res, error.message);
@@ -444,8 +440,7 @@ const markPatientNotificationAsRead = async (req, res) => {
             return (0, response_1.sendError)(res, "Unauthorized", 401);
         }
         const notification = await notification_service_1.notificationService.markAsRead(notificationId, patientId);
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
-        return (0, response_1.sendResponse)(res, notification, (0, translations_1.t)("msg.notificationMarkedRead", lang));
+        return (0, response_1.sendResponse)(res, notification, "Notification marked as read");
     }
     catch (error) {
         return (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 500);
@@ -463,8 +458,7 @@ const markAllPatientNotificationsAsRead = async (req, res) => {
             return (0, response_1.sendError)(res, "Unauthorized", 401);
         }
         const result = await notification_service_1.notificationService.markAllAsRead(patientId, "patient");
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
-        return (0, response_1.sendResponse)(res, result, (0, translations_1.t)("msg.allNotificationsRead", lang));
+        return (0, response_1.sendResponse)(res, result, "All notifications marked as read");
     }
     catch (error) {
         return (0, response_1.sendError)(res, error.message);

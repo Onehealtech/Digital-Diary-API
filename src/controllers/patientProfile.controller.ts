@@ -3,10 +3,6 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { generateOTP, verifyOTP } from "../service/otpService";
-import {
-    t, translateStatus, translateCaseType, translateFields,
-    SupportedLanguage,
-} from "../utils/translations";
 
 /**
  * POST /api/v1/patient/request-edit-otp
@@ -19,14 +15,10 @@ export const requestEditOTP = async (
     try {
         const patientId = req.user!.id;
 
-        // Get patient details
         const patient = await Patient.findByPk(patientId);
 
         if (!patient) {
-            res.status(404).json({
-                success: false,
-                message: "Patient not found",
-            });
+            res.status(404).json({ success: false, message: "Patient not found" });
             return;
         }
 
@@ -38,28 +30,21 @@ export const requestEditOTP = async (
             return;
         }
 
-        // Generate OTP (using phone as key)
         const otp = generateOTP(patient.phone);
 
-        // For MVP: Log OTP to console (in production, send via SMS)
         console.log(`📱 OTP for ${patient.phone}: ${otp}`);
         console.log(`⚠️  For testing, use hardcoded OTP: 1234`);
 
-        const lang = (patient.language || "en") as SupportedLanguage;
-
         res.status(200).json({
             success: true,
-            message: t("msg.otpSent", lang),
+            message: "OTP sent to your registered mobile number",
             data: {
-                phone: patient.phone.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2"), // Mask phone
+                phone: patient.phone.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2"),
             },
         });
     } catch (error: any) {
         console.error("Request edit OTP error:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Failed to send OTP",
-        });
+        res.status(500).json({ success: false, message: error.message || "Failed to send OTP" });
     }
 };
 
@@ -75,38 +60,13 @@ export const updateProfile = async (
         const patientId = req.user!.id;
         const { fullName, age, gender, phone, language } = req.body;
 
-        // if (!otp) {
-        //     res.status(400).json({
-        //         success: false,
-        //         message: "OTP is required",
-        //     });
-        //     return;
-        // }
-
-        // Get patient details
         const patient = await Patient.findByPk(patientId);
 
         if (!patient) {
-            res.status(404).json({
-                success: false,
-                message: "Patient not found",
-            });
+            res.status(404).json({ success: false, message: "Patient not found" });
             return;
         }
 
-        // For MVP: Accept hardcoded OTP "1234" OR verify generated OTP
-        // const isValidOTP =
-        //     otp === "1234" || verifyOTP(patient.phone || "", otp);
-
-        // if (!isValidOTP) {
-        //     res.status(401).json({
-        //         success: false,
-        //         message: "Invalid or expired OTP",
-        //     });
-        //     return;
-        // }
-
-        // Update patient details
         if (fullName) patient.fullName = fullName;
         if (age) patient.age = age;
         if (gender) patient.gender = gender;
@@ -115,40 +75,24 @@ export const updateProfile = async (
 
         await patient.save();
 
-        const lang = (patient.language || "en") as SupportedLanguage;
-
-        // Build response with translated labels
-        let responseData: any = {
-            id: patient.id,
-            diaryId: patient.diaryId,
-            fullName: patient.fullName,
-            age: patient.age,
-            gender: patient.gender,
-            genderLabel: t(`gender.${patient.gender}`, lang),
-            phone: patient.phone,
-            language: patient.language,
-            caseType: patient.caseType,
-            caseTypeLabel: patient.caseType ? translateCaseType(patient.caseType, lang) : null,
-            status: patient.status,
-            statusLabel: translateStatus(patient.status, lang),
-        };
-
-        // Transliterate name for Hindi (phonetic script conversion)
-        if (lang === "hi") {
-            responseData = await translateFields(responseData, [], lang, ["fullName"]);
-        }
-
         res.status(200).json({
             success: true,
-            message: t("msg.profileUpdated", lang),
-            data: responseData,
+            message: "Profile updated successfully",
+            data: {
+                id: patient.id,
+                diaryId: patient.diaryId,
+                fullName: patient.fullName,
+                age: patient.age,
+                gender: patient.gender,
+                phone: patient.phone,
+                language: patient.language,
+                caseType: patient.caseType,
+                status: patient.status,
+            },
         });
     } catch (error: any) {
         console.error("Update profile error:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Failed to update profile",
-        });
+        res.status(500).json({ success: false, message: error.message || "Failed to update profile" });
     }
 };
 
@@ -165,39 +109,19 @@ export const getProfile = async (
 
         const patient = await Patient.findByPk(patientId, {
             attributes: [
-                "id",
-                "diaryId",
-                "fullName",
-                "age",
-                "gender",
-                "phone",
-                "language",
-                "caseType",
-                "status",
-                "doctorId",
-                "stage",
-                "treatmentPlan",
-                "address",
-                "createdAt",
-                "updatedAt",
+                "id", "diaryId", "fullName", "age", "gender", "phone",
+                "language", "caseType", "status", "doctorId",
+                "stage", "treatmentPlan", "address",
+                "createdAt", "updatedAt",
             ],
         });
 
         if (!patient) {
-            res.status(404).json({
-                success: false,
-                message: "Patient not found",
-            });
+            res.status(404).json({ success: false, message: "Patient not found" });
             return;
         }
 
-        const lang = (patient.language || "en") as SupportedLanguage;
         const patientData = patient.toJSON() as any;
-
-        // Add static translated labels
-        patientData.statusLabel = translateStatus(patient.status, lang);
-        patientData.caseTypeLabel = patient.caseType ? translateCaseType(patient.caseType, lang) : null;
-        patientData.genderLabel = patient.gender ? t(`gender.${patient.gender}`, lang) : null;
 
         // Fetch doctor info
         if (patient.doctorId) {
@@ -214,27 +138,54 @@ export const getProfile = async (
             }
         }
 
-        // Translate dynamic text fields for Hindi
-        if (lang === "hi") {
-            const translated = await translateFields(
-                patientData,
-                ["address", "stage", "treatmentPlan", "doctor.specialization", "doctor.hospital"],
-                lang,
-                ["fullName", "doctor.fullName"]  // names → transliterate (phonetic)
-            );
-            Object.assign(patientData, translated);
-        }
-
         res.status(200).json({
             success: true,
-            message: t("msg.profileRetrieved", lang),
+            message: "Profile retrieved successfully",
             data: patientData,
         });
     } catch (error: any) {
         console.error("Get profile error:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Failed to retrieve profile",
+        res.status(500).json({ success: false, message: error.message || "Failed to retrieve profile" });
+    }
+};
+
+/**
+ * PATCH /api/v1/patient/language
+ * Update patient language preference
+ */
+export const updateLanguage = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const { language } = req.body;
+
+        if (!language || !["en", "hi"].includes(language)) {
+            res.status(400).json({
+                success: false,
+                message: "Invalid language. Supported: en, hi",
+            });
+            return;
+        }
+
+        const patient = await Patient.findByPk(patientId);
+
+        if (!patient) {
+            res.status(404).json({ success: false, message: "Patient not found" });
+            return;
+        }
+
+        patient.language = language;
+        await patient.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Language updated successfully",
+            data: { language: patient.language },
         });
+    } catch (error: any) {
+        console.error("Update language error:", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to update language" });
     }
 };

@@ -29,31 +29,16 @@ const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
 const AppError_1 = require("../utils/AppError");
 const patientAccessService = __importStar(require("../service/patientAccess.service"));
-const translations_1 = require("../utils/translations");
 /**
  * GET /api/v1/patient/access-info
  * Returns the patient's access level, diary module, features, and validity.
- * Used by the mobile app to render correct UI based on all_access vs limited_access.
+ * Translation is handled by the translateResponse middleware.
  */
 const getAccessInfo = async (req, res) => {
     try {
         const patientId = req.user.id;
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
         const result = await patientAccessService.getPatientAccessInfo(patientId);
-        // Add static translated labels
-        const data = { ...result };
-        data.patient = {
-            ...data.patient,
-            statusLabel: (0, translations_1.translateStatus)(data.patient.status, lang),
-            caseTypeLabel: data.patient.caseType ? (0, translations_1.translateCaseType)(data.patient.caseType, lang) : null,
-        };
-        // Translate dynamic text fields for Hindi
-        if (lang === "hi") {
-            const translated = await (0, translations_1.translateFields)(data, ["doctor.specialization", "doctor.hospital", "diaryModule.moduleName", "subscription.planName"], lang, ["patient.fullName", "doctor.fullName"] // names → transliterate (phonetic)
-            );
-            Object.assign(data, translated);
-        }
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.accessInfoFetched", lang), data);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Access info fetched successfully", result);
     }
     catch (error) {
         if (error instanceof AppError_1.AppError) {
@@ -68,20 +53,12 @@ exports.getAccessInfo = getAccessInfo;
 /**
  * GET /api/v1/patient/diary-catalog
  * Returns all available diary modules and bundle packs with pricing.
- * Public-facing for the store/catalog screen.
+ * Translation is handled by the translateResponse middleware.
  */
 const getDiaryCatalog = async (req, res) => {
     try {
-        const patientId = req.user.id;
-        const lang = await (0, translations_1.getPatientLanguage)(patientId);
         const result = patientAccessService.getDiaryModuleCatalog();
-        let data = { ...result };
-        // Translate module and bundle names for Hindi
-        if (lang === "hi") {
-            data.modules = await (0, translations_1.translateArrayFields)(data.modules, ["moduleName"], lang);
-            data.bundles = await (0, translations_1.translateArrayFields)(data.bundles, ["bundleName"], lang);
-        }
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, (0, translations_1.t)("msg.catalogFetched", lang), data);
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Diary catalog fetched successfully", result);
     }
     catch (error) {
         const message = error instanceof Error ? error.message : "Failed to fetch catalog";

@@ -30,7 +30,6 @@ const constants_1 = require("../utils/constants");
 const response_1 = require("../utils/response");
 const activityLogger_1 = require("../utils/activityLogger");
 const requestService = __importStar(require("../service/doctorAssignmentRequest.service"));
-const translations_1 = require("../utils/translations");
 // ── Zod Schemas ──────────────────────────────────────────────────────────
 const createRequestSchema = zod_1.z.object({
     doctorId: zod_1.z.string().uuid("Invalid doctor ID"),
@@ -68,15 +67,7 @@ const getMyRequests = async (req, res) => {
     try {
         const patientId = req.user ? req.user.id : null;
         const requests = await requestService.getRequestsForPatient(patientId);
-        let data = requests.map((r) => (r.toJSON ? r.toJSON() : r));
-        // Translate doctor names, specialization, hospital for Hindi patients
-        if (patientId) {
-            const lang = await (0, translations_1.getPatientLanguage)(patientId);
-            if (lang === "hi") {
-                data = await (0, translations_1.translateArrayFields)(data, ["AppUser.specialization", "AppUser.hospital", "AppUser.location"], lang, ["AppUser.fullName"] // names → transliterate (phonetic)
-                );
-            }
-        }
+        const data = requests.map((r) => (r.toJSON ? r.toJSON() : r));
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Requests fetched", data);
     }
     catch (error) {
