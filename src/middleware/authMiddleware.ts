@@ -143,7 +143,7 @@ export const patientAuthCheck = async (
 
     // Check if patient is still active in DB (force logout for deactivated patients)
     const patient = await Patient.findByPk(decoded.id, {
-      attributes: ["id", "status"],
+      attributes: ["id", "status", "language"],
     });
 
     if (!patient || patient.status === "INACTIVE") {
@@ -151,13 +151,14 @@ export const patientAuthCheck = async (
       return;
     }
 
-    // Attach patient info to request
+    // Attach patient info to request (including language for translation middleware)
     req.user = {
       id: decoded.id,
       diaryId: decoded.diaryId,
       fullName: decoded.fullName,
       caseType: decoded.caseType,
       type: decoded.type,
+      language: patient.language || "en",
     } as any;
 
     next();

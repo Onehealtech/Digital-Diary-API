@@ -101,19 +101,20 @@ const patientAuthCheck = async (req, res, next) => {
         }
         // Check if patient is still active in DB (force logout for deactivated patients)
         const patient = await Patient_1.Patient.findByPk(decoded.id, {
-            attributes: ["id", "status"],
+            attributes: ["id", "status", "language"],
         });
         if (!patient || patient.status === "INACTIVE") {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, "Your account has been deactivated. Please contact your doctor.");
             return;
         }
-        // Attach patient info to request
+        // Attach patient info to request (including language for translation middleware)
         req.user = {
             id: decoded.id,
             diaryId: decoded.diaryId,
             fullName: decoded.fullName,
             caseType: decoded.caseType,
             type: decoded.type,
+            language: patient.language || "en",
         };
         next();
     }

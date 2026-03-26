@@ -2,7 +2,6 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { Patient } from "../models/Patient";
 import { AppError } from "../utils/AppError";
-import { t, getPatientLanguage } from "../utils/translations";
 
 const MAX_ONBOARDING_VIEWS = 5;
 
@@ -30,11 +29,10 @@ export const getOnboardingStatus = async (req: AuthenticatedRequest, res: Respon
     }
 
     const viewCount = patient.onboardingViewCount ?? 0;
-    const lang = await getPatientLanguage(patientId!);
 
     res.status(200).json({
       success: true,
-      message: t("msg.onboardingStatus", lang),
+      message: "Onboarding status fetched",
       data: {
         showOnboarding: viewCount < MAX_ONBOARDING_VIEWS,
         viewCount,
@@ -77,13 +75,10 @@ export const recordOnboardingView = async (req: AuthenticatedRequest, res: Respo
 
     const currentCount = patient.onboardingViewCount ?? 0;
 
-    const lang = await getPatientLanguage(patientId!);
-
-    // Already reached max — no need to increment
     if (currentCount >= MAX_ONBOARDING_VIEWS) {
       res.status(200).json({
         success: true,
-        message: t("msg.onboardingCompleted", lang),
+        message: "Onboarding already completed",
         data: {
           showOnboarding: false,
           viewCount: currentCount,
@@ -99,7 +94,7 @@ export const recordOnboardingView = async (req: AuthenticatedRequest, res: Respo
 
     res.status(200).json({
       success: true,
-      message: t("msg.onboardingViewed", lang),
+      message: "Onboarding view recorded",
       data: {
         showOnboarding: newCount < MAX_ONBOARDING_VIEWS,
         viewCount: newCount,
