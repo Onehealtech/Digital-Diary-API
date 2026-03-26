@@ -106,4 +106,11 @@ router.put(
   diaryController.rejectDiaryRequest.bind(diaryController)
 );
 
+// PUT /api/v1/diary-requests/:id/cancel - Cancel diary request (by requester)
+router.put(
+  "/diary-requests/:id/cancel",
+  authCheck([UserRole.VENDOR, UserRole.DOCTOR, UserRole.ASSISTANT]),
+  diaryController.cancelDiaryRequest.bind(diaryController)
+);
+
 export default router;

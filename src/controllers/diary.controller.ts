@@ -260,4 +260,17 @@ export class DiaryController {
       return sendError(res, 500, "Failed to reject diary request", error.message);
     }
   }
+
+  async cancelDiaryRequest(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user.id;
+
+      const request = await diaryService.cancelDiaryRequest(id, userId);
+
+      return sendResponse(res, 200, "Diary request cancelled", request);
+    } catch (error: any) {
+      return sendError(res, error.message?.includes("not found") ? 404 : 400, error.message || "Failed to cancel diary request");
+    }
+  }
 }

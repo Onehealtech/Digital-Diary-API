@@ -605,4 +605,27 @@ async getAllSoldDiaries(params: {
 
     return request;
   }
+
+  async cancelDiaryRequest(requestId: string, userId: string) {
+    const request = await DiaryRequest.findByPk(requestId);
+
+    if (!request) {
+      throw new Error("Request not found");
+    }
+
+    // Only the requester can cancel their own request
+    const requesterId = request.requesterId || request.vendorId;
+    if (requesterId !== userId) {
+      throw new Error("You can only cancel your own requests");
+    }
+
+    if (request.status !== "pending") {
+      throw new Error("Only pending requests can be cancelled");
+    }
+
+    request.status = "cancelled";
+    await request.save();
+
+    return request;
+  }
 }

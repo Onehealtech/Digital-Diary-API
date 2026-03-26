@@ -2,12 +2,16 @@ import { z } from "zod";
 
 const phoneSchema = z
   .string()
-  .regex(/^\d{10}$/, "Phone must be exactly 10 digits")
+  .min(10, "Phone must be at least 10 digits")
+  .max(13, "Phone must be 13 characters or less")
+  .regex(/^\d{10,13}$/, "Phone must be 10–13 digits")
   .optional();
 
 const requiredPhoneSchema = z
   .string({ required_error: "Phone is required" })
-  .regex(/^\d{10}$/, "Phone must be exactly 10 digits");
+  .min(10, "Phone must be at least 10 digits")
+  .max(13, "Phone must be 13 characters or less")
+  .regex(/^\d{10,13}$/, "Phone must be 10–13 digits");
 
 const landLineSchema = z
   .string()
@@ -29,8 +33,9 @@ const landLineSchema = z
 
 const emailSchema = z
   .string({ required_error: "Email is required" })
+  .min(5, "Email must be at least 5 characters")
+  .max(254, "Email must be 254 characters or less")
   .email("Enter a valid email address")
-  .max(150, "Email must be 150 characters or less")
   .transform((v) => v.toLowerCase().trim());
 
 const nameSchema = z
@@ -55,9 +60,9 @@ export const createStaffSchema = z.object({
     required_error: "Role is required",
     invalid_type_error: "Invalid role",
   }),
-  hospital: z.string().max(100).optional().transform(v => v?.trim() || undefined),
-  specialization: z.string().max(100).optional().transform(v => v?.trim() || undefined),
-  license: z.string().max(30).optional().transform(v => v?.trim() || undefined),
+  hospital: z.string().max(100, "Hospital must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  specialization: z.string().max(100, "Specialization must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  license: z.string().max(50, "License must be 50 characters or less").optional().transform(v => v?.trim() || undefined),
   GST: z
     .string()
     .regex(
@@ -65,9 +70,9 @@ export const createStaffSchema = z.object({
       "Invalid GST format"
     )
     .optional(),
-  address: z.string().max(500, "Address must be 500 characters or less").optional().transform(v => v?.trim() || undefined),
-  city: z.string().max(100, "City must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
-  state: z.string().max(100, "State must be 100 characters or less").optional().transform(v => v?.trim() || undefined),
+  address: z.string().max(255, "Address must be 255 characters or less").optional().transform(v => v?.trim() || undefined),
+  city: z.string().max(50, "City must be 50 characters or less").regex(/^[A-Za-z\s]*$/, "City must contain only letters and spaces").optional().transform(v => v?.trim() || undefined),
+  state: z.string().max(50, "State must be 50 characters or less").regex(/^[A-Za-z\s]*$/, "State must contain only letters and spaces").optional().transform(v => v?.trim() || undefined),
   landLinePhone: landLineSchema,
   commissionType: z.any().transform((v) => {
     if (v === "FIXED" || v === "PERCENTAGE") return v as "FIXED" | "PERCENTAGE";

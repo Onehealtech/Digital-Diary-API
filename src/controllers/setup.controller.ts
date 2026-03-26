@@ -1,6 +1,14 @@
 import { Request, Response } from "express";
 import { AppUser } from "../models/Appuser";
 import bcrypt from "bcrypt";
+import { z } from "zod";
+
+const superAdminSchema = z.object({
+    fullName: z.string().min(1, "Full name is required").max(100, "Name must be 100 characters or less"),
+    email: z.string().min(5, "Email must be at least 5 characters").max(254, "Email must be 254 characters or less").email("Invalid email format"),
+    phone: z.string().min(10, "Phone must be at least 10 digits").max(13, "Phone must be 13 characters or less").optional().or(z.literal("")),
+    password: z.string().min(8, "Password must be at least 8 characters").max(20, "Password must be 20 characters or less"),
+});
 
 /**
  * POST /api/v1/auth/signup-super-admin
@@ -12,15 +20,15 @@ export const signupSuperAdmin = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { fullName, email, password,phone } = req.body;
-
-        if (!fullName || !email || !password ) {
+        const parsed = superAdminSchema.safeParse(req.body);
+        if (!parsed.success) {
             res.status(400).json({
                 success: false,
-                message: "Full name, email, and password are required",
+                message: parsed.error.issues[0].message,
             });
             return;
         }
+        const { fullName, email, password, phone } = parsed.data;
 
         // Check if Super Admin already exists
         const existingSuperAdmin = await AppUser.findOne({

@@ -133,6 +133,7 @@ class PatientService {
             "gender",
             "stage",
             "treatmentPlan",
+            "language",
         ];
         const updateData = {};
         for (const key of allowedUpdates) {

@@ -170,6 +170,13 @@ export class Patient extends Model {
   })
   registrationSource!: "VENDOR_ASSIGNED" | "SELF_SIGNUP";
 
+  @Column({
+    type: DataType.ENUM("en", "hi"),
+    defaultValue: "en",
+    allowNull: false,
+  })
+  language!: "en" | "hi";
+
   // 🔗 Foreign Key → Doctor (nullable for self-signup patients awaiting doctor acceptance)
   @ForeignKey(() => AppUser)
   @Column({
