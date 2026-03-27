@@ -238,7 +238,7 @@ async getVendorDoctors(
   }
 
   /**
-   * Get all assistants
+   * Get all assistants (includes isActive for Super Admin status toggle)
    */
   async getAllAssistants(filters: StaffFilters = {}, doctorId?: string) {
     const { page = 1, limit = 20, search } = filters;
@@ -267,8 +267,10 @@ async getVendorDoctors(
         "fullName",
         "email",
         "phone",
+        "landLinePhone",
         "parentId",
         "permissions",
+        "isActive",
         "assistantStatus",
         "patientAccessMode",
         "assignedPatientIds",
