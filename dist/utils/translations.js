@@ -27,7 +27,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.translateArrayFields = exports.translateFields = exports.translateBatch = exports.translateText = exports.getPatientLanguage = exports.translateReminderStatus = exports.translateReminderType = exports.translateCaseType = exports.translateStatus = exports.t = void 0;
+exports.translateArrayFields = exports.translateFields = exports.translateBatch = exports.translateText = exports.transliterateBatch = exports.transliterateName = exports.getPatientLanguage = exports.translateReminderStatus = exports.translateReminderType = exports.translateCaseType = exports.translateStatus = exports.t = void 0;
 const translations = {
     // ── Patient Status ─────────────────────────────────────────────
     "status.ACTIVE": { en: "Active", hi: "सक्रिय" },
@@ -151,6 +151,44 @@ async function getPatientLanguage(patientId) {
     return patient?.language || "en";
 }
 exports.getPatientLanguage = getPatientLanguage;
+// ── Transliteration (phonetic script conversion) ─────────────────
+/**
+ * Transliterate a name to the target language script (phonetic conversion).
+ * Uses Google Translate with a transliteration hint.
+ * Returns original text on failure.
+ */
+async function transliterateName(name, targetLang = "hi") {
+    if (!name || targetLang === "en")
+        return name;
+    try {
+        const translate = await getTranslateFn();
+        const result = await translate(name, { to: targetLang });
+        return result.text;
+    }
+    catch (err) {
+        console.error("Transliteration error:", err);
+        return name;
+    }
+}
+exports.transliterateName = transliterateName;
+/**
+ * Batch-transliterate multiple name strings.
+ * Returns transliterations in the same order as input.
+ */
+async function transliterateBatch(texts, targetLang = "hi") {
+    if (targetLang === "en" || texts.length === 0)
+        return texts;
+    try {
+        const translate = await getTranslateFn();
+        const results = await Promise.all(texts.map((txt) => (txt && txt.trim() ? translate(txt, { to: targetLang }) : Promise.resolve({ text: txt }))));
+        return results.map((r) => r.text);
+    }
+    catch (err) {
+        console.error("Batch transliteration error:", err);
+        return texts;
+    }
+}
+exports.transliterateBatch = transliterateBatch;
 // ── Dynamic translation via Google Translate API ─────────────────
 /**
  * Lazy-loaded google-translate-api-x module.
@@ -243,12 +281,15 @@ exports.translateFields = translateFields;
  * Translate specified fields across an array of objects.
  * Batches all translations into minimal API calls for efficiency.
  */
-async function translateArrayFields(arr, fields, lang) {
+async function translateArrayFields(arr, fields, lang, transliterateFields) {
     if (lang === "en" || arr.length === 0)
         return arr;
     // Collect all values to translate with their positions
     const allValues = [];
     const mapping = [];
+    // Collect transliterate values separately
+    const allTranslitValues = [];
+    const translitMapping = [];
     for (let arrIdx = 0; arrIdx < arr.length; arrIdx++) {
         for (const field of fields) {
             const val = getNestedValue(arr[arrIdx], field);
@@ -257,13 +298,28 @@ async function translateArrayFields(arr, fields, lang) {
                 allValues.push(val);
             }
         }
+        if (transliterateFields) {
+            for (const field of transliterateFields) {
+                const val = getNestedValue(arr[arrIdx], field);
+                if (typeof val === "string" && val.trim()) {
+                    translitMapping.push({ arrIdx, field, batchIdx: allTranslitValues.length });
+                    allTranslitValues.push(val);
+                }
+            }
+        }
     }
-    if (allValues.length === 0)
+    if (allValues.length === 0 && allTranslitValues.length === 0)
         return arr;
-    const translated = await translateBatch(allValues, lang);
+    const [translated, transliterated] = await Promise.all([
+        allValues.length > 0 ? translateBatch(allValues, lang) : [],
+        allTranslitValues.length > 0 ? transliterateBatch(allTranslitValues, lang) : [],
+    ]);
     const result = arr.map((item) => ({ ...item }));
     for (const m of mapping) {
         setNestedValue(result[m.arrIdx], m.field, translated[m.batchIdx]);
+    }
+    for (const m of translitMapping) {
+        setNestedValue(result[m.arrIdx], m.field, transliterated[m.batchIdx]);
     }
     return result;
 }

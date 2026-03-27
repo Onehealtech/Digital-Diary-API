@@ -37,4 +37,6 @@ router.post("/diary-requests", (0, authMiddleware_1.authCheck)([constants_1.User
 router.put("/diary-requests/:id/approve", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.approveDiaryRequest.bind(diaryController));
 // PUT /api/v1/diary-requests/:id/reject - Reject diary request
 router.put("/diary-requests/:id/reject", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.rejectDiaryRequest.bind(diaryController));
+// PUT /api/v1/diary-requests/:id/cancel - Cancel diary request (by requester)
+router.put("/diary-requests/:id/cancel", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.cancelDiaryRequest.bind(diaryController));
 exports.default = router;

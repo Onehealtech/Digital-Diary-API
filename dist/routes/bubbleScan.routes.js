@@ -28,6 +28,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const permissionMiddleware_1 = require("../middleware/permissionMiddleware");
 const upload_middleware_1 = require("../middleware/upload.middleware");
 const constants_1 = require("../utils/constants");
 const bubbleScanController = __importStar(require("../controllers/bubbleScan.controller"));
@@ -50,6 +51,6 @@ router.post("/:id/retry", authMiddleware_1.patientAuthCheck, bubbleScanControlle
 // === Doctor/Assistant Routes ===
 // Get all bubble scans for doctor's patients
 router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getAllBubbleScans);
-// Doctor reviews and optionally overrides bubble scan results
-router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), bubbleScanController.reviewBubbleScan);
+// Doctor/Assistant reviews and optionally overrides bubble scan results
+router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('markReviewed'), bubbleScanController.reviewBubbleScan);
 exports.default = router;

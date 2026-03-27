@@ -151,6 +151,17 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ Patient deactivation migration warning:', err instanceof Error ? err.message : err);
         });
+        // Add 'cancelled' to diary_requests status enum
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        ALTER TYPE "enum_diary_requests_status" ADD VALUE IF NOT EXISTS 'cancelled';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ DiaryRequest cancelled enum migration warning:', err instanceof Error ? err.message : err);
+        });
         // Ensure app-users table has all model-defined columns
         await exports.sequelize.query(`
       DO $$

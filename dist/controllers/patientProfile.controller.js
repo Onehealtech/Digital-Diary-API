@@ -50,14 +50,6 @@ const updateProfile = async (req, res) => {
     try {
         const patientId = req.user.id;
         const { fullName, age, gender, phone, language } = req.body;
-        // if (!otp) {
-        //     res.status(400).json({
-        //         success: false,
-        //         message: "OTP is required",
-        //     });
-        //     return;
-        // }
-        // Get patient details
         const patient = await Patient_1.Patient.findByPk(patientId);
         if (!patient) {
             res.status(404).json({ success: false, message: "Patient not found" });

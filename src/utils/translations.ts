@@ -136,6 +136,50 @@ export async function getPatientLanguage(patientId: string): Promise<SupportedLa
   return (patient?.language as SupportedLanguage) || "en";
 }
 
+// ── Transliteration (phonetic script conversion) ─────────────────
+
+/**
+ * Transliterate a name to the target language script (phonetic conversion).
+ * Uses Google Translate with a transliteration hint.
+ * Returns original text on failure.
+ */
+export async function transliterateName(
+  name: string,
+  targetLang: SupportedLanguage = "hi"
+): Promise<string> {
+  if (!name || targetLang === "en") return name;
+  try {
+    const translate = await getTranslateFn();
+    const result = await translate(name, { to: targetLang });
+    return result.text;
+  } catch (err) {
+    console.error("Transliteration error:", err);
+    return name;
+  }
+}
+
+/**
+ * Batch-transliterate multiple name strings.
+ * Returns transliterations in the same order as input.
+ */
+export async function transliterateBatch(
+  texts: string[],
+  targetLang: SupportedLanguage = "hi"
+): Promise<string[]> {
+  if (targetLang === "en" || texts.length === 0) return texts;
+
+  try {
+    const translate = await getTranslateFn();
+    const results = await Promise.all(
+      texts.map((txt) => (txt && txt.trim() ? translate(txt, { to: targetLang }) : Promise.resolve({ text: txt })))
+    );
+    return results.map((r) => r.text);
+  } catch (err) {
+    console.error("Batch transliteration error:", err);
+    return texts;
+  }
+}
+
 // ── Dynamic translation via Google Translate API ─────────────────
 
 /**
@@ -250,13 +294,18 @@ export async function translateFields<T extends Record<string, any>>(
 export async function translateArrayFields<T extends Record<string, any>>(
   arr: T[],
   fields: string[],
-  lang: SupportedLanguage
+  lang: SupportedLanguage,
+  transliterateFields?: string[]
 ): Promise<T[]> {
   if (lang === "en" || arr.length === 0) return arr;
 
   // Collect all values to translate with their positions
   const allValues: string[] = [];
   const mapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
+
+  // Collect transliterate values separately
+  const allTranslitValues: string[] = [];
+  const translitMapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
 
   for (let arrIdx = 0; arrIdx < arr.length; arrIdx++) {
     for (const field of fields) {
@@ -266,15 +315,31 @@ export async function translateArrayFields<T extends Record<string, any>>(
         allValues.push(val);
       }
     }
+    if (transliterateFields) {
+      for (const field of transliterateFields) {
+        const val = getNestedValue(arr[arrIdx], field);
+        if (typeof val === "string" && val.trim()) {
+          translitMapping.push({ arrIdx, field, batchIdx: allTranslitValues.length });
+          allTranslitValues.push(val);
+        }
+      }
+    }
   }
 
-  if (allValues.length === 0) return arr;
+  if (allValues.length === 0 && allTranslitValues.length === 0) return arr;
 
-  const translated = await translateBatch(allValues, lang);
+  const [translated, transliterated] = await Promise.all([
+    allValues.length > 0 ? translateBatch(allValues, lang) : [],
+    allTranslitValues.length > 0 ? transliterateBatch(allTranslitValues, lang) : [],
+  ]);
+
   const result = arr.map((item) => ({ ...item }));
 
   for (const m of mapping) {
     setNestedValue(result[m.arrIdx], m.field, translated[m.batchIdx]);
+  }
+  for (const m of translitMapping) {
+    setNestedValue(result[m.arrIdx], m.field, transliterated[m.batchIdx]);
   }
 
   return result;

@@ -19,7 +19,7 @@ router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, co
 // Get diary entry by ID
 router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('viewPatients'), scan_controller_1.getDiaryEntryById);
 // Mark diary entry as reviewed
-router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), scan_controller_1.reviewDiaryEntry);
+router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('markReviewed'), scan_controller_1.reviewDiaryEntry);
 // Flag/unflag diary entry
 router.put("/:id/flag", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR]), scan_controller_1.toggleFlag);
 exports.default = router;

@@ -76,65 +76,45 @@ const createStaff = async (req, res) => {
                 await (0, wallet_service_1.createWallet)(newUser.id, walletType);
             }
         }
-        // ── Register on Cashfree if Doctor or Vendor ───────────────────
-        let cashfreeVendorId = null;
-        const needsCashfree = [constants_1.UserRole.DOCTOR, constants_1.UserRole.VENDOR].includes(role);
-        if (needsCashfree) {
-            try {
-                const cfResult = await (0, cashfree_vendor_service_1.createCashfreeVendor)({
-                    vendorId: newUser.id,
-                    name: fullName,
-                    email: email.toLowerCase(),
-                    phone,
-                    role,
-                    bank,
-                    upi,
-                });
-                cashfreeVendorId = cfResult.vendor_id;
-                // Save Cashfree vendor ID back to the user record
-                await newUser.update({ cashfreeVendorId });
-            }
-            catch (cfError) {
-                // Cashfree failed — user is created but not linked to Cashfree.
-                // We DON'T rollback user creation. SuperAdmin can retry linking later.
-                console.error(`Cashfree vendor registration failed for ${email}:`, cfError.message);
-                // Still send the password email
-                await (0, emailService_1.sendPasswordEmail)(email, plainPassword, role, fullName);
-                // Return success for user creation, with a separate warning for Cashfree
-                res.status(201).json({
-                    success: true,
-                    message: `${role} created successfully. Credentials sent to ${email}.`,
-                    data: {
-                        id: newUser.id,
-                        fullName: newUser.fullName,
-                        email: newUser.email,
-                        role: newUser.role,
-                        cashfreeVendorId: null,
-                        createdBy: req.user.id,
-                    },
-                    warnings: [
-                        {
-                            type: "CASHFREE_ONBOARDING_FAILED",
-                            message: "Cashfree vendor registration failed. Please retry onboarding from the user profile.",
-                            detail: cfError.message,
-                        },
-                    ],
-                });
-                return;
-            }
-        }
+        // ── Cashfree vendor registration (DISABLED — uncomment when needed) ──
+        // let cashfreeVendorId: string | null = null;
+        // const needsCashfree = [UserRole.DOCTOR, UserRole.VENDOR].includes(role as UserRole);
+        // if (needsCashfree) {
+        //     try {
+        //         const cfResult = await createCashfreeVendor({
+        //             vendorId: newUser.id,
+        //             name: fullName,
+        //             email: email.toLowerCase(),
+        //             phone,
+        //             role,
+        //             bank,
+        //             upi,
+        //         });
+        //         cashfreeVendorId = cfResult.vendor_id;
+        //         await newUser.update({ cashfreeVendorId });
+        //     } catch (cfError: any) {
+        //         console.error(`Cashfree vendor registration failed for ${email}:`, cfError.message);
+        //         await sendPasswordEmail(email, plainPassword, role, fullName);
+        //         res.status(201).json({
+        //             success: true,
+        //             message: `${role} created successfully. Credentials sent to ${email}.`,
+        //             data: { id: newUser.id, fullName: newUser.fullName, email: newUser.email, role: newUser.role, cashfreeVendorId: null, createdBy: req.user!.id },
+        //             warnings: [{ type: "CASHFREE_ONBOARDING_FAILED", message: "Cashfree vendor registration failed. Please retry onboarding from the user profile.", detail: cfError.message }],
+        //         });
+        //         return;
+        //     }
+        // }
         // ── Send password email ────────────────────────────────────────
         await (0, emailService_1.sendPasswordEmail)(email, plainPassword, role, fullName);
         // ── Success response ───────────────────────────────────────────
         res.status(201).json({
             success: true,
-            message: `${role} created successfully.${needsCashfree ? " Registered on Cashfree." : ""} Credentials sent to ${email}`,
+            message: `${role} created successfully. Credentials sent to ${email}`,
             data: {
                 id: newUser.id,
                 fullName: newUser.fullName,
                 email: newUser.email,
                 role: newUser.role,
-                cashfreeVendorId,
                 createdBy: req.user.id,
             },
         });

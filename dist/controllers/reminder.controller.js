@@ -4,6 +4,7 @@ exports.resendReminder = exports.respondToReminder = exports.getDashboardReminde
 const Reminder_1 = require("../models/Reminder");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
+const sequelize_1 = require("sequelize");
 const twilio_service_1 = require("../service/twilio.service");
 const emailService_1 = require("../service/emailService");
 const notification_service_1 = require("../service/notification.service");
@@ -242,11 +243,25 @@ const getDashboardReminders = async (req, res) => {
         const userRole = req.user.role;
         const parentId = req.user?.parentId;
         const { status, patientId } = req.query;
-        // Assistants see both their own and their doctor's reminders
-        const createdByIds = userRole === "ASSISTANT" && parentId
-            ? [userId, parentId]
-            : [userId];
-        const whereClause = { createdBy: createdByIds };
+        // Doctor sees own + all their assistants' reminders
+        // Assistant sees own + their doctor's reminders
+        let createdByIds = [userId];
+        if (userRole === "DOCTOR") {
+            // Find all assistants belonging to this doctor (include soft-deleted to catch all reminders)
+            const assistants = await Appuser_1.AppUser.findAll({
+                where: { parentId: userId, role: "ASSISTANT" },
+                attributes: ["id"],
+                raw: true,
+                paranoid: false, // Include soft-deleted assistants too
+            });
+            createdByIds = [userId, ...assistants.map((a) => a.id)];
+            console.log(`[Reminders] Doctor ${userId} — querying createdBy IDs:`, createdByIds);
+        }
+        else if (userRole === "ASSISTANT" && parentId) {
+            createdByIds = [userId, parentId];
+            console.log(`[Reminders] Assistant ${userId} — querying createdBy IDs:`, createdByIds);
+        }
+        const whereClause = { createdBy: { [sequelize_1.Op.in]: createdByIds } };
         // Filter by status if provided
         if (status && ["PENDING", "READ", "EXPIRED"].includes(status)) {
             whereClause.status = status;
