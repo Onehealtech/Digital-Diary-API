@@ -205,6 +205,42 @@ export const retryBubbleScan = async (
 };
 
 /**
+ * PUT /api/v1/bubble-scan/:id/edit
+ * Patient edits a scan entry's answers (only submissionType: "scan" allowed)
+ */
+export const editBubbleScan = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const scanId = req.params.id as string;
+        const { answers } = req.body;
+
+        if (!answers || typeof answers !== "object") {
+            sendError(res, 400, "answers (object) is required");
+            return;
+        }
+
+        const result = await bubbleScanService.editScanEntry(scanId, patientId, answers);
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "SCAN_ENTRY_EDITED",
+            details: { scanId, editedFields: Object.keys(answers) },
+        });
+
+        sendResponse(res, 200, "Scan entry updated successfully", result);
+    } catch (error: any) {
+        console.error("Edit scan entry error:", error);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to edit scan entry");
+    }
+};
+
+/**
  * PUT /api/v1/bubble-scan/:id/review
  * Doctor reviews and optionally overrides bubble scan results
  */

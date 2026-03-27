@@ -9,6 +9,7 @@ import { DiaryPage } from "../models/DiaryPage";
 import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
+import { AppError } from "../utils/AppError";
 const pythonPath = path.join(__dirname, "../../python/venv/bin/python3");
 
 
@@ -687,6 +688,83 @@ class BubbleScanService {
                 totalPages: Math.ceil(count / limit),
             },
         };
+    }
+    /**
+     * Edit a scan entry's answers.
+     * Only scan-type submissions (submissionType: "scan") can be edited by the patient.
+     * Updates scanResults with the new answers and marks it as edited.
+     */
+    async editScanEntry(
+        scanId: string,
+        patientId: string,
+        answers: Record<string, any>
+    ): Promise<BubbleScanResult> {
+        const scan = await BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+
+        if (!scan) {
+            throw new AppError(404, "Scan entry not found");
+        }
+
+        if (scan.submissionType !== "scan") {
+            throw new AppError(400, "Only scan entries can be edited. Manual entries should be resubmitted.");
+        }
+
+        if (scan.processingStatus !== "completed") {
+            throw new AppError(400, "Can only edit completed scan entries");
+        }
+
+        // Merge new answers into existing scanResults
+        const existingResults = (scan.scanResults || {}) as Record<string, any>;
+        for (const [qId, answer] of Object.entries(answers)) {
+            if (existingResults[qId]) {
+                existingResults[qId].answer = answer;
+                existingResults[qId].confidence = 1.0; // Patient-corrected = full confidence
+                existingResults[qId].editedByPatient = true;
+            } else {
+                existingResults[qId] = {
+                    answer,
+                    confidence: 1.0,
+                    editedByPatient: true,
+                };
+            }
+        }
+
+        // Spread to create a new reference so Sequelize detects JSONB change
+        scan.scanResults = { ...existingResults } as any;
+        scan.doctorReviewed = false; // Reset review since answers changed
+        scan.changed('scanResults', true);
+        await scan.save();
+
+        // Sync corrected answers to ScanLog
+        if (scan.pageNumber) {
+            const scanLogPageId = `backend_page_${scan.pageNumber}`;
+            const scanData: Record<string, any> = {};
+            for (const [qId, qResult] of Object.entries(existingResults)) {
+                const r = qResult as any;
+                scanData[qId] = r.answer;
+                if (r.questionText) {
+                    scanData[`${qId}_text`] = r.questionText;
+                }
+            }
+
+            const existingScanLog = await ScanLog.findOne({
+                where: { patientId, pageId: scanLogPageId },
+            });
+
+            if (existingScanLog) {
+                await existingScanLog.update({
+                    scanData,
+                    scannedAt: new Date(),
+                    isUpdated: true,
+                    updatedCount: existingScanLog.updatedCount + 1,
+                    doctorReviewed: false,
+                });
+            }
+        }
+
+        return scan;
     }
 }
 

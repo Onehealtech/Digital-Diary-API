@@ -34,6 +34,7 @@ const setupController = __importStar(require("../controllers/setup.controller"))
 const auth_controller_1 = require("../controllers/auth.controller");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const constants_1 = require("../utils/constants");
+const translateResponse_middleware_1 = require("../middleware/translateResponse.middleware");
 const router = express_1.default.Router();
 // ONE-TIME SETUP: Create first Super Admin (disable after use)
 router.post("/auth/signup-super-admin", setupController.signupSuperAdmin);
@@ -47,7 +48,7 @@ router.post("/patient/verify-otp", patientAuthController.verifyOTP);
 // Unified: send-otp handles both new and existing users; verify handles login + signup
 router.post("/patient/self-signup/send-otp", patientSelfSignupController.sendSignupOtp);
 router.post("/patient/self-signup/verify", patientSelfSignupController.verifySignupOtp);
-router.get("/patient/self-signup/doctors", patientSelfSignupController.listDoctors);
+router.get("/patient/self-signup/doctors", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), patientSelfSignupController.listDoctors);
 // Authentication Enhancements
 router.get("/auth/me", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.getCurrentUser);
 router.post("/auth/logout", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.logout);

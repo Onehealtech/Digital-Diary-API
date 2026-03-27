@@ -14,7 +14,7 @@ import {
 /**
  * GET /api/v1/patient/access-info
  * Returns the patient's access level, diary module, features, and validity.
- * Used by the mobile app to render correct UI based on all_access vs limited_access.
+ * Translation is handled by the translateResponse middleware.
  */
 export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -57,7 +57,7 @@ export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): P
 /**
  * GET /api/v1/patient/diary-catalog
  * Returns all available diary modules and bundle packs with pricing.
- * Public-facing for the store/catalog screen.
+ * Translation is handled by the translateResponse middleware.
  */
 export const getDiaryCatalog = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {

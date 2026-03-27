@@ -9,6 +9,7 @@ import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { AppError } from "../utils/AppError";
 import { twilioService } from "./twilio.service";
 import { sendDoctorRequestEmail } from "./emailService";
+import { transliterateName, SupportedLanguage } from "../utils/translations";
 
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
 
@@ -191,12 +192,23 @@ export async function acceptRequest(
       { where: { patientId: request.patientId, status: "PENDING", id: { [Op.ne]: requestId } }, transaction: t }
     );
 
-    // 5. Notify patient via SMS (fire-and-forget)
+    // 5. Notify patient via SMS (fire-and-forget) — translate for Hindi patients
     const doctor = await AppUser.findByPk(doctorId, { attributes: ["fullName", "specialization", "hospital"], transaction: t });
     if (patient.phone && doctor) {
-      const smsMessage = isDoctorChange
-        ? `Good news! Dr. ${doctor.fullName} has accepted your request. Your care has been transferred and all your diary history is now available to your new doctor. - Elvantia`
-        : `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`;
+      const patientLang = ((patient as any).language || "en") as SupportedLanguage;
+      let smsMessage: string;
+
+      if (patientLang === "hi") {
+        // Transliterate doctor name (phonetic), then build Hindi SMS
+        const hiDocName = await transliterateName(doctor.fullName, "hi");
+        smsMessage = isDoctorChange
+          ? `शुभ समाचार! डॉ. ${hiDocName} ने आपका अनुरोध स्वीकार कर लिया है। आपकी देखभाल स्थानांतरित कर दी गई है और आपकी सभी डायरी हिस्ट्री अब आपके नए डॉक्टर को उपलब्ध है। - Elvantia`
+          : `शुभ समाचार! डॉ. ${hiDocName} ने आपका अनुरोध स्वीकार कर लिया है। अब आप अपनी Elvantia डायरी का उपयोग शुरू करने के लिए सब्सक्रिप्शन खरीद सकते हैं। - Elvantia`;
+      } else {
+        smsMessage = isDoctorChange
+          ? `Good news! Dr. ${doctor.fullName} has accepted your request. Your care has been transferred and all your diary history is now available to your new doctor. - Elvantia`
+          : `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`;
+      }
 
       twilioService
         .sendSMS(patient.phone, smsMessage)
@@ -241,18 +253,26 @@ export async function rejectRequest(
       }
     }
 
-    // Notify patient via SMS
+    // Notify patient via SMS — translate for Hindi patients
     if (patient.phone) {
       const canRetry = request.attemptNumber < MAX_ATTEMPTS_PER_DOCTOR;
-      const retryMsg = canRetry
-        ? " You may send one more request to this doctor, or choose a different doctor."
-        : " You have used both attempts with this doctor. Please choose a different doctor.";
+      const patientLang = ((patient as any).language || "en") as SupportedLanguage;
+      let smsMessage: string;
+
+      if (patientLang === "hi") {
+        const retryMsg = canRetry
+          ? " आप इस डॉक्टर को एक और अनुरोध भेज सकते हैं, या कोई अन्य डॉक्टर चुन सकते हैं।"
+          : " आपने इस डॉक्टर के साथ दोनों प्रयास उपयोग कर लिए हैं। कृपया कोई अन्य डॉक्टर चुनें।";
+        smsMessage = `आपका डॉक्टर नियुक्ति अनुरोध स्वीकार नहीं किया गया।${retryMsg} - Elvantia`;
+      } else {
+        const retryMsg = canRetry
+          ? " You may send one more request to this doctor, or choose a different doctor."
+          : " You have used both attempts with this doctor. Please choose a different doctor.";
+        smsMessage = `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`;
+      }
 
       twilioService
-        .sendSMS(
-          patient.phone,
-          `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`
-        )
+        .sendSMS(patient.phone, smsMessage)
         .catch((err) => console.error("Failed to send rejection SMS:", err));
     }
   }

@@ -33,7 +33,7 @@ const translations_1 = require("../utils/translations");
 /**
  * GET /api/v1/patient/access-info
  * Returns the patient's access level, diary module, features, and validity.
- * Used by the mobile app to render correct UI based on all_access vs limited_access.
+ * Translation is handled by the translateResponse middleware.
  */
 const getAccessInfo = async (req, res) => {
     try {
@@ -74,7 +74,7 @@ exports.getAccessInfo = getAccessInfo;
 /**
  * GET /api/v1/patient/diary-catalog
  * Returns all available diary modules and bundle packs with pricing.
- * Public-facing for the store/catalog screen.
+ * Translation is handled by the translateResponse middleware.
  */
 const getDiaryCatalog = async (req, res) => {
     try {

@@ -4,6 +4,8 @@ import { AppError } from "../utils/AppError";
 import { HTTP_STATUS } from "../utils/constants";
 import { responseMiddleware } from "../utils/response";
 import * as signupService from "../service/patientSelfSignup.service";
+import { translateArrayFields, SupportedLanguage } from "../utils/translations";
+import { AuthenticatedRequest } from "../middleware/authMiddleware";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────
 
@@ -101,13 +103,25 @@ export const verifySignupOtp = async (req: Request, res: Response): Promise<void
  * GET /api/v1/patient/self-signup/doctors?page=1&limit=10&search=oncology
  * Public paginated list of available doctors for patient selection
  */
-export const listDoctors = async (req: Request, res: Response): Promise<void> => {
+export const listDoctors = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
     const search = (req.query.search as string) || undefined;
+    const lang = ((req.user?.language as string) || "en") as SupportedLanguage;
 
     const result = await signupService.listAvailableDoctors({ page, limit, search });
+
+    // Translate doctor info for Hindi (?lang=hi)
+    if (lang === "hi") {
+      result.doctors = await translateArrayFields(
+        result.doctors as Record<string, any>[],
+        ["specialization", "hospital", "location", "address", "city", "state"],
+        lang,
+        ["fullName"]  // names → transliterate (phonetic)
+      );
+    }
+
     responseMiddleware(res, HTTP_STATUS.OK, "Doctors fetched", result);
   } catch (error: unknown) {
     responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, "Failed to fetch doctors");

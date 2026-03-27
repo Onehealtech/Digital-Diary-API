@@ -4,8 +4,9 @@ import * as patientAuthController from "../controllers/patientAuth.controller";
 import * as patientSelfSignupController from "../controllers/patientSelfSignup.controller";
 import * as setupController from "../controllers/setup.controller";
 import { DoctorAuthController } from "../controllers/auth.controller";
-import { authCheck } from "../middleware/authMiddleware";
+import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
+import { translateResponse } from "../middleware/translateResponse.middleware";
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.post("/patient/verify-otp", patientAuthController.verifyOTP);
 // Unified: send-otp handles both new and existing users; verify handles login + signup
 router.post("/patient/self-signup/send-otp", patientSelfSignupController.sendSignupOtp);
 router.post("/patient/self-signup/verify", patientSelfSignupController.verifySignupOtp);
-router.get("/patient/self-signup/doctors", patientSelfSignupController.listDoctors);
+router.get("/patient/self-signup/doctors", patientAuthCheck,translateResponse(), patientSelfSignupController.listDoctors);
 
 // Authentication Enhancements
 router.get(

@@ -45,6 +45,13 @@ router.get(
     bubbleScanController.getBubbleScanById
 );
 
+// Edit a scan entry's answers (only scan-type submissions)
+router.put(
+    "/:id/edit",
+    patientAuthCheck,
+    bubbleScanController.editBubbleScan
+);
+
 // Retry a failed scan
 router.post(
     "/:id/retry",

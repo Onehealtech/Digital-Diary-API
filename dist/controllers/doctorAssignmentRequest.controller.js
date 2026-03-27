@@ -61,13 +61,14 @@ const createRequest = async (req, res) => {
 exports.createRequest = createRequest;
 /**
  * GET /api/v1/doctor-requests/my-requests
- * Patient views their own requests
+ * Patient views their own requests — translates doctor names for Hindi patients
  */
 const getMyRequests = async (req, res) => {
     try {
         const patientId = req.user ? req.user.id : null;
         const requests = await requestService.getRequestsForPatient(patientId);
-        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Requests fetched", requests);
+        const data = requests.map((r) => (r.toJSON ? r.toJSON() : r));
+        (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Requests fetched", data);
     }
     catch (error) {
         if (error instanceof AppError_1.AppError) {
