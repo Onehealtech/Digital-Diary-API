@@ -265,7 +265,7 @@ export const reviewBubbleScan = async (
         logActivity({
             req,
             userId: doctorId,
-            userRole: "DOCTOR",
+            userRole: req.user?.role || "DOCTOR",
             action: "BUBBLE_SCAN_REVIEWED",
             details: { scanId: req.params.id, flagged },
         });

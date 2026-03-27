@@ -2,10 +2,12 @@ import { Response } from "express";
 import { Reminder } from "../models/Reminder";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
+import { Op } from "sequelize";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { twilioService } from "../service/twilio.service";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
 import { notificationService } from "../service/notification.service";
+import { t, translateReminderType, translateReminderStatus, getPatientLanguage, translateArrayFields } from "../utils/translations";
 
 /**
  * POST /api/v1/clinic/create-reminder
@@ -146,14 +148,28 @@ export const getPatientReminders = async (
             ],
         });
 
-        const plainReminders = reminders.map((r) => r.toJSON());
+        const lang = await getPatientLanguage(patientId);
+
+        let translatedReminders = reminders.map((r) => {
+            const data = r.toJSON();
+            return {
+                ...data,
+                typeLabel: translateReminderType(data.type, lang),
+                statusLabel: translateReminderStatus(data.status, lang),
+            };
+        });
+
+        // Translate dynamic message content for Hindi
+        if (lang === "hi") {
+            translatedReminders = await translateArrayFields(translatedReminders, ["message"], lang);
+        }
 
         res.status(200).json({
             success: true,
-            message: "Reminders retrieved successfully",
+            message: t("msg.remindersRetrieved", lang),
             data: {
-                reminders: plainReminders,
-                total: plainReminders.length,
+                reminders: translatedReminders,
+                total: translatedReminders.length,
             },
         });
     } catch (error: any) {
@@ -230,12 +246,15 @@ export const markReminderAsRead = async (
         reminder.status = "READ";
         await reminder.save();
 
+        const lang = await getPatientLanguage(patientId);
+
         res.status(200).json({
             success: true,
-            message: "Reminder marked as read",
+            message: t("msg.reminderMarkedRead", lang),
             data: {
                 id: reminder.id,
                 status: reminder.status,
+                statusLabel: translateReminderStatus(reminder.status, lang),
             },
         });
     } catch (error: any) {
@@ -261,12 +280,26 @@ export const getDashboardReminders = async (
         const parentId = (req.user as any)?.parentId;
         const { status, patientId } = req.query;
 
-        // Assistants see both their own and their doctor's reminders
-        const createdByIds = userRole === "ASSISTANT" && parentId
-            ? [userId, parentId]
-            : [userId];
+        // Doctor sees own + all their assistants' reminders
+        // Assistant sees own + their doctor's reminders
+        let createdByIds: string[] = [userId];
 
-        const whereClause: any = { createdBy: createdByIds };
+        if (userRole === "DOCTOR") {
+            // Find all assistants belonging to this doctor (include soft-deleted to catch all reminders)
+            const assistants = await AppUser.findAll({
+                where: { parentId: userId, role: "ASSISTANT" },
+                attributes: ["id"],
+                raw: true,
+                paranoid: false, // Include soft-deleted assistants too
+            });
+            createdByIds = [userId, ...assistants.map((a: { id: string }) => a.id)];
+            console.log(`[Reminders] Doctor ${userId} — querying createdBy IDs:`, createdByIds);
+        } else if (userRole === "ASSISTANT" && parentId) {
+            createdByIds = [userId, parentId];
+            console.log(`[Reminders] Assistant ${userId} — querying createdBy IDs:`, createdByIds);
+        }
+
+        const whereClause: any = { createdBy: { [Op.in]: createdByIds } };
 
         // Filter by status if provided
         if (status && ["PENDING", "READ", "EXPIRED"].includes(status as string)) {
@@ -393,11 +426,12 @@ export const respondToReminder = async (
             }
         }
 
-        const msg = status === "ACCEPTED" ? "Reminder accepted successfully" : "Reminder rejected successfully";
+        const lang = await getPatientLanguage(patientId);
+        const msgKey = status === "ACCEPTED" ? "msg.reminderAccepted" : "msg.reminderRejected";
 
         res.status(200).json({
             success: true,
-            message: msg,
+            message: t(msgKey, lang),
             data: reminder,
         });
 

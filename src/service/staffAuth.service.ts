@@ -161,6 +161,7 @@ export const verifyStaffOTP = async (
             id: user.id,
             fullName: user.fullName,
             email: user.email,
+            phone: user.phone || null,
             role: user.role,
             parentId: user.parentId,
         },

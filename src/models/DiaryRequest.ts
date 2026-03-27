@@ -55,10 +55,10 @@ export class DiaryRequest extends Model {
   dairyType?: string;
 
   @Column({
-    type: DataType.ENUM("pending", "fulfilled", "rejected"),
+    type: DataType.ENUM("pending", "fulfilled", "rejected", "cancelled"),
     defaultValue: "pending",
   })
-  status!: "pending" | "fulfilled" | "rejected";
+  status!: "pending" | "fulfilled" | "rejected" | "cancelled";
 
   @Column({
     type: DataType.DATE,

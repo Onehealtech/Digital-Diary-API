@@ -6,6 +6,10 @@ import { responseMiddleware } from "../utils/response";
 import { HTTP_STATUS } from "../utils/constants";
 import { AppError } from "../utils/AppError";
 import * as patientAccessService from "../service/patientAccess.service";
+import {
+  t, getPatientLanguage, translateStatus, translateCaseType,
+  translateFields, translateArrayFields,
+} from "../utils/translations";
 
 /**
  * GET /api/v1/patient/access-info
@@ -15,8 +19,31 @@ import * as patientAccessService from "../service/patientAccess.service";
 export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const patientId = (req.user as { id: string }).id;
+    const lang = await getPatientLanguage(patientId);
     const result = await patientAccessService.getPatientAccessInfo(patientId);
-    responseMiddleware(res, HTTP_STATUS.OK, "Access info fetched successfully", result);
+
+    // Add static translated labels
+    const data: any = { ...result };
+    data.patient = {
+      ...data.patient,
+      statusLabel: translateStatus(data.patient.status, lang),
+      caseTypeLabel: data.patient.caseType ? translateCaseType(data.patient.caseType, lang) : null,
+    };
+
+    // Translate dynamic text fields for Hindi
+    if (lang === "hi") {
+      const translated = await translateFields(data, [
+        "patient.fullName",
+        "doctor.fullName",
+        "doctor.specialization",
+        "doctor.hospital",
+        "diaryModule.moduleName",
+        "subscription.planName",
+      ], lang);
+      Object.assign(data, translated);
+    }
+
+    responseMiddleware(res, HTTP_STATUS.OK, t("msg.accessInfoFetched", lang), data);
   } catch (error: unknown) {
     if (error instanceof AppError) {
       responseMiddleware(res, error.statusCode, error.message);
@@ -34,8 +61,19 @@ export const getAccessInfo = async (req: AuthenticatedRequest, res: Response): P
  */
 export const getDiaryCatalog = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    const patientId = (req.user as { id: string }).id;
+    const lang = await getPatientLanguage(patientId);
     const result = patientAccessService.getDiaryModuleCatalog();
-    responseMiddleware(res, HTTP_STATUS.OK, "Diary catalog fetched successfully", result);
+
+    let data: any = { ...result };
+
+    // Translate module and bundle names for Hindi
+    if (lang === "hi") {
+      data.modules = await translateArrayFields(data.modules, ["moduleName"], lang);
+      data.bundles = await translateArrayFields(data.bundles, ["bundleName"], lang);
+    }
+
+    responseMiddleware(res, HTTP_STATUS.OK, t("msg.catalogFetched", lang), data);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to fetch catalog";
     responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, message);

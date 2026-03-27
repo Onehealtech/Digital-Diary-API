@@ -1,5 +1,6 @@
 import express from "express";
 import { patientAuthCheck, authCheck } from "../middleware/authMiddleware";
+import { requirePermission } from "../middleware/permissionMiddleware";
 import { visionScanUpload } from "../middleware/upload.middleware";
 import { UserRole } from "../utils/constants";
 import * as bubbleScanController from "../controllers/bubbleScan.controller";
@@ -67,10 +68,11 @@ router.get(
     bubbleScanController.getAllBubbleScans
 );
 
-// Doctor reviews and optionally overrides bubble scan results
+// Doctor/Assistant reviews and optionally overrides bubble scan results
 router.put(
     "/:id/review",
-    authCheck([UserRole.DOCTOR]),
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('markReviewed'),
     bubbleScanController.reviewBubbleScan
 );
 

@@ -136,54 +136,6 @@ export async function getPatientLanguage(patientId: string): Promise<SupportedLa
   return (patient?.language as SupportedLanguage) || "en";
 }
 
-// ── Transliteration via Google Input Tools (phonetic script conversion) ───
-
-/**
- * Transliterate text to Hindi script using Google Input Tools API.
- * This converts names phonetically: "Raj Kumar" → "राज कुमार"
- * Unlike translation, this preserves the meaning/pronunciation.
- */
-export async function transliterateName(
-  text: string,
-  targetLang: SupportedLanguage = "hi"
-): Promise<string> {
-  if (!text || !text.trim() || targetLang === "en") return text;
-  try {
-    // Transliterate each word separately for better results with names
-    const words = text.trim().split(/\s+/);
-    const transliterated: string[] = [];
-
-    for (const word of words) {
-      const url = `https://inputtools.google.com/request?text=${encodeURIComponent(word)}&itc=hi-t-i0-und&num=1&cp=0&cs=1&ie=utf-8&oe=utf-8`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data[0] === "SUCCESS" && data[1]?.[0]?.[1]?.length > 0) {
-        transliterated.push(data[1][0][1][0]);
-      } else {
-        transliterated.push(word); // Keep original if no suggestion
-      }
-    }
-
-    return transliterated.join(" ");
-  } catch (err) {
-    console.error("Transliteration error:", err);
-    return text;
-  }
-}
-
-/**
- * Batch-transliterate multiple name strings.
- * Returns transliterations in the same order as input.
- */
-export async function transliterateBatch(
-  texts: string[],
-  targetLang: SupportedLanguage = "hi"
-): Promise<string[]> {
-  if (targetLang === "en" || texts.length === 0) return texts;
-  return Promise.all(texts.map((t) => transliterateName(t, targetLang)));
-}
-
 // ── Dynamic translation via Google Translate API ─────────────────
 
 /**
@@ -256,65 +208,36 @@ export async function translateBatch(
  * Translate specified fields of an object using Google Translate.
  * Only translates when language is "hi". Fields not found are skipped.
  *
- * @param obj - The object to translate
- * @param fields - Fields to translate (descriptive text: specialization, hospital, messages)
- * @param lang - Target language
- * @param nameFields - Fields to transliterate (proper nouns: doctor name, patient name).
- *   These use phonetic script conversion instead of meaning-based translation.
- *
  * @example
- *   const data = { fullName: "Dr. Sharma", hospital: "AIIMS Delhi" };
- *   const result = await translateFields(data, ["hospital"], "hi", ["fullName"]);
- *   // { fullName: "डॉ. शर्मा", hospital: "एम्स दिल्ली" }
+ *   const data = { fullName: "Dr. Sharma", message: "Hello", id: "abc" };
+ *   const translated = await translateFields(data, ["fullName", "message"], "hi");
+ *   // { fullName: "डॉ. शर्मा", message: "नमस्ते", id: "abc" }
  */
 export async function translateFields<T extends Record<string, any>>(
   obj: T,
   fields: string[],
-  lang: SupportedLanguage,
-  nameFields: string[] = []
+  lang: SupportedLanguage
 ): Promise<T> {
   if (lang === "en" || !obj) return obj;
 
-  // Collect translate values
-  const translateValues: string[] = [];
-  const translateValidFields: string[] = [];
+  const values: string[] = [];
+  const validFields: string[] = [];
 
   for (const field of fields) {
     const val = getNestedValue(obj, field);
     if (typeof val === "string" && val.trim()) {
-      translateValues.push(val);
-      translateValidFields.push(field);
+      values.push(val);
+      validFields.push(field);
     }
   }
 
-  // Collect transliterate values (names)
-  const nameValues: string[] = [];
-  const nameValidFields: string[] = [];
+  if (values.length === 0) return obj;
 
-  for (const field of nameFields) {
-    const val = getNestedValue(obj, field);
-    if (typeof val === "string" && val.trim()) {
-      nameValues.push(val);
-      nameValidFields.push(field);
-    }
-  }
-
-  if (translateValues.length === 0 && nameValues.length === 0) return obj;
-
-  // Run both in parallel
-  const [translated, transliterated] = await Promise.all([
-    translateValues.length > 0 ? translateBatch(translateValues, lang) : [],
-    nameValues.length > 0 ? transliterateBatch(nameValues, lang) : [],
-  ]);
-
+  const translated = await translateBatch(values, lang);
   const result = { ...obj };
 
-  translateValidFields.forEach((field, i) => {
+  validFields.forEach((field, i) => {
     setNestedValue(result, field, translated[i]);
-  });
-
-  nameValidFields.forEach((field, i) => {
-    setNestedValue(result, field, transliterated[i]);
   });
 
   return result;
@@ -323,61 +246,35 @@ export async function translateFields<T extends Record<string, any>>(
 /**
  * Translate specified fields across an array of objects.
  * Batches all translations into minimal API calls for efficiency.
- *
- * @param arr - Array of objects
- * @param fields - Fields to translate (descriptive text)
- * @param lang - Target language
- * @param nameFields - Fields to transliterate (proper nouns/names)
  */
 export async function translateArrayFields<T extends Record<string, any>>(
   arr: T[],
   fields: string[],
-  lang: SupportedLanguage,
-  nameFields: string[] = []
+  lang: SupportedLanguage
 ): Promise<T[]> {
   if (lang === "en" || arr.length === 0) return arr;
 
-  // Collect translate values
-  const translateValues: string[] = [];
-  const translateMapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
-
-  // Collect transliterate values (names)
-  const nameValues: string[] = [];
-  const nameMapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
+  // Collect all values to translate with their positions
+  const allValues: string[] = [];
+  const mapping: { arrIdx: number; field: string; batchIdx: number }[] = [];
 
   for (let arrIdx = 0; arrIdx < arr.length; arrIdx++) {
     for (const field of fields) {
       const val = getNestedValue(arr[arrIdx], field);
       if (typeof val === "string" && val.trim()) {
-        translateMapping.push({ arrIdx, field, batchIdx: translateValues.length });
-        translateValues.push(val);
-      }
-    }
-    for (const field of nameFields) {
-      const val = getNestedValue(arr[arrIdx], field);
-      if (typeof val === "string" && val.trim()) {
-        nameMapping.push({ arrIdx, field, batchIdx: nameValues.length });
-        nameValues.push(val);
+        mapping.push({ arrIdx, field, batchIdx: allValues.length });
+        allValues.push(val);
       }
     }
   }
 
-  if (translateValues.length === 0 && nameValues.length === 0) return arr;
+  if (allValues.length === 0) return arr;
 
-  // Run both in parallel
-  const [translated, transliterated] = await Promise.all([
-    translateValues.length > 0 ? translateBatch(translateValues, lang) : [],
-    nameValues.length > 0 ? transliterateBatch(nameValues, lang) : [],
-  ]);
-
+  const translated = await translateBatch(allValues, lang);
   const result = arr.map((item) => ({ ...item }));
 
-  for (const m of translateMapping) {
+  for (const m of mapping) {
     setNestedValue(result[m.arrIdx], m.field, translated[m.batchIdx]);
-  }
-
-  for (const m of nameMapping) {
-    setNestedValue(result[m.arrIdx], m.field, transliterated[m.batchIdx]);
   }
 
   return result;

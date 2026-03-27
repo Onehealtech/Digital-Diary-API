@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordOnboardingView = exports.getOnboardingStatus = void 0;
 const Patient_1 = require("../models/Patient");
 const AppError_1 = require("../utils/AppError");
+const translations_1 = require("../utils/translations");
 const MAX_ONBOARDING_VIEWS = 5;
 /**
  * GET /api/v1/patient/onboarding-status
@@ -25,9 +26,10 @@ const getOnboardingStatus = async (req, res) => {
             return;
         }
         const viewCount = patient.onboardingViewCount ?? 0;
+        const lang = await (0, translations_1.getPatientLanguage)(patientId);
         res.status(200).json({
             success: true,
-            message: "Onboarding status fetched",
+            message: (0, translations_1.t)("msg.onboardingStatus", lang),
             data: {
                 showOnboarding: viewCount < MAX_ONBOARDING_VIEWS,
                 viewCount,
@@ -67,10 +69,12 @@ const recordOnboardingView = async (req, res) => {
             return;
         }
         const currentCount = patient.onboardingViewCount ?? 0;
+        const lang = await (0, translations_1.getPatientLanguage)(patientId);
+        // Already reached max — no need to increment
         if (currentCount >= MAX_ONBOARDING_VIEWS) {
             res.status(200).json({
                 success: true,
-                message: "Onboarding already completed",
+                message: (0, translations_1.t)("msg.onboardingCompleted", lang),
                 data: {
                     showOnboarding: false,
                     viewCount: currentCount,
@@ -84,7 +88,7 @@ const recordOnboardingView = async (req, res) => {
         await patient.update({ onboardingViewCount: newCount });
         res.status(200).json({
             success: true,
-            message: "Onboarding view recorded",
+            message: (0, translations_1.t)("msg.onboardingViewed", lang),
             data: {
                 showOnboarding: newCount < MAX_ONBOARDING_VIEWS,
                 viewCount: newCount,

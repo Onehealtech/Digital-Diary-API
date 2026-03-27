@@ -15,11 +15,14 @@ router.get(
     dashboardController.getPatients
 );
 
-// Doctor and Assistant can view their created reminders
+// Doctor and Assistant can view their created reminders (includes assistant-created for doctors)
 router.get(
     "/reminders",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
-    getDashboardReminders
+    (req, res) => {
+        console.log("[Dashboard] /reminders hit by", (req as any).user?.role, (req as any).user?.id?.slice(0, 8));
+        return getDashboardReminders(req as any, res);
+    }
 );
 
 // Super Admin dashboard statistics
