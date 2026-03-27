@@ -67,7 +67,7 @@ export class DoctorAuthService {
    */
   static async getCurrentUser(userId: string) {
     const user = await AppUser.findByPk(userId, {
-      attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt"],
+      attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "bankDetails", "createdAt"],
     });
 
     if (!user) {
@@ -203,7 +203,7 @@ export class DoctorAuthService {
   /**
    * Update profile (fullName and/or phone) for the authenticated user
    */
-  static async updateProfile(userId: string, fullName?: string, phone?: string) {
+  static async updateProfile(userId: string, fullName?: string, phone?: string, bankDetails?: { accountHolder?: string; accountNumber?: string; ifsc?: string; bankName?: string }) {
     const user = await AppUser.findByPk(userId);
 
     if (!user) {
@@ -214,10 +214,16 @@ export class DoctorAuthService {
       throw new Error("Full name is required");
     }
 
-    await user.update({
+    const updateData: Record<string, unknown> = {
       fullName: fullName.trim(),
       ...(phone !== undefined && { phone: phone.trim() || null }),
-    });
+    };
+
+    if (bankDetails !== undefined) {
+      updateData.bankDetails = bankDetails;
+    }
+
+    await user.update(updateData);
 
     return {
       id: user.id,
@@ -225,6 +231,7 @@ export class DoctorAuthService {
       phone: user.phone,
       email: user.email,
       role: user.role,
+      bankDetails: (user as any).bankDetails || null,
     };
   }
 
