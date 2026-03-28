@@ -40,8 +40,6 @@ const vendorController = new vendor_controller_1.VendorController();
 router.get("/patients", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR]), dashboardController.getPatients);
 // GET /api/v1/vendors - List all vendors
 router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), vendorController.getAllVendors.bind(vendorController));
-// GET /api/v1/vendors/:id - Get vendor by ID
-router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), vendorController.getVendorById.bind(vendorController));
 // POST /api/v1/vendors - Create new vendor (SUPER_ADMIN only)
 router.post("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), (0, validate_middleware_1.validate)({ body: staff_schemas_1.createVendorSchema }), vendorController.createVendor.bind(vendorController));
 // PUT /api/v1/vendors/:id - Update vendor
@@ -60,4 +58,7 @@ router.get("/:id/inventory", (0, authMiddleware_1.authCheck)([constants_1.UserRo
 router.post("/:id/sell-diary", (0, authMiddleware_1.authCheck)([constants_1.UserRole.VENDOR]), vendorController.sellDiary.bind(vendorController));
 // GET /api/v1/vendors/:id/dashboard - Get vendor dashboard stats
 router.get("/:id/dashboard", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), vendorController.getVendorDashboard.bind(vendorController));
+// GET /api/v1/vendors/:id - Get vendor by ID
+// IMPORTANT: This must be AFTER all /:id/* routes to avoid catching them
+router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR]), vendorController.getVendorById.bind(vendorController));
 exports.default = router;

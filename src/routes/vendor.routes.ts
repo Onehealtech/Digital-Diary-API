@@ -28,13 +28,6 @@ router.get(
   vendorController.getAllVendors.bind(vendorController)
 );
 
-// GET /api/v1/vendors/:id - Get vendor by ID
-router.get(
-  "/:id",
-  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
-  vendorController.getVendorById.bind(vendorController)
-);
-
 // POST /api/v1/vendors - Create new vendor (SUPER_ADMIN only)
 router.post(
   "/",
@@ -97,6 +90,14 @@ router.get(
   "/:id/dashboard",
   authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
   vendorController.getVendorDashboard.bind(vendorController)
+);
+
+// GET /api/v1/vendors/:id - Get vendor by ID
+// IMPORTANT: This must be AFTER all /:id/* routes to avoid catching them
+router.get(
+  "/:id",
+  authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
+  vendorController.getVendorById.bind(vendorController)
 );
 
 export default router;

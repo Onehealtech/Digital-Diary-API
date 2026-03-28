@@ -1,7 +1,7 @@
 "use strict";
-// // import { DiaryPage } from "../../models/DiaryPage";
+// import { DiaryPage } from "../../models/DiaryPage";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.extractDiaryPage = exports.parseLLMResponse = exports.validateResults = exports.mapResponseToBackend = exports.buildAllNullRetryPrompt = exports.buildDateRetryPrompt = exports.buildExtractionPrompt = exports.PAGE_DETECTION_PROMPT = exports.VISION_SCAN_SYSTEM_PROMPT = void 0;
+exports.extractDiaryPage = exports.parseLLMResponse = exports.validateResults = exports.mapResponseToBackend = exports.buildAllNullRetryPrompt = exports.buildDateRetryPrompt = exports.buildExtractionPrompt = exports.parseImageValidation = exports.IMAGE_VALIDATION_PROMPT = exports.PAGE_DETECTION_PROMPT = exports.VISION_SCAN_SYSTEM_PROMPT = void 0;
 // ─────────────────────── CONSTANTS ──────────────────────
 const VALID_MONTHS = new Set([
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -9,18 +9,14 @@ const VALID_MONTHS = new Set([
 ]);
 const VALID_YEARS = new Set(["2026", "2027", "2028"]);
 const MONTH_MAP = {
-    // English lowercase
     jan: "Jan", feb: "Feb", mar: "Mar", apr: "Apr", may: "May", jun: "Jun",
     jul: "Jul", aug: "Aug", sep: "Sep", oct: "Oct", nov: "Nov", dec: "Dec",
-    // English full
     january: "Jan", february: "Feb", march: "Mar", april: "Apr",
     june: "Jun", july: "Jul", august: "Aug", september: "Sep",
     october: "Oct", november: "Nov", december: "Dec",
-    // Hindi abbreviated
     "जन": "Jan", "फर": "Feb", "मार्च": "Mar", "अप्रैल": "Apr",
     "मई": "May", "जून": "Jun", "जुला": "Jul", "अग": "Aug",
     "सित": "Sep", "अक्तू": "Oct", "नव": "Nov", "दिस": "Dec",
-    // Hindi full (only keys not already covered above)
     "जनवरी": "Jan", "फरवरी": "Feb", "जुलाई": "Jul", "अगस्त": "Aug",
     "सितंबर": "Sep", "अक्टूबर": "Oct", "नवंबर": "Nov", "दिसंबर": "Dec",
 };
@@ -53,12 +49,114 @@ RULES:
 - Submitted forms almost always have answers filled in. All-null is almost always wrong.
 - Return ONLY valid JSON. No markdown. No explanation. No code fences. Start with { end with }.`;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 2. PAGE DETECTION
+// 2. IMAGE VALIDATION PROMPT (replaces old PAGE_DETECTION_PROMPT)
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.PAGE_DETECTION_PROMPT = `What is the 2-digit page number at the top center of this CANTrac diary page?
 Return JSON only: {"isValidDiaryPage": true, "pageNumber": <number>} or {"isValidDiaryPage": false, "reason": "<brief>"}`;
+exports.IMAGE_VALIDATION_PROMPT = `Examine this image and determine if it is a valid, complete CANTrac diary page.
+
+CHECK THESE IN ORDER:
+
+1. CORNER MARKERS: Are all 4 BLACK SQUARE corner markers visible?
+   - top-left, top-right, bottom-left, bottom-right
+   - If any are missing or cut off, the image is PARTIAL.
+
+2. PAGE NUMBER: Read the 2-digit page number at the top center.
+
+3. IMAGE QUALITY: Is the page legible?
+   - Is it in focus? (not blurry)
+   - Is it well-lit? (no heavy shadows covering bubbles)
+   - Is it reasonably straight? (not extremely skewed)
+
+Return JSON only:
+{
+  "cornerMarkers": {
+    "topLeft": true,
+    "topRight": true,
+    "bottomLeft": true,
+    "bottomRight": true
+  },
+  "pageNumber": <number or null>,
+  "isInFocus": <boolean>,
+  "isWellLit": <boolean>,
+  "isComplete": <boolean>,
+  "issues": ["<brief description of any problem>"]
+}
+
+JSON only. No markdown. No explanation. Start with { end with }.`;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. EXTRACTION PROMPT — MAIN ENTRY POINT
+// 3. IMAGE VALIDATION PARSER
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseImageValidation(parsed, expectedPageNumber) {
+    const errors = [];
+    const warnings = [];
+    // ── Corner marker check (partial image detection) ──
+    const markers = parsed.cornerMarkers;
+    if (markers) {
+        const missing = [];
+        if (!markers.topLeft)
+            missing.push("top-left");
+        if (!markers.topRight)
+            missing.push("top-right");
+        if (!markers.bottomLeft)
+            missing.push("bottom-left");
+        if (!markers.bottomRight)
+            missing.push("bottom-right");
+        if (missing.length > 0) {
+            errors.push(`Partial image: missing corner marker(s) — ${missing.join(", ")}. ` +
+                `Please retake the photo showing the entire page.`);
+        }
+    }
+    else {
+        // AI didn't return cornerMarkers at all — treat as unable to validate
+        warnings.push("Could not verify corner markers. Ensure the full page is visible.");
+    }
+    // ── Completeness flag ──
+    if (parsed.isComplete === false && errors.length === 0) {
+        errors.push("The page appears incomplete or partially captured. " +
+            "Please photograph the full page within all 4 corner markers.");
+    }
+    // ── Page number ──
+    const detectedPage = parsed.pageNumber ?? null;
+    if (detectedPage === null) {
+        errors.push("Could not read the page number. " +
+            "Ensure the top of the page is visible and in focus.");
+    }
+    else if (detectedPage !== expectedPageNumber) {
+        errors.push(`Page mismatch: expected page ${expectedPageNumber}, ` +
+            `but detected page ${detectedPage}. ` +
+            `Please upload the correct page.`);
+    }
+    // ── Image quality warnings (non-blocking but flagged) ──
+    if (parsed.isInFocus === false) {
+        warnings.push("Image appears blurry — results may be less accurate.");
+    }
+    if (parsed.isWellLit === false) {
+        warnings.push("Image has poor lighting or heavy shadows — results may be less accurate.");
+    }
+    // ── Issues reported by the AI ──
+    if (parsed.issues && parsed.issues.length > 0) {
+        for (const issue of parsed.issues) {
+            if (!errors.some(e => e.includes(issue))) {
+                warnings.push(issue);
+            }
+        }
+    }
+    // ── Legacy format support ──
+    if (parsed.isValidDiaryPage === false && errors.length === 0) {
+        errors.push(parsed.reason || "Image is not a valid CANTrac diary page.");
+    }
+    return {
+        isValid: errors.length === 0,
+        isValidDiaryPage: detectedPage !== null,
+        pageNumber: detectedPage,
+        errors,
+        warnings,
+    };
+}
+exports.parseImageValidation = parseImageValidation;
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. EXTRACTION PROMPT — MAIN ENTRY POINT
 // ═══════════════════════════════════════════════════════════════════════════════
 function buildExtractionPrompt(diaryPage) {
     const types = new Set(diaryPage.questions.filter(q => q.type !== "info").map(q => q.type));
@@ -112,26 +210,20 @@ function buildSchedulePrompt(diaryPage) {
     const yesNoFields = questions.filter(q => q.type === "yes_no");
     const textFields = questions.filter(q => q.type === "text");
     const hasSecond = dateFields.length > 1;
-    // ── Section instructions ──
     let sections = "";
-    // First appointment
     sections += buildAppointmentSection("FIRST APPOINTMENT (top box on the page)", dateFields[0]?.id, statusFields[0]?.id);
-    // Second appointment
     if (hasSecond) {
         sections += buildAppointmentSection('SECOND ATTEMPT (bottom box, labeled "Second Attempt/द्वितीय प्रयास")', dateFields[1]?.id, statusFields[1]?.id);
     }
-    // Yes/No at bottom
     for (const yn of yesNoFields) {
         sections += `
 ═══ BOTTOM OF PAGE ═══
 "${yn.id}" — "${yn.text}": LEFT bubble = Yes(हाँ), RIGHT = No(नहीं). Which is dark?
 `;
     }
-    // Text fields
     for (const tf of textFields) {
         sections += `\n"${tf.id}" — "${tf.text}": Read handwritten text on the dotted line, or "" if blank.\n`;
     }
-    // ── Example output — UNIFORM { value, confidence } for ALL fields ──
     const example = {};
     if (dateFields[0]?.id)
         example[dateFields[0].id] = { value: "20/Sep/2028", confidence: 0.92 };
@@ -205,7 +297,7 @@ ${statusId ? `"${statusId}" — Status row ("Status/स्थिति"):
 `;
 }
 // ═══════════════════════════════════════════════════════════════════════════════
-// 4. DATE RETRY PROMPT — for when date extraction fails
+// 5. DATE RETRY PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 function buildDateRetryPrompt(diaryPage, dateFieldId, sectionLabel) {
     const pageNum = String(diaryPage.pageNumber).padStart(2, "0");
@@ -235,7 +327,7 @@ JSON only. No markdown. No explanation.`;
 }
 exports.buildDateRetryPrompt = buildDateRetryPrompt;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 5. ALL-NULL RETRY PROMPT
+// 6. ALL-NULL RETRY PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 function buildAllNullRetryPrompt(diaryPage) {
     const questions = diaryPage.questions.filter(q => q.type !== "info");
@@ -260,7 +352,7 @@ Replace with actual readings. JSON only.`;
 }
 exports.buildAllNullRetryPrompt = buildAllNullRetryPrompt;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 6. NORMALIZERS
+// 7. NORMALIZERS
 // ═══════════════════════════════════════════════════════════════════════════════
 function normalizeMonth(raw) {
     if (!raw || typeof raw !== "string")
@@ -288,21 +380,18 @@ function normalizeYear(raw) {
 function parseDateString(s) {
     if (!s)
         return null;
-    // "20/Sep/2028", "20-Sep-2028", "20 Sep 2028"
     const m1 = s.match(/(\d{1,2})\s*[\/\-\s]\s*(\w+)\s*[\/\-\s]\s*(\d{4})/);
     if (m1) {
         const dd = normalizeDay(m1[1]), mm = normalizeMonth(m1[2]), yy = normalizeYear(m1[3]);
         if (dd && mm && yy)
             return { dd, mm, yy };
     }
-    // "Sep 20, 2028"
     const m2 = s.match(/(\w+)\s*[\/\-\s,]\s*(\d{1,2})\s*[\/\-\s,]\s*(\d{4})/);
     if (m2) {
         const mm = normalizeMonth(m2[1]), dd = normalizeDay(m2[2]), yy = normalizeYear(m2[3]);
         if (dd && mm && yy)
             return { dd, mm, yy };
     }
-    // "2028-09-20" (ISO)
     const m3 = s.match(/(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/);
     if (m3) {
         const yy = normalizeYear(m3[1]);
@@ -315,10 +404,6 @@ function parseDateString(s) {
     }
     return null;
 }
-/**
- * Extracts a date string from any response shape the AI might return.
- * Handles: { value }, { date_string }, { dd, mm, yy }, { answer }, plain string
- */
 function extractDateValue(raw) {
     if (typeof raw === "string") {
         const p = parseDateString(raw);
@@ -326,7 +411,6 @@ function extractDateValue(raw) {
     }
     if (!raw || typeof raw !== "object")
         return null;
-    // Try each possible key the AI might use for the combined date
     for (const key of ["value", "date_string", "answer", "date"]) {
         if (raw[key] && typeof raw[key] === "string") {
             const p = parseDateString(raw[key]);
@@ -334,7 +418,6 @@ function extractDateValue(raw) {
                 return `${String(p.dd).padStart(2, "0")}/${p.mm}/${p.yy}`;
         }
     }
-    // Decomposed: { dd, mm, yy }
     if ("dd" in raw && "mm" in raw && "yy" in raw) {
         const dd = normalizeDay(raw.dd);
         const mm = normalizeMonth(raw.mm);
@@ -342,7 +425,6 @@ function extractDateValue(raw) {
         if (dd && mm && yy)
             return `${String(dd).padStart(2, "0")}/${mm}/${yy}`;
     }
-    // Decomposed with different key names
     if ("day" in raw && "month" in raw && "year" in raw) {
         const dd = normalizeDay(raw.day);
         const mm = normalizeMonth(raw.month);
@@ -353,12 +435,11 @@ function extractDateValue(raw) {
     return null;
 }
 // ═══════════════════════════════════════════════════════════════════════════════
-// 7. RESPONSE MAPPER
+// 8. RESPONSE MAPPER
 // ═══════════════════════════════════════════════════════════════════════════════
 function mapResponseToBackend(parsed, diaryPage) {
     const questions = diaryPage.questions.filter(q => q.type !== "info");
     const results = {};
-    // Locate field data — handle nesting variations
     const metaKeys = new Set([
         "_page_verified", "_image_quality", "_retry_notes",
         "page_number", "page_verified", "image_quality",
@@ -378,7 +459,6 @@ function mapResponseToBackend(parsed, diaryPage) {
     for (const q of questions) {
         let raw = fieldData[q.id];
         const category = (q.type === "date" || q.type === "select") ? "schedule" : "general";
-        // Fuzzy key match
         if (raw === undefined) {
             const fuzzyKey = Object.keys(fieldData).find(k => k.toLowerCase().replace(/[_\-\s]/g, "") === q.id.toLowerCase().replace(/[_\-\s]/g, ""));
             if (fuzzyKey)
@@ -388,7 +468,6 @@ function mapResponseToBackend(parsed, diaryPage) {
             results[q.id] = { answer: null, category, confidence: 0, questionText: q.text };
             continue;
         }
-        // ── Extract value + confidence ──
         let value = null;
         let confidence = 0;
         if (typeof raw === "object" && raw !== null) {
@@ -406,7 +485,10 @@ function mapResponseToBackend(parsed, diaryPage) {
                     break;
                 case "yes_no":
                     value = raw.value ?? raw.answer ?? null;
-                    if (value != null) {
+                    if (typeof value === "boolean") {
+                        value = value ? "yes" : "no";
+                    }
+                    else if (value != null) {
                         const lower = String(value).toLowerCase().trim();
                         if (["yes", "हाँ", "haan", "true"].includes(lower))
                             value = "yes";
@@ -415,28 +497,30 @@ function mapResponseToBackend(parsed, diaryPage) {
                         else
                             value = null;
                     }
-                    if (typeof value === "boolean")
-                        value = value ? "yes" : "no";
                     break;
                 default:
                     value = raw.value ?? raw.answer ?? null;
             }
         }
         else {
-            // Plain value (string, number, boolean)
             confidence = 0.85;
             switch (q.type) {
                 case "date":
                     value = extractDateValue(raw);
                     break;
                 case "yes_no": {
-                    const lower = String(raw).toLowerCase().trim();
-                    if (["yes", "हाँ", "true"].includes(lower))
-                        value = "yes";
-                    else if (["no", "नहीं", "false"].includes(lower))
-                        value = "no";
-                    else
-                        value = null;
+                    if (typeof raw === "boolean") {
+                        value = raw ? "yes" : "no";
+                    }
+                    else {
+                        const lower = String(raw).toLowerCase().trim();
+                        if (["yes", "हाँ", "true"].includes(lower))
+                            value = "yes";
+                        else if (["no", "नहीं", "false"].includes(lower))
+                            value = "no";
+                        else
+                            value = null;
+                    }
                     break;
                 }
                 case "select":
@@ -463,7 +547,7 @@ function mapResponseToBackend(parsed, diaryPage) {
 }
 exports.mapResponseToBackend = mapResponseToBackend;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 8. VALIDATION
+// 9. VALIDATION
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateResults(results, diaryPage) {
     const questions = diaryPage.questions.filter(q => q.type !== "info");
@@ -482,7 +566,6 @@ function validateResults(results, diaryPage) {
             lowConfidenceFields.push(q.id);
         if (q.type === "date") {
             if (r.answer === null && r.confidence > 0) {
-                // AI returned data but we couldn't parse it — flag for retry
                 badDates.push(q.id);
                 errors.push(`${q.id}: date returned but could not be parsed`);
             }
@@ -530,7 +613,7 @@ function validateResults(results, diaryPage) {
 }
 exports.validateResults = validateResults;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 9. JSON PARSER
+// 10. JSON PARSER
 // ═══════════════════════════════════════════════════════════════════════════════
 function parseLLMResponse(raw) {
     if (!raw || typeof raw !== "string")
@@ -567,7 +650,7 @@ function parseLLMResponse(raw) {
 }
 exports.parseLLMResponse = parseLLMResponse;
 // ═══════════════════════════════════════════════════════════════════════════════
-// 10. ORCHESTRATOR
+// 11. ORCHESTRATOR (single entry point — validates image, then extracts)
 // ═══════════════════════════════════════════════════════════════════════════════
 async function extractDiaryPage(imageUrl, diaryPage, callVisionAPI) {
     const baseOpts = {
@@ -577,72 +660,164 @@ async function extractDiaryPage(imageUrl, diaryPage, callVisionAPI) {
         temperature: 0.1,
         responseFormat: { type: "json_object" },
     };
-    // ── PASS 1: Primary extraction ──
-    const prompt = buildExtractionPrompt(diaryPage);
-    const raw1 = await callVisionAPI({ ...baseOpts, prompt });
-    console.log("[CANTrac] Raw AI response:", raw1);
-    const parsed1 = parseLLMResponse(raw1);
-    console.log("[CANTrac] Parsed JSON:", JSON.stringify(parsed1, null, 2));
-    let results = mapResponseToBackend(parsed1, diaryPage);
-    let validation = validateResults(results, diaryPage);
-    console.log("[CANTrac] Pass 1 validation:", JSON.stringify(validation));
-    if (validation.valid)
-        return results;
-    // ── PASS 2: All-null retry ──
-    if (validation.allNull) {
-        console.warn("[CANTrac] All null — retrying...");
-        const raw2 = await callVisionAPI({
+    // ══════════════════════════════════════════════════════
+    // STEP 0: Image validation — reject bad/partial images
+    // ══════════════════════════════════════════════════════
+    let imageValidation;
+    try {
+        const rawDetection = await callVisionAPI({
             ...baseOpts,
-            prompt: buildAllNullRetryPrompt(diaryPage),
+            prompt: exports.IMAGE_VALIDATION_PROMPT,
+            maxTokens: 500,
         });
-        const parsed2 = parseLLMResponse(raw2);
-        const mapped2 = mapResponseToBackend(parsed2, diaryPage);
-        const v2 = validateResults(mapped2, diaryPage);
-        if (!v2.allNull) {
-            results = mapped2;
-            validation = v2;
-        }
-        else {
-            console.warn("[CANTrac] Still all null after retry");
-            return results;
-        }
+        const parsedDetection = parseLLMResponse(rawDetection);
+        imageValidation = parseImageValidation(parsedDetection, diaryPage.pageNumber);
     }
-    // ── PASS 3: Date-specific retry ──
-    if (validation.badDates.length > 0) {
-        for (const dateId of validation.badDates) {
-            const sectionLabel = dateId.includes("q1") || dateId.includes("first")
-                ? "First Appointment"
-                : "Second Attempt";
-            console.log(`[CANTrac] Retrying date field: ${dateId}`);
-            const rawRetry = await callVisionAPI({
+    catch (err) {
+        return {
+            success: false,
+            data: null,
+            error: {
+                code: "PAGE_DETECTION_FAILED",
+                message: "Could not validate the image. The photo may be too blurry, " +
+                    "too dark, or not a diary page. Please retake and try again.",
+                details: { originalError: String(err) },
+            },
+            validation: null,
+        };
+    }
+    // ── Reject invalid images immediately ──
+    if (!imageValidation.isValid) {
+        const isPartial = imageValidation.errors.some(e => e.toLowerCase().includes("partial") || e.toLowerCase().includes("corner"));
+        const isMismatch = imageValidation.errors.some(e => e.toLowerCase().includes("mismatch"));
+        return {
+            success: false,
+            data: null,
+            error: {
+                code: isPartial
+                    ? "PARTIAL_IMAGE"
+                    : isMismatch
+                        ? "PAGE_MISMATCH"
+                        : "INVALID_IMAGE",
+                message: imageValidation.errors.join(" "),
+                details: {
+                    expectedPage: diaryPage.pageNumber,
+                    detectedPage: imageValidation.pageNumber,
+                    warnings: imageValidation.warnings,
+                },
+            },
+            validation: imageValidation,
+        };
+    }
+    // ══════════════════════════════════════════════════════
+    // STEP 1–4: Extraction with retry logic
+    // ══════════════════════════════════════════════════════
+    try {
+        // ── PASS 1: Primary extraction ──
+        const prompt = buildExtractionPrompt(diaryPage);
+        const raw1 = await callVisionAPI({ ...baseOpts, prompt });
+        console.log("[CANTrac] Raw AI response:", raw1);
+        const parsed1 = parseLLMResponse(raw1);
+        console.log("[CANTrac] Parsed JSON:", JSON.stringify(parsed1, null, 2));
+        let results = mapResponseToBackend(parsed1, diaryPage);
+        let validation = validateResults(results, diaryPage);
+        console.log("[CANTrac] Pass 1 validation:", JSON.stringify(validation));
+        if (validation.valid) {
+            return {
+                success: true,
+                data: results,
+                error: null,
+                validation: imageValidation,
+            };
+        }
+        // ── PASS 2: All-null retry ──
+        if (validation.allNull) {
+            console.warn("[CANTrac] All null — retrying...");
+            const raw2 = await callVisionAPI({
                 ...baseOpts,
-                prompt: buildDateRetryPrompt(diaryPage, dateId, sectionLabel),
+                prompt: buildAllNullRetryPrompt(diaryPage),
             });
-            const parsedRetry = parseLLMResponse(rawRetry);
-            const mappedRetry = mapResponseToBackend(parsedRetry, diaryPage);
-            if (mappedRetry[dateId]?.answer !== null) {
-                results[dateId] = mappedRetry[dateId];
+            const parsed2 = parseLLMResponse(raw2);
+            const mapped2 = mapResponseToBackend(parsed2, diaryPage);
+            const v2 = validateResults(mapped2, diaryPage);
+            if (!v2.allNull) {
+                results = mapped2;
+                validation = v2;
+            }
+            else {
+                console.warn("[CANTrac] Still all null after retry");
+                return {
+                    success: false,
+                    data: results,
+                    error: {
+                        code: "ALL_NULL",
+                        message: "Could not read any answers from this page. " +
+                            "The bubbles may not be filled clearly enough, " +
+                            "or the image quality is too low. Please retake the photo.",
+                        details: { warnings: imageValidation.warnings },
+                    },
+                    validation: imageValidation,
+                };
             }
         }
-    }
-    // ── PASS 4: Low confidence field retry ──
-    if (validation.lowConfidenceFields.length > 0 && validation.lowConfidenceFields.length <= 5) {
-        const retryQuestions = diaryPage.questions.filter(q => validation.lowConfidenceFields.includes(q.id));
-        const fieldLines = retryQuestions.map(q => `"${q.id}": ${q.text} (${q.type})`).join("\n  ");
-        const retryPrompt = `Re-examine these uncertain fields on Page ${diaryPage.pageNumber}:
+        // ── PASS 3: Date-specific retry ──
+        if (validation.badDates.length > 0) {
+            for (const dateId of validation.badDates) {
+                const sectionLabel = dateId.includes("q1") || dateId.includes("first")
+                    ? "First Appointment"
+                    : "Second Attempt";
+                console.log(`[CANTrac] Retrying date field: ${dateId}`);
+                const rawRetry = await callVisionAPI({
+                    ...baseOpts,
+                    prompt: buildDateRetryPrompt(diaryPage, dateId, sectionLabel),
+                });
+                const parsedRetry = parseLLMResponse(rawRetry);
+                const mappedRetry = mapResponseToBackend(parsedRetry, diaryPage);
+                if (mappedRetry[dateId]?.answer !== null) {
+                    results[dateId] = mappedRetry[dateId];
+                }
+            }
+        }
+        // ── PASS 4: Low confidence field retry ──
+        if (validation.lowConfidenceFields.length > 0 &&
+            validation.lowConfidenceFields.length <= 5) {
+            const retryQuestions = diaryPage.questions.filter(q => validation.lowConfidenceFields.includes(q.id));
+            const fieldLines = retryQuestions
+                .map(q => `"${q.id}": ${q.text} (${q.type})`)
+                .join("\n  ");
+            const retryPrompt = `Re-examine these uncertain fields on Page ${diaryPage.pageNumber}:
   ${fieldLines}
 
 Return JSON: { "<field_id>": { "value": ..., "confidence": ... }, ... }
 JSON only.`;
-        const rawRetry = await callVisionAPI({ ...baseOpts, prompt: retryPrompt });
-        const parsedRetry = parseLLMResponse(rawRetry);
-        const mappedRetry = mapResponseToBackend(parsedRetry, diaryPage);
-        for (const [id, retryResult] of Object.entries(mappedRetry)) {
-            if (retryResult.answer !== null && retryResult.confidence > (results[id]?.confidence || 0)) {
-                results[id] = retryResult;
+            const rawRetry = await callVisionAPI({ ...baseOpts, prompt: retryPrompt });
+            const parsedRetry = parseLLMResponse(rawRetry);
+            const mappedRetry = mapResponseToBackend(parsedRetry, diaryPage);
+            for (const [id, retryResult] of Object.entries(mappedRetry)) {
+                if (retryResult.answer !== null &&
+                    retryResult.confidence > (results[id]?.confidence || 0)) {
+                    results[id] = retryResult;
+                }
             }
         }
+        return {
+            success: true,
+            data: results,
+            error: null,
+            validation: imageValidation,
+        };
     }
-    return results;
+    catch (err) {
+        return {
+            success: false,
+            data: null,
+            error: {
+                code: "EXTRACTION_FAILED",
+                message: "An unexpected error occurred while reading the page.",
+                details: { originalError: String(err) },
+            },
+            validation: imageValidation,
+        };
+    }
 }
 exports.extractDiaryPage = extractDiaryPage;
