@@ -5,7 +5,7 @@ import { HTTP_STATUS } from "../utils/constants";
 import { generateSecurePassword } from "../utils/passwordUtils";
 import { sendPasswordEmail } from "./emailService";
 import { createCashfreeVendor } from "./cashfree-vendor.service";
-import { createWallet } from "./wallet.service";
+import { createWallet, creditReferralCoins } from "./wallet.service";
 import { doctorOnboardRequestRepository } from "../repositories/doctorOnboardRequest.repository";
 import { vendorDoctorRepository } from "../repositories/vendorDoctor.repository";
 
@@ -22,6 +22,7 @@ interface SubmitRequestData {
   commissionType?: string;
   commissionRate?: number;
   bank?: Record<string, unknown>;
+  referredByCode?: string;
 }
 
 class DoctorOnboardService {
@@ -57,6 +58,7 @@ class DoctorOnboardService {
       commissionType: data.commissionType,
       commissionRate: data.commissionRate,
       bankDetails: data.bank,
+      referredByCode: data.referredByCode?.trim().toUpperCase() || undefined,
     });
 
     return request;
@@ -219,6 +221,19 @@ class DoctorOnboardService {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error(`Failed to send password email to ${request.email}:`, message);
     });
+
+    // Credit referral coins to the referrer (non-blocking)
+    if (request.referredByCode) {
+      AppUser.findOne({ where: { referralCode: request.referredByCode } })
+        .then((referrer) => {
+          if (!referrer) return;
+          return creditReferralCoins({ referrerId: referrer.id, referredDoctorId: newDoctor.id });
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          console.error(`Referral coin credit failed for code ${request.referredByCode}:`, message);
+        });
+    }
 
     return {
       doctor: {

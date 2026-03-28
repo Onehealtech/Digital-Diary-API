@@ -1,6 +1,8 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { AppUser } from "../models/Appuser";
+import { Wallet } from "../models/Wallet";
+import { creditReferralCoins } from "./wallet.service";
 import dotenv from "dotenv";
 
 dotenv.config(); // ✅ MUST be first
@@ -11,6 +13,7 @@ export class DoctorAuthService {
     password: string;
     address: string;
     phone?: string;
+    referredByCode?: string;
   }) {
     const existing = await AppUser.findOne({
       where: { email: data.email },
@@ -20,16 +23,29 @@ export class DoctorAuthService {
       throw new Error("Doctor already exists");
     }
 
-
     const doctor = await AppUser.create({
       fullName: data.fullName,
       email: data.email.toLowerCase(),
-      password: data.password.trim(), // ✅ plain password only
+      password: data.password.trim(),
       address: data.address,
       phone: data.phone,
-      role: "doctor",
+      role: "DOCTOR",
+      isActive: false,
+      selfRegistered: true,
     });
 
+    // Credit referral coins to the referrer (non-blocking)
+    if (data.referredByCode) {
+      AppUser.findOne({ where: { referralCode: data.referredByCode.trim().toUpperCase() } })
+        .then((referrer) => {
+          if (!referrer || referrer.id === doctor.id) return;
+          return creditReferralCoins({ referrerId: referrer.id, referredDoctorId: doctor.id });
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          console.error(`Referral coin credit failed for code ${data.referredByCode}:`, message);
+        });
+    }
 
     return doctor;
   }
@@ -67,14 +83,22 @@ export class DoctorAuthService {
    */
   static async getCurrentUser(userId: string) {
     const user = await AppUser.findByPk(userId, {
-      attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt"],
+      attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt", "referralCode"],
     });
 
     if (!user) {
       throw new Error("User not found");
     }
 
-    return user;
+    const wallet = await Wallet.findOne({
+      where: { userId },
+      attributes: ["coinBalance"],
+    });
+
+    return {
+      ...user.toJSON(),
+      coinBalance: wallet?.coinBalance ?? 0,
+    };
   }
 
   /**

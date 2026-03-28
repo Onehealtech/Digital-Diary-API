@@ -1037,3 +1037,53 @@ export const creditWalletsOnSale = async (params: {
     ? run(params.transaction)
     : sequelize.transaction(run);
 };
+
+// ════════════════════════════════════════════════════════════════════
+// CREDIT REFERRAL COINS
+//
+// When a referred doctor is approved, the referrer earns COINS_PER_REFERRAL
+// coins. Coins are separate from INR balance. 10 coins = ₹0.10.
+// ════════════════════════════════════════════════════════════════════
+
+const COINS_PER_REFERRAL = 10;
+
+export const creditReferralCoins = async (params: {
+  referrerId: string;
+  referredDoctorId: string;
+}) => {
+  return sequelize.transaction(async (t) => {
+    const wallet = await Wallet.findOne({
+      where: { userId: params.referrerId },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!wallet) return null; // referrer may not have a wallet yet — skip silently
+
+    wallet.coinBalance = (wallet.coinBalance || 0) + COINS_PER_REFERRAL;
+    await wallet.save({ transaction: t });
+
+    // Record as a wallet transaction for audit trail
+    const rupeesEquivalent = parseFloat(
+      new Decimal(COINS_PER_REFERRAL).times(0.01).toFixed(2)
+    );
+
+    await WalletTransaction.create(
+      {
+        walletId: wallet.id,
+        type: "CREDIT",
+        amount: rupeesEquivalent,
+        balanceAfter: parseFloat(new Decimal(wallet.balance).toFixed(2)),
+        category: "REFERRAL_BONUS",
+        description: `Referral bonus: ${COINS_PER_REFERRAL} coins for onboarding doctor ${params.referredDoctorId}`,
+        referenceType: "MANUAL",
+        referenceId: params.referredDoctorId,
+        performedBy: null,
+        metadata: { coins: COINS_PER_REFERRAL, referredDoctorId: params.referredDoctorId },
+      } as any,
+      { transaction: t }
+    );
+
+    return { coinsAwarded: COINS_PER_REFERRAL, newCoinBalance: wallet.coinBalance };
+  });
+};

@@ -11,6 +11,7 @@ import {
 } from "sequelize-typescript";
 import bcrypt from "bcrypt";
 import { Patient } from "./Patient";
+import { generateReferralCode } from "../utils/referralUtils";
 
 @Table({
   tableName: "app-users",
@@ -184,6 +185,22 @@ export class AppUser extends Model {
   })
   assignedPatientIds?: string[];
 
+  // Unique referral code for this user — used by others to credit them when onboarding new doctors
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+    unique: true,
+  })
+  referralCode?: string;
+
+  // True for doctors who self-registered and are awaiting super admin approval
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  })
+  selfRegistered!: boolean;
+
   @Column({
     type: DataType.BOOLEAN,
     defaultValue: false,
@@ -208,6 +225,9 @@ export class AppUser extends Model {
   static async hashPasswordOnCreate(instance: AppUser) {
     if (instance.password) {
       instance.password = await bcrypt.hash(instance.password, 10);
+    }
+    if (!instance.referralCode) {
+      instance.referralCode = generateReferralCode();
     }
   }
 
