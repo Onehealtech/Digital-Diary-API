@@ -168,6 +168,19 @@ export const initializeDatabase = async (): Promise<void> => {
       console.warn('⚠️ DiaryRequest cancelled enum migration warning:', err instanceof Error ? err.message : err);
     });
 
+    // Add bankDetails JSONB column to app-users
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'bankDetails') THEN
+          ALTER TABLE "app-users" ADD COLUMN "bankDetails" JSONB;
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ bankDetails migration warning:', err instanceof Error ? err.message : err);
+    });
+
     // Ensure app-users table has all model-defined columns
     await sequelize.query(`
       DO $$

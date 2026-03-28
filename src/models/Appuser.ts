@@ -44,6 +44,17 @@ export class AppUser extends Model {
   landLinePhone?: string;
 
   @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  bankDetails?: {
+    accountHolder?: string;
+    accountNumber?: string;
+    ifsc?: string;
+    bankName?: string;
+  };
+
+  @Column({
     type: DataType.STRING(255),
     allowNull: false,
     unique: true,

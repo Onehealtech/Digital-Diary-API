@@ -30,7 +30,7 @@ export const createReminder = async (
         }
 
         // Validate reminder type
-        const validTypes = ["APPOINTMENT", "CHEMOTHERAPY", "RADIOLOGY", "FOLLOW_UP", "OTHER"];
+        const validTypes = ["APPOINTMENT", "CHEMOTHERAPY", "RADIOLOGY", "SURGERY", "FOLLOW_UP", "OTHER"];
         if (!validTypes.includes(type)) {
             res.status(400).json({
                 success: false,
@@ -455,47 +455,72 @@ export const resendReminder = async (
     try {
         const { id } = req.params;
         const userId = req.user!.id;
+        const userRole = req.user!.role;
+        const parentId = (req.user as any)?.parentId;
         const { newReminderDate, newReminderMessage } = req.body;
 
+        // Doctor can reschedule own + assistant-created reminders
+        // Assistant can reschedule own + their doctor's reminders
+        let allowedCreatorIds: string[] = [userId];
+        if (userRole === "DOCTOR") {
+            const assistants = await AppUser.findAll({
+                where: { parentId: userId, role: "ASSISTANT" },
+                attributes: ["id"],
+                raw: true,
+                paranoid: false,
+            });
+            allowedCreatorIds = [userId, ...assistants.map((a: { id: string }) => a.id)];
+        } else if (userRole === "ASSISTANT" && parentId) {
+            allowedCreatorIds = [userId, parentId];
+        }
+
         const reminder = await Reminder.findOne({
-            where: { id, createdBy: userId },
+            where: { id, createdBy: { [Op.in]: allowedCreatorIds } },
             include: [{ model: Patient }]
         });
 
         if (!reminder) {
-            res.status(404).json({ success: false, message: "Reminder not found" });
+            res.status(404).json({ success: false, message: "Reminder not found or you don't have permission to reschedule it" });
             return;
         }
 
-        if (
-            reminder.status === "ACCEPTED" ||
-            reminder.status === "CLOSED" ||
-            reminder.status === "EXPIRED"
-        ) {
+        // Only block truly terminal statuses — allow reschedule for REJECTED, PENDING, READ
+        if (reminder.status === "CLOSED" || reminder.status === "EXPIRED") {
             res.status(400).json({
                 success: false,
-                message: `Cannot resend a reminder that is ${reminder.status}`
+                message: `Cannot reschedule a reminder that is ${reminder.status.toLowerCase()}`
             });
             return;
         }
 
-        if (reminder.reminderCount >= 2) {
+        // Allow up to 5 reschedules (generous limit for back-and-forth scheduling)
+        if (reminder.reminderCount >= 5) {
             reminder.status = "CLOSED";
             await reminder.save();
 
             res.status(400).json({
                 success: false,
-                message: "Max resend limit reached. Reminder has been closed."
+                message: "Max reschedule limit (5) reached. Please create a new appointment."
             });
             return;
         }
 
-        // ✅ Save new reminder info
+        // ✅ Save new reminder info — update both the main date and the newReminderDate
+        console.log("[Reschedule] Input:", { newReminderDate, newReminderMessage, currentStatus: reminder.status, reminderCount: reminder.reminderCount });
+
         if (newReminderDate) {
-            reminder.newReminderDate = new Date(newReminderDate);
+            const parsedDate = new Date(newReminderDate);
+            if (isNaN(parsedDate.getTime())) {
+                res.status(400).json({ success: false, message: "Invalid date format provided" });
+                return;
+            }
+            reminder.reminderDate = parsedDate;      // Update the actual appointment date
+            reminder.newReminderDate = parsedDate;    // Also store as the rescheduled date
+            console.log("[Reschedule] New date:", parsedDate.toISOString());
         }
 
         if (newReminderMessage) {
+            reminder.message = newReminderMessage;
             reminder.newReminderMessage = newReminderMessage;
         }
 
