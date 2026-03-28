@@ -11,6 +11,8 @@ const router = (0, express_1.Router)();
  */
 // Get all archived users
 router.get("/archived", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getArchivedUsers);
+// Self-registered doctors awaiting approval — must be before /:id
+router.get("/pending-registrations", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getPendingRegistrations);
 // Get user details by ID
 router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getUserById);
 // Update user details
@@ -21,4 +23,6 @@ router.put("/:id/toggle-status", (0, authMiddleware_1.authCheck)([constants_1.Us
 router.post("/:id/restore", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.restoreUser);
 // Archive (soft-delete) a user
 router.delete("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.archiveUser);
+router.post("/:id/approve-registration", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.approveRegistration);
+router.post("/:id/reject-registration", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.rejectRegistration);
 exports.default = router;

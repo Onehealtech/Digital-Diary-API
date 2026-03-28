@@ -419,5 +419,63 @@ class StaffController {
             return (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 400);
         }
     }
+    // ==================== SELF-REGISTRATION APPROVALS ====================
+    /**
+     * GET /api/v1/users/pending-registrations
+     * List doctors who self-registered and are awaiting approval
+     */
+    async getPendingRegistrations(_req, res) {
+        try {
+            const result = await staff_service_1.staffService.getPendingRegistrations();
+            return (0, response_1.sendResponse)(res, result, "Pending registrations fetched");
+        }
+        catch (error) {
+            return (0, response_1.sendError)(res, error.message);
+        }
+    }
+    /**
+     * POST /api/v1/users/:id/approve-registration
+     * Approve a self-registered doctor (sets isActive=true, selfRegistered=false)
+     */
+    async approveRegistration(req, res) {
+        try {
+            const { id } = req.params;
+            const reviewerId = req.user.id;
+            const result = await staff_service_1.staffService.approveRegistration(id, reviewerId);
+            (0, activityLogger_1.logActivity)({
+                req,
+                userId: reviewerId,
+                userRole: req.user.role,
+                action: "DOCTOR_REGISTRATION_APPROVED",
+                details: { targetUserId: id },
+            });
+            return (0, response_1.sendResponse)(res, result, "Doctor registration approved");
+        }
+        catch (error) {
+            return (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 400);
+        }
+    }
+    /**
+     * POST /api/v1/users/:id/reject-registration
+     * Reject a self-registered doctor (soft-deletes the account)
+     */
+    async rejectRegistration(req, res) {
+        try {
+            const { id } = req.params;
+            const reviewerId = req.user.id;
+            const result = await staff_service_1.staffService.rejectRegistration(id, reviewerId);
+            (0, activityLogger_1.logActivity)({
+                req,
+                userId: reviewerId,
+                userRole: req.user.role,
+                action: "DOCTOR_REGISTRATION_REJECTED",
+                details: { targetUserId: id },
+            });
+            return (0, response_1.sendResponse)(res, result, "Doctor registration rejected");
+        }
+        catch (error) {
+            return (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 400);
+        }
+    }
 }
 exports.staffController = new StaffController();

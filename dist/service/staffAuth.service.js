@@ -28,9 +28,12 @@ const staffLogin = async (email, password) => {
     if (!isMatch) {
         throw new Error("Invalid credentials");
     }
-    // Block login for deactivated users (isActive = false)
+    // Block login for inactive users — distinguish pending approval from admin-deactivated
     if (user.isActive === false) {
-        throw Object.assign(new Error("Your account has been deactivated. Please contact your administrator."), { loginBlocked: true, userId: user.id });
+        const message = user.selfRegistered
+            ? "Your account is pending approval from the Super Admin. You will be able to log in once approved."
+            : "Your account has been deactivated. Please contact your administrator.";
+        throw Object.assign(new Error(message), { loginBlocked: true, userId: user.id });
     }
     // Block login for archived (soft-deleted) users
     if (user.deletedAt !== null) {
@@ -97,7 +100,10 @@ const verifyStaffOTP = async (email, otp) => {
     }
     // Block OTP verification for deactivated users
     if (user.isActive === false) {
-        throw new Error("Your account has been deactivated. Please contact your administrator.");
+        const message = user.selfRegistered
+            ? "Your account is pending approval from the Super Admin."
+            : "Your account has been deactivated. Please contact your administrator.";
+        throw new Error(message);
     }
     // Block OTP verification for archived (soft-deleted) users
     if (user.deletedAt !== null) {

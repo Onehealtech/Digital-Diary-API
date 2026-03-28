@@ -385,6 +385,70 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ doctor_assignment_requests status enum migration warning:', err instanceof Error ? err.message : err);
         });
+        // ── Self-registration approval migrations ─────────────────────────────
+        // Add selfRegistered flag to app-users (true = pending super admin approval)
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'selfRegistered') THEN
+          ALTER TABLE "app-users" ADD COLUMN "selfRegistered" BOOLEAN NOT NULL DEFAULT false;
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ selfRegistered column migration warning:', err instanceof Error ? err.message : err);
+        });
+        // ── Referral system migrations ─────────────────────────────────────────
+        // Add referralCode to app-users (unique, generated per user)
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'referralCode') THEN
+          ALTER TABLE "app-users" ADD COLUMN "referralCode" VARCHAR(20) UNIQUE;
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ referralCode column migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Backfill referralCode for existing users that don't have one
+        await exports.sequelize.query(`
+      UPDATE "app-users"
+      SET "referralCode" = upper(substring(md5(random()::text || id::text) from 1 for 8))
+      WHERE "referralCode" IS NULL;
+    `).catch((err) => {
+            console.warn('⚠️ referralCode backfill migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Add referredByCode to doctor_onboard_requests
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'doctor_onboard_requests' AND column_name = 'referredByCode') THEN
+          ALTER TABLE "doctor_onboard_requests" ADD COLUMN "referredByCode" VARCHAR(20);
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ referredByCode column migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Add coinBalance to wallets
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'wallets' AND column_name = 'coinBalance') THEN
+          ALTER TABLE "wallets" ADD COLUMN "coinBalance" INTEGER NOT NULL DEFAULT 0;
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ coinBalance column migration warning:', err instanceof Error ? err.message : err);
+        });
+        // Add REFERRAL_BONUS to wallet_transactions category enum
+        await exports.sequelize.query(`
+      ALTER TYPE "enum_wallet_transactions_category" ADD VALUE IF NOT EXISTS 'REFERRAL_BONUS';
+    `).catch((err) => {
+            console.warn('⚠️ REFERRAL_BONUS enum migration warning:', err instanceof Error ? err.message : err);
+        });
         console.log('✅ Database models synchronized');
     }
     catch (error) {

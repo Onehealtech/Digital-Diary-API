@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.creditWalletsOnSale = exports.creditWallet = exports.reconcileWallet = exports.initiatePayout = exports.manualAdjustment = exports.getAllWalletsSummary = exports.getWalletLedger = exports.getWallet = exports.getVendorCreditSummary = exports.recordAdvancePayment = exports.createWallet = void 0;
+exports.creditReferralCoins = exports.creditWalletsOnSale = exports.creditWallet = exports.reconcileWallet = exports.initiatePayout = exports.manualAdjustment = exports.getAllWalletsSummary = exports.getWalletLedger = exports.getWallet = exports.getVendorCreditSummary = exports.recordAdvancePayment = exports.createWallet = void 0;
 // import Decimal from "decimal.js";
 // import { Op, Transaction } from "sequelize";
 // import { sequelize } from "../config/Dbconnetion";
@@ -841,3 +841,39 @@ const creditWalletsOnSale = async (params) => {
         : Dbconnetion_1.sequelize.transaction(run);
 };
 exports.creditWalletsOnSale = creditWalletsOnSale;
+// ════════════════════════════════════════════════════════════════════
+// CREDIT REFERRAL COINS
+//
+// When a referred doctor is approved, the referrer earns COINS_PER_REFERRAL
+// coins. Coins are separate from INR balance. 10 coins = ₹0.10.
+// ════════════════════════════════════════════════════════════════════
+const COINS_PER_REFERRAL = 10;
+const creditReferralCoins = async (params) => {
+    return Dbconnetion_1.sequelize.transaction(async (t) => {
+        const wallet = await Wallet_1.Wallet.findOne({
+            where: { userId: params.referrerId },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+        });
+        if (!wallet)
+            return null; // referrer may not have a wallet yet — skip silently
+        wallet.coinBalance = (wallet.coinBalance || 0) + COINS_PER_REFERRAL;
+        await wallet.save({ transaction: t });
+        // Record as a wallet transaction for audit trail
+        const rupeesEquivalent = parseFloat(new decimal_js_1.default(COINS_PER_REFERRAL).times(0.01).toFixed(2));
+        await walletTransaction_model_1.WalletTransaction.create({
+            walletId: wallet.id,
+            type: "CREDIT",
+            amount: rupeesEquivalent,
+            balanceAfter: parseFloat(new decimal_js_1.default(wallet.balance).toFixed(2)),
+            category: "REFERRAL_BONUS",
+            description: `Referral bonus: ${COINS_PER_REFERRAL} coins for onboarding doctor ${params.referredDoctorId}`,
+            referenceType: "MANUAL",
+            referenceId: params.referredDoctorId,
+            performedBy: null,
+            metadata: { coins: COINS_PER_REFERRAL, referredDoctorId: params.referredDoctorId },
+        }, { transaction: t });
+        return { coinsAwarded: COINS_PER_REFERRAL, newCoinBalance: wallet.coinBalance };
+    });
+};
+exports.creditReferralCoins = creditReferralCoins;

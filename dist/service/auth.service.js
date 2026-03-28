@@ -7,6 +7,8 @@ exports.DoctorAuthService = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Appuser_1 = require("../models/Appuser");
+const Wallet_1 = require("../models/Wallet");
+const wallet_service_1 = require("./wallet.service");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config(); // ✅ MUST be first
 class DoctorAuthService {
@@ -23,8 +25,23 @@ class DoctorAuthService {
             password: data.password.trim(),
             address: data.address,
             phone: data.phone,
-            role: "doctor",
+            role: "DOCTOR",
+            isActive: false,
+            selfRegistered: true,
         });
+        // Credit referral coins to the referrer (non-blocking)
+        if (data.referredByCode) {
+            Appuser_1.AppUser.findOne({ where: { referralCode: data.referredByCode.trim().toUpperCase() } })
+                .then((referrer) => {
+                if (!referrer || referrer.id === doctor.id)
+                    return;
+                return (0, wallet_service_1.creditReferralCoins)({ referrerId: referrer.id, referredDoctorId: doctor.id });
+            })
+                .catch((err) => {
+                const message = err instanceof Error ? err.message : "Unknown error";
+                console.error(`Referral coin credit failed for code ${data.referredByCode}:`, message);
+            });
+        }
         return doctor;
     }
     static async login(email, password) {
@@ -51,12 +68,19 @@ class DoctorAuthService {
      */
     static async getCurrentUser(userId) {
         const user = await Appuser_1.AppUser.findByPk(userId, {
-            attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt"],
+            attributes: ["id", "fullName", "email", "phone", "role", "parentId", "permissions", "createdAt", "referralCode"],
         });
         if (!user) {
             throw new Error("User not found");
         }
-        return user;
+        const wallet = await Wallet_1.Wallet.findOne({
+            where: { userId },
+            attributes: ["coinBalance"],
+        });
+        return {
+            ...user.toJSON(),
+            coinBalance: wallet?.coinBalance ?? 0,
+        };
     }
     /**
      * Refresh access token

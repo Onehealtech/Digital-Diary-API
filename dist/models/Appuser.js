@@ -17,6 +17,7 @@ exports.AppUser = void 0;
 const sequelize_typescript_1 = require("sequelize-typescript");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const Patient_1 = require("./Patient");
+const referralUtils_1 = require("../utils/referralUtils");
 let AppUser = AppUser_1 = class AppUser extends sequelize_typescript_1.Model {
     /* =======================
        Sequelize Hooks
@@ -24,6 +25,9 @@ let AppUser = AppUser_1 = class AppUser extends sequelize_typescript_1.Model {
     static async hashPasswordOnCreate(instance) {
         if (instance.password) {
             instance.password = await bcrypt_1.default.hash(instance.password, 10);
+        }
+        if (!instance.referralCode) {
+            instance.referralCode = (0, referralUtils_1.generateReferralCode)();
         }
     }
     static async hashPasswordOnUpdate(instance) {
@@ -220,6 +224,22 @@ __decorate([
     }),
     __metadata("design:type", Array)
 ], AppUser.prototype, "assignedPatientIds", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING(20),
+        allowNull: true,
+        unique: true,
+    }),
+    __metadata("design:type", String)
+], AppUser.prototype, "referralCode", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+    }),
+    __metadata("design:type", Boolean)
+], AppUser.prototype, "selfRegistered", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.BOOLEAN,

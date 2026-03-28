@@ -72,6 +72,12 @@ __decorate([
     __metadata("design:type", Boolean)
 ], Wallet.prototype, "isActive", void 0);
 __decorate([
+    (0, sequelize_typescript_1.AllowNull)(false),
+    (0, sequelize_typescript_1.Default)(0),
+    (0, sequelize_typescript_1.Column)(sequelize_typescript_1.DataType.INTEGER),
+    __metadata("design:type", Number)
+], Wallet.prototype, "coinBalance", void 0);
+__decorate([
     (0, sequelize_typescript_1.HasMany)(() => walletTransaction_model_1.WalletTransaction),
     __metadata("design:type", Array)
 ], Wallet.prototype, "transactions", void 0);
