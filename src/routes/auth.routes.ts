@@ -13,6 +13,9 @@ const router = express.Router();
 // ONE-TIME SETUP: Create first Super Admin (disable after use)
 router.post("/auth/signup-super-admin", setupController.signupSuperAdmin);
 
+// Doctor self-registration
+router.post("/auth/register", DoctorAuthController.register);
+
 // Staff Authentication Routes
 router.post("/auth/login", staffAuthController.login);
 router.post("/auth/verify-2fa", staffAuthController.verify2FA);

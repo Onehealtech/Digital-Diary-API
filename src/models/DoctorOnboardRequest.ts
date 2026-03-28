@@ -75,6 +75,11 @@ export class DoctorOnboardRequest extends Model {
   @Column({ type: DataType.JSONB, allowNull: true })
   bankDetails?: Record<string, unknown>;
 
+  // Referral code entered by the vendor when submitting this request.
+  // Points to the referralCode of the referring doctor/vendor.
+  @Column({ type: DataType.STRING(20), allowNull: true })
+  referredByCode?: string;
+
   // Approval/rejection metadata
   @Column({ type: DataType.TEXT, allowNull: true })
   rejectionReason?: string;

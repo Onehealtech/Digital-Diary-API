@@ -24,6 +24,7 @@ class DoctorOnboardRequestRepository {
     commissionType?: string;
     commissionRate?: number;
     bankDetails?: Record<string, unknown>;
+    referredByCode?: string;
   }): Promise<DoctorOnboardRequest> {
     return DoctorOnboardRequest.create(data);
   }

@@ -17,6 +17,13 @@ router.get(
   staffController.getArchivedUsers
 );
 
+// Self-registered doctors awaiting approval — must be before /:id
+router.get(
+  "/pending-registrations",
+  authCheck([UserRole.SUPER_ADMIN]),
+  staffController.getPendingRegistrations
+);
+
 // Get user details by ID
 router.get(
   "/:id",
@@ -50,6 +57,18 @@ router.delete(
   "/:id",
   authCheck([UserRole.SUPER_ADMIN]),
   staffController.archiveUser
+);
+
+router.post(
+  "/:id/approve-registration",
+  authCheck([UserRole.SUPER_ADMIN]),
+  staffController.approveRegistration
+);
+
+router.post(
+  "/:id/reject-registration",
+  authCheck([UserRole.SUPER_ADMIN]),
+  staffController.rejectRegistration
 );
 
 export default router;
