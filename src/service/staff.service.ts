@@ -921,6 +921,39 @@ async getVendorDoctors(
 
     return updated?.toJSON();
   }
+
+  // ==================== SELF-REGISTRATION APPROVALS ====================
+
+  async getPendingRegistrations() {
+    const doctors = await AppUser.findAll({
+      where: { role: "DOCTOR", isActive: false, selfRegistered: true } as any,
+      attributes: ["id", "fullName", "email", "phone", "address", "city", "state", "createdAt"],
+      order: [["createdAt", "ASC"]],
+    });
+    return doctors.map((d) => d.toJSON());
+  }
+
+  async approveRegistration(userId: any, _reviewerId: string) {
+    const doctor = await AppUser.findOne({
+      where: { id: userId, role: "DOCTOR", selfRegistered: true, isActive: false } as any,
+    });
+    if (!doctor) throw new Error("Pending registration not found");
+
+    await doctor.update({ isActive: true, selfRegistered: false });
+
+    return { id: doctor.id, fullName: doctor.fullName, email: doctor.email };
+  }
+
+  async rejectRegistration(userId: any, _reviewerId: string) {
+    const doctor = await AppUser.findOne({
+      where: { id: userId, role: "DOCTOR", selfRegistered: true, isActive: false } as any,
+    });
+    if (!doctor) throw new Error("Pending registration not found");
+
+    await doctor.destroy(); // soft-delete via paranoid
+
+    return { id: userId };
+  }
 }
 
 export const staffService = new StaffService();

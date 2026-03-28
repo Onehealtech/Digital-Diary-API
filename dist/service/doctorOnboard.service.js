@@ -42,6 +42,7 @@ class DoctorOnboardService {
             commissionType: data.commissionType,
             commissionRate: data.commissionRate,
             bankDetails: data.bank,
+            referredByCode: data.referredByCode?.trim().toUpperCase() || undefined,
         });
         return request;
     }
@@ -178,6 +179,19 @@ class DoctorOnboardService {
             const message = err instanceof Error ? err.message : "Unknown error";
             console.error(`Failed to send password email to ${request.email}:`, message);
         });
+        // Credit referral coins to the referrer (non-blocking)
+        if (request.referredByCode) {
+            Appuser_1.AppUser.findOne({ where: { referralCode: request.referredByCode } })
+                .then((referrer) => {
+                if (!referrer)
+                    return;
+                return (0, wallet_service_1.creditReferralCoins)({ referrerId: referrer.id, referredDoctorId: newDoctor.id });
+            })
+                .catch((err) => {
+                const message = err instanceof Error ? err.message : "Unknown error";
+                console.error(`Referral coin credit failed for code ${request.referredByCode}:`, message);
+            });
+        }
         return {
             doctor: {
                 id: newDoctor.id,

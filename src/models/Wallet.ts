@@ -67,6 +67,12 @@ export class Wallet extends Model<Wallet> {
   @Column(DataType.BOOLEAN)
   isActive!: boolean;
 
+  // Referral coins earned (10 coins = ₹0.10)
+  @AllowNull(false)
+  @Default(0)
+  @Column(DataType.INTEGER)
+  coinBalance!: number;
+
   // Associations
   @HasMany(() => WalletTransaction)
   transactions!: WalletTransaction[];
