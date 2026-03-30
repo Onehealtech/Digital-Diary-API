@@ -19,6 +19,9 @@ export const createReminder = async (
 ): Promise<void> => {
     try {
         const { patientId, message, reminderDate, type } = req.body;
+        const attachmentUrl = (req as any).file
+            ? `/uploads/notification_attachments/${(req as any).file.filename}`
+            : (req.body.attachmentUrl as string | undefined) || undefined;
 
         // Validate required fields
         if (!patientId || !message || !reminderDate || !type) {
@@ -73,7 +76,8 @@ export const createReminder = async (
             type,
             status: "PENDING",
             createdBy: req.user!.id,
-            reminderCount: 1
+            reminderCount: 1,
+            attachmentUrl,
         });
         
         await notificationService.createNotification({
