@@ -3,6 +3,7 @@ import { notificationController } from "../controllers/notification.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
+import { notificationAttachmentUpload } from "../middleware/upload.middleware";
 
 const router = Router();
 
@@ -66,6 +67,7 @@ router.post(
   "/",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
   requirePermission('sendNotifications'),
+  notificationAttachmentUpload.single("attachment"),
   notificationController.createNotification
 );
 

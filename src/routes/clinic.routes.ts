@@ -5,6 +5,7 @@ import { authCheck } from "../middleware/authMiddleware";
 import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
 import { registerPatientSchema } from "../schemas/staff.schemas";
+import { notificationAttachmentUpload } from "../middleware/upload.middleware";
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.post(
 router.post(
     "/create-reminder",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    notificationAttachmentUpload.single("attachment"),
     createReminder
 );
 

@@ -124,6 +124,10 @@ class NotificationController {
         return sendError(res, "recipientId, type, title, and message are required", 400);
       }
 
+      const attachmentUrl = (req as any).file
+        ? `/uploads/notification_attachments/${(req as any).file.filename}`
+        : (req.body.attachmentUrl as string | undefined) || undefined;
+
       const notification = await notificationService.createNotification({
         senderId,
         recipientId,
@@ -137,6 +141,7 @@ class NotificationController {
         relatedTestName,
         actionUrl,
         deliveryMethod,
+        attachmentUrl,
       });
 
       return sendResponse(res, notification, "Notification sent successfully", 201);

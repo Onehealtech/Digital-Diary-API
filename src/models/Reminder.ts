@@ -94,4 +94,10 @@ export class Reminder extends Model {
         allowNull: true,
     })
     newReminderMessage?: string;
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true,
+    })
+    attachmentUrl?: string;
 }

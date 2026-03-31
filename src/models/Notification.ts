@@ -127,4 +127,10 @@ export class Notification extends Model {
     defaultValue: false,
   })
   isResponded!: boolean;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  attachmentUrl?: string;
 }
