@@ -4,6 +4,7 @@ import { UserRole } from "../utils/constants";
 import {
   getAdvancedAnalysisPatients,
   getAdvancedAnalysisCount,
+  syncAnalyticsGoogleSheet,
 } from "../controllers/advancedAnalysisController";
 
 const router = express.Router();
@@ -18,6 +19,12 @@ router.post(
   "/count",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
   getAdvancedAnalysisCount
+);
+
+router.post(
+  "/sync-sheet",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  syncAnalyticsGoogleSheet
 );
 
 export default router;
