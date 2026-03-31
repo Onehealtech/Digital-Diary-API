@@ -145,12 +145,12 @@ class NotificationService {
         }
         // Build personalized greeting and prepend to message
         let finalMessage = data.message;
-        if (data.recipientType === "patient" && patientName) {
-            const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
-            if (greeting) {
-                finalMessage = `${greeting}\n\n${data.message}`;
-            }
-        }
+        // if (data.recipientType === "patient" && patientName) {
+        //   const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+        //   if (greeting) {
+        //     finalMessage = `${greeting}\n\n${data.message}`;
+        //   }
+        // }
         const notification = await Notification_1.Notification.create({
             senderId: data.senderId,
             recipientId: data.recipientId,
@@ -164,6 +164,7 @@ class NotificationService {
             actionUrl: data.actionUrl,
             deliveryMethod: data.deliveryMethod || "in-app",
             delivered: true,
+            attachmentUrl: data.attachmentUrl,
         });
         // Send FCM push notification if token exists
         if (fcmToken) {
@@ -216,14 +217,14 @@ class NotificationService {
             try {
                 // Build personalized greeting for this specific patient
                 let finalMessage = data.message;
-                const patientName = patient.fullName || "";
-                const patientLang = (patient.language || data.language || "en");
-                if (patientName) {
-                    const greeting = await this.buildGreeting(data.senderId, patientName, patientLang);
-                    if (greeting) {
-                        finalMessage = `${greeting}\n\n${data.message}`;
-                    }
-                }
+                // const patientName = patient.fullName || "";
+                // const patientLang = ((patient as any).language || data.language || "en") as "en" | "hi";
+                // if (patientName) {
+                //   const greeting = await this.buildGreeting(data.senderId, patientName, patientLang);
+                //   if (greeting) {
+                //     finalMessage = `${greeting}\n\n${data.message}`;
+                //   }
+                // }
                 // Create individual notification record
                 const notification = await Notification_1.Notification.create({
                     senderId: data.senderId,

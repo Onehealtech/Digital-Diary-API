@@ -37,7 +37,7 @@ __decorate([
 ], BubbleScanResult.prototype, "patient", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("scan", "manual"),
+        type: sequelize_typescript_1.DataType.ENUM("scan", "manual", "doctor_manual"),
         allowNull: false,
         defaultValue: "scan",
     }),
@@ -172,6 +172,13 @@ __decorate([
     }),
     __metadata("design:type", Object)
 ], BubbleScanResult.prototype, "doctorOverrides", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.JSONB,
+        allowNull: true,
+    }),
+    __metadata("design:type", Object)
+], BubbleScanResult.prototype, "questionMarks", void 0);
 BubbleScanResult = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "bubble_scan_results",

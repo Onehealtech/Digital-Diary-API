@@ -1,6 +1,29 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.seedDiaryPages = exports.getAllDiaryPagesStaff = exports.getDiaryPageByNumber = exports.getAllDiaryPages = void 0;
+exports.seedDiaryPages = exports.getDoctorMarksForPage = exports.getAllDiaryPagesStaff = exports.getDiaryPageByNumber = exports.getAllDiaryPages = void 0;
 const diaryPage_service_1 = require("../service/diaryPage.service");
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
@@ -60,6 +83,28 @@ const getAllDiaryPagesStaff = async (req, res) => {
     }
 };
 exports.getAllDiaryPagesStaff = getAllDiaryPagesStaff;
+/**
+ * GET /api/v1/diary-pages/:pageNumber/doctor-marks
+ * Returns the doctor-prefilled questionMarks for this patient's page.
+ * Patient app uses this to show which investigations the doctor has pre-ticked.
+ */
+const getDoctorMarksForPage = async (req, res) => {
+    try {
+        const pageNumber = Number(req.params.pageNumber);
+        if (isNaN(pageNumber)) {
+            (0, response_1.sendError)(res, 400, "pageNumber must be a valid number");
+            return;
+        }
+        const patientId = req.user.id;
+        const { bubbleScanService } = await Promise.resolve().then(() => __importStar(require("../service/bubbleScan.service")));
+        const marks = await bubbleScanService.getDoctorMarksForPage(patientId, pageNumber);
+        (0, response_1.sendResponse)(res, 200, "Doctor marks retrieved successfully", { questionMarks: marks });
+    }
+    catch (error) {
+        (0, response_1.sendError)(res, 500, error.message || "Failed to get doctor marks");
+    }
+};
+exports.getDoctorMarksForPage = getDoctorMarksForPage;
 /**
  * POST /api/v1/diary-pages/seed
  * Seed all diary pages into the database (admin only)

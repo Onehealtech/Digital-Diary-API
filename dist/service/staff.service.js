@@ -219,7 +219,7 @@ class StaffService {
         };
     }
     /**
-     * Get all assistants
+     * Get all assistants (includes isActive for Super Admin status toggle)
      */
     async getAllAssistants(filters = {}, doctorId) {
         const { page = 1, limit = 20, search } = filters;
@@ -244,8 +244,10 @@ class StaffService {
                 "fullName",
                 "email",
                 "phone",
+                "landLinePhone",
                 "parentId",
                 "permissions",
+                "isActive",
                 "assistantStatus",
                 "patientAccessMode",
                 "assignedPatientIds",

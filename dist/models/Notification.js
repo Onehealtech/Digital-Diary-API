@@ -150,6 +150,13 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], Notification.prototype, "isResponded", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Notification.prototype, "attachmentUrl", void 0);
 Notification = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "notifications",

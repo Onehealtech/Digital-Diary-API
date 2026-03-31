@@ -136,11 +136,11 @@ class DoctorAuthController {
             if (!userId) {
                 return (0, response_1.sendError)(res, "Unauthorized", 401);
             }
-            const { fullName, phone } = req.body;
+            const { fullName, phone, bankDetails } = req.body;
             if (!fullName?.trim()) {
                 return (0, response_1.sendError)(res, "Full name is required", 400);
             }
-            const result = await auth_service_1.DoctorAuthService.updateProfile(userId, fullName, phone);
+            const result = await auth_service_1.DoctorAuthService.updateProfile(userId, fullName, phone, bankDetails);
             return (0, response_1.sendResponse)(res, result, "Profile updated successfully");
         }
         catch (error) {

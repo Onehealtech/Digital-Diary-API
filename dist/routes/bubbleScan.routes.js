@@ -53,4 +53,8 @@ router.post("/:id/retry", authMiddleware_1.patientAuthCheck, bubbleScanControlle
 router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getAllBubbleScans);
 // Doctor/Assistant reviews and optionally overrides bubble scan results
 router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('markReviewed'), bubbleScanController.reviewBubbleScan);
+// Doctor dashboard: filter patients by diary page submission status
+router.get("/doctor/diary-filter", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getDiaryFilteredPatients);
+// Doctor manually fills / pre-fills an investigation report for a patient
+router.post("/doctor/fill-report", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.doctorFillReport);
 exports.default = router;

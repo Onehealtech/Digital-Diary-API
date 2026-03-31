@@ -73,6 +73,13 @@ __decorate([
 ], AppUser.prototype, "landLinePhone", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.JSONB,
+        allowNull: true,
+    }),
+    __metadata("design:type", Object)
+], AppUser.prototype, "bankDetails", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.STRING(255),
         allowNull: false,
         unique: true,

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
+exports.doctorFillReport = exports.getDiaryFilteredPatients = exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
 const bubbleScan_service_1 = require("../service/bubbleScan.service");
 const visionScan_service_1 = require("../modules/visionScan/visionScan.service");
 const response_1 = require("../utils/response");
@@ -191,8 +191,8 @@ const reviewBubbleScan = async (req, res) => {
             (0, response_1.sendError)(res, 401, "Authentication required");
             return;
         }
-        const { doctorNotes, flagged, overrides } = req.body;
-        const result = await bubbleScan_service_1.bubbleScanService.reviewBubbleScan(req.params.id, doctorId, { doctorNotes, flagged, overrides });
+        const { doctorNotes, flagged, overrides, questionMarks } = req.body;
+        const result = await bubbleScan_service_1.bubbleScanService.reviewBubbleScan(req.params.id, doctorId, { doctorNotes, flagged, overrides, questionMarks });
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
@@ -244,3 +244,85 @@ const getAllBubbleScans = async (req, res) => {
     }
 };
 exports.getAllBubbleScans = getAllBubbleScans;
+/**
+ * GET /api/v1/bubble-scan/doctor/diary-filter
+ * Doctor dashboard: get all assigned patients filtered by whether they submitted a diary page.
+ * Useful for seeing "who uploaded Mammogram", "who hasn't submitted page 5", etc.
+ *
+ * Query params:
+ *   pageNumber  (required) - diary page number to filter on (e.g. 5, 6)
+ *   questionId  (optional) - specific question ID to show individual answer (e.g. "q1")
+ *   filter      (optional) - "submitted" | "not_submitted" | "all" (default: "all")
+ */
+const getDiaryFilteredPatients = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const role = req.user?.role;
+        if (!userId || !role) {
+            (0, response_1.sendError)(res, 401, "Authentication required");
+            return;
+        }
+        const { pageNumber, questionId, filter } = req.query;
+        if (!pageNumber || isNaN(Number(pageNumber))) {
+            (0, response_1.sendError)(res, 400, "pageNumber (number) is required");
+            return;
+        }
+        if (filter && !["submitted", "not_submitted", "all"].includes(filter)) {
+            (0, response_1.sendError)(res, 400, "filter must be one of: submitted, not_submitted, all");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.getDiaryFilteredPatients(userId, role, {
+            pageNumber: Number(pageNumber),
+            questionId: questionId,
+            filter: filter,
+        });
+        (0, response_1.sendResponse)(res, 200, "Diary filter results retrieved", result);
+    }
+    catch (error) {
+        console.error("Diary filter error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to get diary filter results");
+    }
+};
+exports.getDiaryFilteredPatients = getDiaryFilteredPatients;
+/**
+ * POST /api/v1/bubble-scan/doctor/fill-report
+ * Doctor manually creates or updates an investigation report for a patient.
+ * Used for pages with layoutType "investigation_summary" (pages 05 & 06).
+ */
+const doctorFillReport = async (req, res) => {
+    try {
+        const doctorId = req.user?.id;
+        if (!doctorId) {
+            (0, response_1.sendError)(res, 401, "Authentication required");
+            return;
+        }
+        const { patientId, pageNumber, questionMarks, doctorNotes } = req.body;
+        if (!patientId || typeof patientId !== "string") {
+            (0, response_1.sendError)(res, 400, "patientId is required");
+            return;
+        }
+        if (!pageNumber || typeof pageNumber !== "number") {
+            (0, response_1.sendError)(res, 400, "pageNumber (number) is required");
+            return;
+        }
+        if (!questionMarks || typeof questionMarks !== "object") {
+            (0, response_1.sendError)(res, 400, "questionMarks (object) is required");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: doctorId,
+            userRole: req.user?.role || "DOCTOR",
+            action: "DOCTOR_FILL_REPORT",
+            details: { patientId, pageNumber },
+        });
+        (0, response_1.sendResponse)(res, 200, "Investigation report saved successfully", result);
+    }
+    catch (error) {
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to save report");
+    }
+};
+exports.doctorFillReport = doctorFillReport;

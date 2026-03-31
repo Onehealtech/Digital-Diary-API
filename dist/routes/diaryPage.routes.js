@@ -35,6 +35,8 @@ const router = express_1.default.Router();
 router.get("/", authMiddleware_1.patientAuthCheck, diaryPageController.getAllDiaryPages);
 // Get all diary pages (doctor/assistant access for viewing patient submissions)
 router.get("/staff/all", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryPageController.getAllDiaryPagesStaff);
+// Get doctor-prefilled question marks for a page (patient app pre-fills checkboxes)
+router.get("/:pageNumber/doctor-marks", authMiddleware_1.patientAuthCheck, diaryPageController.getDoctorMarksForPage);
 // Get a single diary page by page number
 router.get("/:pageNumber", authMiddleware_1.patientAuthCheck, diaryPageController.getDiaryPageByNumber);
 // Seed diary pages (super admin only)

@@ -5,6 +5,7 @@ const notification_controller_1 = require("../controllers/notification.controlle
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const permissionMiddleware_1 = require("../middleware/permissionMiddleware");
 const constants_1 = require("../utils/constants");
+const upload_middleware_1 = require("../middleware/upload.middleware");
 const router = (0, express_1.Router)();
 /**
  * Notification Routes
@@ -26,7 +27,7 @@ router.post("/translate", (0, authMiddleware_1.authCheck)([constants_1.UserRole.
 // Transliterate English to Hindi script (Doctor/Assistant only)
 router.post("/transliterate", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), notification_controller_1.notificationController.transliterateText);
 // Send single notification (Doctor/Assistant only)
-router.post("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('sendNotifications'), notification_controller_1.notificationController.createNotification);
+router.post("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('sendNotifications'), upload_middleware_1.notificationAttachmentUpload.single("attachment"), notification_controller_1.notificationController.createNotification);
 // Send bulk notifications (Doctor/Assistant only)
 router.post("/bulk", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('sendNotifications'), notification_controller_1.notificationController.createBulkNotifications);
 // Mark notification as read

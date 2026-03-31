@@ -103,6 +103,13 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], Reminder.prototype, "newReminderMessage", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.STRING,
+        allowNull: true,
+    }),
+    __metadata("design:type", String)
+], Reminder.prototype, "attachmentUrl", void 0);
 Reminder = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "reminders",

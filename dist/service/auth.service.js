@@ -186,7 +186,7 @@ class DoctorAuthService {
     /**
      * Update profile (fullName and/or phone) for the authenticated user
      */
-    static async updateProfile(userId, fullName, phone) {
+    static async updateProfile(userId, fullName, phone, bankDetails) {
         const user = await Appuser_1.AppUser.findByPk(userId);
         if (!user) {
             throw new Error("User not found");
@@ -194,16 +194,21 @@ class DoctorAuthService {
         if (!fullName?.trim()) {
             throw new Error("Full name is required");
         }
-        await user.update({
+        const updateData = {
             fullName: fullName.trim(),
             ...(phone !== undefined && { phone: phone.trim() || null }),
-        });
+        };
+        if (bankDetails !== undefined) {
+            updateData.bankDetails = bankDetails;
+        }
+        await user.update(updateData);
         return {
             id: user.id,
             fullName: user.fullName,
             phone: user.phone,
             email: user.email,
             role: user.role,
+            bankDetails: user.bankDetails || null,
         };
     }
     static async changePassword(userId, oldPassword, newPassword) {

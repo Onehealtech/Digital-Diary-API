@@ -35,11 +35,13 @@ const subscription_routes_1 = __importDefault(require("./subscription.routes"));
 const doctorRequest_routes_1 = __importDefault(require("./doctorRequest.routes"));
 const accountDeletion_routes_1 = __importDefault(require("./accountDeletion.routes"));
 const paymentConfig_routes_1 = __importDefault(require("./paymentConfig.routes"));
+const advancedAnalysisRoutes_1 = __importDefault(require("./advancedAnalysisRoutes"));
 const webhook_controller_1 = require("../controllers/webhook.controller");
 const router = express_1.default.Router();
 // API v1 Routes
 router.use("/v1", auth_routes_1.default); // Auth routes (staff & patient login)
 router.use("/v1/admin", admin_routes_1.default); // Super Admin routes
+router.use("/v1/doctor/advanced-analysis", advancedAnalysisRoutes_1.default); // Advanced analysis (Doctor/Assistant) — must be BEFORE /v1/doctor
 router.use("/v1/doctor", doctor_routes_1.default); // Doctor routes
 router.use("/v1/clinic", clinic_routes_1.default); // Clinic routes (patient registration)
 router.use("/v1/dashboard", dashboard_routes_1.default); // Dashboard routes
