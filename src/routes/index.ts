@@ -30,6 +30,7 @@ import subscriptionRoutes from "./subscription.routes";
 import doctorRequestRoutes from "./doctorRequest.routes";
 import accountDeletionRoutes from "./accountDeletion.routes";
 import paymentConfigRoutes from "./paymentConfig.routes";
+import advancedAnalysisRoutes from "./advancedAnalysisRoutes";
 import { handleCashfreeWebhook, handleRazorpayWebhook } from "../controllers/webhook.controller";
 
 const router = express.Router();
@@ -37,6 +38,7 @@ const router = express.Router();
 // API v1 Routes
 router.use("/v1", authRoutes);           // Auth routes (staff & patient login)
 router.use("/v1/admin", adminRoutes);     // Super Admin routes
+router.use("/v1/doctor/advanced-analysis", advancedAnalysisRoutes); // Advanced analysis (Doctor/Assistant) — must be BEFORE /v1/doctor
 router.use("/v1/doctor", doctorRoutes);   // Doctor routes
 router.use("/v1/clinic", clinicRoutes);   // Clinic routes (patient registration)
 router.use("/v1/dashboard", dashboardRoutes); // Dashboard routes
@@ -66,7 +68,6 @@ router.use("/v1/subscriptions", subscriptionRoutes); // Subscription plans & pat
 router.use("/v1/doctor-requests", doctorRequestRoutes); // Patient→Doctor assignment requests (self-signup)
 router.use("/v1/account", accountDeletionRoutes); // Account deletion (Play Store compliance)
 router.use("/v1/payment-config", paymentConfigRoutes); // Payment gateway config (Super Admin)
-
 // Webhook routes (no auth — verified via signatures)
 router.post("/v1/webhooks/cashfree", handleCashfreeWebhook);
 router.post("/v1/webhooks/razorpay", handleRazorpayWebhook);

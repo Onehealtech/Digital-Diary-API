@@ -67,6 +67,30 @@ export const getAllDiaryPagesStaff = async (
 };
 
 /**
+ * GET /api/v1/diary-pages/:pageNumber/doctor-marks
+ * Returns the doctor-prefilled questionMarks for this patient's page.
+ * Patient app uses this to show which investigations the doctor has pre-ticked.
+ */
+export const getDoctorMarksForPage = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const pageNumber = Number(req.params.pageNumber);
+        if (isNaN(pageNumber)) {
+            sendError(res, 400, "pageNumber must be a valid number");
+            return;
+        }
+        const patientId = req.user!.id;
+        const { bubbleScanService } = await import("../service/bubbleScan.service");
+        const marks = await bubbleScanService.getDoctorMarksForPage(patientId, pageNumber);
+        sendResponse(res, 200, "Doctor marks retrieved successfully", { questionMarks: marks });
+    } catch (error: any) {
+        sendError(res, 500, error.message || "Failed to get doctor marks");
+    }
+};
+
+/**
  * POST /api/v1/diary-pages/seed
  * Seed all diary pages into the database (admin only)
  */

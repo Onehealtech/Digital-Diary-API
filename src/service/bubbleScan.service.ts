@@ -51,6 +51,12 @@ interface BubbleScanFilters {
     flagged?: boolean;
 }
 
+interface DiaryFilterOptions {
+    pageNumber: number;
+    questionId?: string;        // Optional: filter/show answer for a specific question
+    filter?: "submitted" | "not_submitted" | "all";  // Default: "all"
+}
+
 class BubbleScanService {
     private pythonScriptPath: string;
     private templatesDir: string;
@@ -394,7 +400,7 @@ class BubbleScanService {
     async getPatientScanHistory(patientId: string, page = 1, limit = 20) {
         const offset = (page - 1) * limit;
         const { rows, count } = await BubbleScanResult.findAndCountAll({
-            where: { patientId },
+            where: { patientId, submissionType: { [Op.ne]: "doctor_manual" } },
             order: [["scannedAt", "DESC"]],
             limit,
             offset,
@@ -417,11 +423,8 @@ class BubbleScanService {
     async getScanById(scanId: string, doctorId?: string, role?: string) {
         const scan = await BubbleScanResult.findByPk(scanId, {
             include: [
-                {
-                    model: Patient,
-                    as: "patient",
-                    attributes: ["id", "age", "gender", "stage", "doctorId"],
-                },
+                { model: Patient, as: "patient", attributes: ["id", "age", "gender", "stage", "doctorId"] },
+                { model: DiaryPage, as: "diaryPage", attributes: ["pageNumber", "layoutType", "questions"], required: false },
             ],
         });
         if (!scan) throw new Error("Bubble scan result not found");
@@ -493,6 +496,7 @@ class BubbleScanService {
             doctorNotes?: string;
             flagged?: boolean;
             overrides?: Record<string, "yes" | "no">;
+            questionMarks?: Record<string, boolean>;
         }
     ) {
         const scan = await BubbleScanResult.findByPk(scanId);
@@ -507,6 +511,7 @@ class BubbleScanService {
         if (data.doctorNotes !== undefined)
             updateData.doctorNotes = data.doctorNotes;
         if (data.flagged !== undefined) updateData.flagged = data.flagged;
+        if (data.questionMarks !== undefined) updateData.questionMarks = data.questionMarks;
 
         // Process doctor overrides on individual answers
         if (data.overrides && Object.keys(data.overrides).length > 0) {
@@ -582,7 +587,7 @@ class BubbleScanService {
                 cutoff = history.unassignedAt!;
             }
 
-            const whereClause: any = { patientId };
+            const whereClause: any = { patientId, submissionType: { [Op.ne]: "doctor_manual" } };
             if (cutoff) {
                 whereClause.scannedAt = { [Op.lte]: cutoff };
             }
@@ -600,7 +605,10 @@ class BubbleScanService {
 
             const { rows, count } = await BubbleScanResult.findAndCountAll({
                 where: whereClause,
-                include: [{ model: Patient, as: "patient", attributes: ["id", "age", "gender", "stage"] }],
+                include: [
+                    { model: Patient, as: "patient", attributes: ["id", "age", "gender", "stage"] },
+                    { model: DiaryPage, as: "diaryPage", attributes: ["pageNumber", "layoutType", "questions"], required: false },
+                ],
                 order: [["scannedAt", "DESC"]],
                 limit,
                 offset,
@@ -652,7 +660,7 @@ class BubbleScanService {
             return { scans: [], pagination: { total: 0, page, limit, totalPages: 0 } };
         }
 
-        const whereClause: any = { [Op.or]: patientConditions };
+        const whereClause: any = { [Op.or]: patientConditions, submissionType: { [Op.ne]: "doctor_manual" } };
 
         if (templateName) whereClause.templateName = templateName;
         if (processingStatus) whereClause.processingStatus = processingStatus;
@@ -668,11 +676,8 @@ class BubbleScanService {
         const { rows, count } = await BubbleScanResult.findAndCountAll({
             where: whereClause,
             include: [
-                {
-                    model: Patient,
-                    as: "patient",
-                    attributes: ["id", "age", "gender", "stage"],
-                },
+                { model: Patient, as: "patient", attributes: ["id", "age", "gender", "stage"] },
+                { model: DiaryPage, as: "diaryPage", attributes: ["pageNumber", "layoutType", "questions"], required: false },
             ],
             order: [["scannedAt", "DESC"]],
             limit,
@@ -765,6 +770,244 @@ class BubbleScanService {
         }
 
         return scan;
+    }
+
+    /**
+     * Get doctor-prefilled question marks for a specific page (for patient app to show pre-filled checkboxes).
+     * Returns the questionMarks from the latest doctor_manual record for this patient+page.
+     */
+    async getDoctorMarksForPage(patientId: string, pageNumber: number): Promise<Record<string, boolean>> {
+        const record = await BubbleScanResult.findOne({
+            where: { patientId, pageNumber, submissionType: "doctor_manual" },
+            attributes: ["questionMarks"],
+            order: [["createdAt", "DESC"]],
+        });
+        return (record?.questionMarks as Record<string, boolean>) ?? {};
+    }
+
+    /**
+     * Doctor manually creates or updates an investigation report for a patient.
+     * Used for pages with layoutType "investigation_summary" (pages 05 & 06).
+     * Creates a new BubbleScanResult if none exists, or updates the existing one.
+     */
+    async doctorFillReport(
+        patientId: string,
+        doctorId: string,
+        pageNumber: number,
+        questionMarks: Record<string, boolean>,
+        doctorNotes?: string
+    ): Promise<BubbleScanResult> {
+        // Verify doctor has access to this patient
+        const patient = await Patient.findByPk(patientId, { attributes: ["id", "doctorId", "caseType"] });
+        if (!patient) throw new Error("Patient not found");
+
+        const isCurrentDoctor = patient.doctorId === doctorId;
+        if (!isCurrentDoctor) {
+            // Allow if old doctor (history check)
+            const history = await DoctorPatientHistory.findOne({
+                where: { patientId, doctorId, unassignedAt: { [Op.ne]: null } },
+            });
+            if (!history) throw new Error("Access denied: patient not assigned to this doctor");
+        }
+
+        // Resolve the DiaryPage for this pageNumber
+        const resolvedDiaryType = getDiaryTypeForCaseType(patient.caseType);
+        const diaryPage = await DiaryPage.findOne({
+            where: { pageNumber, diaryType: resolvedDiaryType, isActive: true },
+        });
+
+        const pageId = `backend_page_${pageNumber}`;
+
+        // Find existing BubbleScanResult for this patient + page
+        const existing = await BubbleScanResult.findOne({
+            where: { patientId, pageNumber },
+            order: [["createdAt", "DESC"]],
+        });
+
+        if (existing) {
+            await existing.update({
+                questionMarks,
+                doctorNotes: doctorNotes ?? existing.doctorNotes,
+                doctorReviewed: true,
+                reviewedBy: doctorId,
+                reviewedAt: new Date(),
+                diaryPageId: diaryPage?.id ?? existing.diaryPageId,
+            });
+            return existing.reload({
+                include: [
+                    { model: DiaryPage, as: "diaryPage", attributes: ["pageNumber", "layoutType", "questions"], required: false },
+                ],
+            });
+        }
+
+        // Create new doctor-initiated record
+        const created = await BubbleScanResult.create({
+            patientId,
+            pageId,
+            pageNumber,
+            diaryPageId: diaryPage?.id,
+            submissionType: "doctor_manual",
+            processingStatus: "completed",
+            scanResults: {},
+            questionMarks,
+            doctorNotes,
+            doctorReviewed: true,
+            reviewedBy: doctorId,
+            reviewedAt: new Date(),
+            scannedAt: new Date(),
+        });
+
+        return created.reload({
+            include: [
+                { model: DiaryPage, as: "diaryPage", attributes: ["pageNumber", "layoutType", "questions"], required: false },
+            ],
+        });
+    }
+
+    /**
+     * Doctor dashboard: get all patients with their submission status for a specific diary page.
+     * Enables filtering like "who uploaded Mammogram", "who hasn't submitted page 5", etc.
+     *
+     * GET /api/v1/bubble-scan/doctor/diary-filter?pageNumber=5&questionId=q1&filter=submitted
+     */
+    async getDiaryFilteredPatients(
+        doctorId: string,
+        role: string,
+        options: DiaryFilterOptions
+    ) {
+        const { pageNumber, questionId, filter = "all" } = options;
+
+        // Resolve doctorId for assistants
+        let resolvedDoctorId = doctorId;
+        if (role === "ASSISTANT") {
+            const assistant = await AppUser.findByPk(doctorId);
+            if (!assistant || !assistant.parentId) {
+                throw new AppError(400, "Assistant not linked to a doctor");
+            }
+            resolvedDoctorId = assistant.parentId;
+        }
+
+        // 1. Collect current patients
+        const currentPatients = await Patient.findAll({
+            where: { doctorId: resolvedDoctorId },
+            attributes: ["id", "fullName", "age", "gender", "stage"],
+            raw: true,
+        }) as any[];
+
+        const currentPatientIds = currentPatients.map((p: any) => p.id);
+        const currentSet = new Set(currentPatientIds);
+
+        // 2. Collect historical patients
+        const historyRecords = await DoctorPatientHistory.findAll({
+            where: { doctorId: resolvedDoctorId, unassignedAt: { [Op.ne]: null } },
+            attributes: ["patientId", "unassignedAt"],
+        });
+
+        const historicalMap = new Map<string, Date>();
+        for (const h of historyRecords) {
+            if (!currentSet.has(h.patientId) && h.unassignedAt) {
+                const existing = historicalMap.get(h.patientId);
+                if (!existing || h.unassignedAt > existing) {
+                    historicalMap.set(h.patientId, h.unassignedAt);
+                }
+            }
+        }
+
+        // Fetch historical patient details
+        const historicalPatientIds = [...historicalMap.keys()];
+        const historicalPatients = historicalPatientIds.length > 0
+            ? await Patient.findAll({
+                where: { id: { [Op.in]: historicalPatientIds } },
+                attributes: ["id", "fullName", "age", "gender", "stage"],
+                raw: true,
+            }) as any[]
+            : [];
+
+        const allPatients = [...currentPatients, ...historicalPatients];
+        if (allPatients.length === 0) {
+            return {
+                pageNumber,
+                summary: { total: 0, submitted: 0, notSubmitted: 0 },
+                patients: [],
+            };
+        }
+
+        const allPatientIds = allPatients.map((p: any) => p.id);
+
+        // 3. Single query: latest scan per patient for this pageNumber
+        const scans = await BubbleScanResult.findAll({
+            where: {
+                patientId: { [Op.in]: allPatientIds },
+                pageNumber,
+                processingStatus: "completed",
+            },
+            attributes: ["id", "patientId", "submissionType", "scanResults", "questionMarks", "scannedAt"],
+            order: [["scannedAt", "DESC"]],
+            raw: true,
+        }) as any[];
+
+        // Build map: patientId -> latest scan (first due to DESC order)
+        const scanMap = new Map<string, any>();
+        for (const scan of scans) {
+            if (!scanMap.has(scan.patientId)) {
+                scanMap.set(scan.patientId, scan);
+            }
+        }
+
+        // 4. Build result rows
+        const rows = allPatients.map((patient: any) => {
+            const scan = scanMap.get(patient.id) ?? null;
+            const submitted = scan !== null;
+
+            let questionAnswer: "yes" | "no" | "uncertain" | null = null;
+            if (submitted && questionId) {
+                const results = typeof scan.scanResults === "string"
+                    ? JSON.parse(scan.scanResults)
+                    : scan.scanResults ?? {};
+                const marks = typeof scan.questionMarks === "string"
+                    ? JSON.parse(scan.questionMarks)
+                    : scan.questionMarks ?? {};
+                // scanResults for patient submissions, questionMarks for doctor_manual
+                if (results[questionId]?.answer !== undefined) {
+                    questionAnswer = results[questionId].answer;
+                } else if (marks[questionId] !== undefined) {
+                    questionAnswer = marks[questionId] ? "yes" : "no";
+                }
+            }
+
+            return {
+                patientId: patient.id,
+                fullName: patient.fullName,
+                age: patient.age ?? null,
+                gender: patient.gender ?? null,
+                stage: patient.stage ?? null,
+                isHistorical: !currentSet.has(patient.id),
+                submitted,
+                submittedAt: submitted ? scan.scannedAt : null,
+                submissionType: submitted ? scan.submissionType : null,
+                scanId: submitted ? scan.id : null,
+                ...(questionId !== undefined && { questionAnswer }),
+            };
+        });
+
+        // 5. Apply filter
+        const filtered = filter === "submitted"
+            ? rows.filter((r) => r.submitted)
+            : filter === "not_submitted"
+                ? rows.filter((r) => !r.submitted)
+                : rows;
+
+        const submittedCount = rows.filter((r) => r.submitted).length;
+
+        return {
+            pageNumber,
+            summary: {
+                total: rows.length,
+                submitted: submittedCount,
+                notSubmitted: rows.length - submittedCount,
+            },
+            patients: filtered,
+        };
     }
 }
 
