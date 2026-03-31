@@ -4,16 +4,27 @@ import { advancedAnalysisService } from "../service/advancedAnalysisService";
 import { AdvancedAnalysisFilterSchema } from "../service/advancedAnalysisTypes";
 import { googleSheetsService } from "../service/googleSheets.service";
 import { AppError } from "../utils/AppError";
+import { AppUser } from "../models/Appuser";
 import { sendResponse, sendError } from "../utils/response";
 import { logActivity } from "../utils/activityLogger";
 import { CustomRequest } from "../middleware/authMiddleware";
 
-/** Resolves the effective doctor ID — for assistants, use parentId (their doctor). */
-function resolveDoctorId(authReq: CustomRequest): string {
+/**
+ * Resolves the effective doctor ID.
+ * For assistants, looks up parentId directly from DB to avoid raw-query mapping issues.
+ * For doctors, returns their own ID.
+ */
+async function resolveDoctorId(authReq: CustomRequest): Promise<string> {
   const user = authReq.user!;
   if (user.role === "ASSISTANT") {
-    if (!user.parentId) throw new AppError(403, "Assistant is not linked to a doctor");
-    return user.parentId as string;
+    // Always fetch fresh from DB — the auth middleware uses raw:true which can
+    // miss camelCase FK columns on self-referencing associations.
+    const assistant = await AppUser.findByPk(user.id, {
+      attributes: ["id", "parentId"],
+    });
+    const parentId = assistant?.parentId;
+    if (!parentId) throw new AppError(403, "Assistant is not linked to a doctor");
+    return parentId;
   }
   return user.id;
 }
@@ -24,7 +35,7 @@ export const getAdvancedAnalysisPatients = async (
 ): Promise<void> => {
   try {
     const authReq = req as CustomRequest;
-    const doctorId = resolveDoctorId(authReq);
+    const doctorId = await resolveDoctorId(authReq);
     const userRole = authReq.user!.role;
 
     const parsed = AdvancedAnalysisFilterSchema.safeParse(req.body);
@@ -108,7 +119,7 @@ export const getAdvancedAnalysisCount = async (
 ): Promise<void> => {
   try {
     const authReq = req as CustomRequest;
-    const doctorId = resolveDoctorId(authReq);
+    const doctorId = await resolveDoctorId(authReq);
 
     const parsed = AdvancedAnalysisFilterSchema.safeParse(req.body);
     if (!parsed.success) {
