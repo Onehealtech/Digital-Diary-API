@@ -1,95 +1,112 @@
+import axios from "axios";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+const API_KEY = process.env.FAST2SMS_API_KEY;
+const FAST2SMS_URL = "https://www.fast2sms.com/dev/bulkV2";
 
-class TwilioService {
+class Fast2SMSService {
   private isConfigured = false;
-  private client: any = null;
 
   constructor() {
-    if (accountSid && authToken && fromNumber) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const twilio = require("twilio");
-        this.client = twilio(accountSid, authToken);
-        this.isConfigured = true;
-        console.log("✅ Twilio SMS Service initialized.");
-      } catch (error) {
-        console.error("❌ Failed to initialize Twilio client:", error);
-      }
+    if (API_KEY) {
+      this.isConfigured = true;
+      console.log("✅ Fast2SMS Service initialized.");
     } else {
-      console.warn("⚠️ Twilio credentials missing in .env. SMS will not be sent.");
+      console.warn("⚠️ FAST2SMS_API_KEY missing in .env. SMS will not be sent.");
     }
   }
 
   /**
-   * Normalize phone number to E.164 format for India (+91XXXXXXXXXX).
-   * Handles: "8469838559", "+918469838559", "918469838559"
+   * Strip phone to 10-digit Indian mobile number.
+   * Fast2SMS accepts numbers without country code.
    */
-  private formatPhoneNumber(phone: string): string {
+  private normalizePhone(phone: string): string {
     const digits = phone.replace(/[^0-9]/g, "");
-    if (digits.length === 10) {
-      return `+91${digits}`;
-    }
-    if (digits.length > 10 && digits.startsWith("91")) {
-      return `+${digits}`;
-    }
-    // Already has country code or unknown format — prefix with +
-    return digits.startsWith("+") ? phone : `+${digits}`;
+    if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+    if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+    return digits.slice(-10);
   }
 
-  /**
-   * Send an SMS message via Twilio.
-   * @param to   Phone number (any format — will be normalized to E.164)
-   * @param body SMS content
-   * @returns true if sent successfully
-   */
   async sendSMS(to: string, body: string): Promise<boolean> {
-    if (!this.isConfigured || !this.client) {
-      console.warn(`[Twilio Mock SMS] To: ${to} | Body: ${body}`);
+    if (!this.isConfigured) {
+      console.warn(`[Fast2SMS Mock] To: ${to} | Body: ${body}`);
       return false;
     }
 
-    const formattedTo = this.formatPhoneNumber(to);
+    const number = this.normalizePhone(to);
 
     try {
-      const message = await this.client.messages.create({
-        body,
-        from: fromNumber,
-        to: formattedTo,
-      });
+      const response = await axios.post(
+        FAST2SMS_URL,
+        {
+          message: body,
+          language: "english",
+          route: "q",
+          numbers: number,
+        },
+        {
+          headers: {
+            authorization: API_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-      console.log(`✅ SMS sent to ${formattedTo} via Twilio (SID: ${message.sid})`);
-      return true;
+      if (response.data?.return === true) {
+        console.log(`✅ SMS sent to ${number} via Fast2SMS`);
+        return true;
+      }
+
+      console.error(`❌ Fast2SMS rejected:`, response.data);
+      return false;
     } catch (error: any) {
-      console.error(`❌ Twilio SMS failed for ${formattedTo}:`, error.message || error);
+      console.error(`❌ Fast2SMS error for ${number}:`, error.response?.data || error.message);
       return false;
     }
   }
 
-  /**
-   * Send an OTP SMS via Twilio.
-   * Uses our own OTP (generated in otpService) — NOT Twilio Verify.
-   * This keeps OTP consistent across email and SMS channels.
-   * @param to  Phone number
-   * @param otp The 6-digit OTP code
-   * @returns true if sent successfully
-   */
   async sendOTP(to: string, otp: string): Promise<boolean> {
-    const body = `Your OneHeal verification code is: ${otp}. It expires in ${process.env.OTP_EXPIRY_MINUTES || "5"} minutes. Do not share this code.`;
-    return this.sendSMS(to, body);
+    if (!this.isConfigured) {
+      console.warn(`[Fast2SMS Mock OTP] To: ${to} | OTP: ${otp}`);
+      return false;
+    }
+
+    const number = this.normalizePhone(to);
+
+    try {
+      const response = await axios.post(
+        FAST2SMS_URL,
+        {
+          variables_values: otp,
+          route: "otp",
+          numbers: number,
+        },
+        {
+          headers: {
+            authorization: API_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data?.return === true) {
+        console.log(`✅ OTP sent to ${number} via Fast2SMS`);
+        return true;
+      }
+
+      console.error(`❌ Fast2SMS OTP rejected:`, response.data);
+      return false;
+    } catch (error: any) {
+      console.error(`❌ Fast2SMS OTP error for ${number}:`, error.response?.data || error.message);
+      return false;
+    }
   }
 
-  /**
-   * Check if Twilio is properly configured.
-   */
   isReady(): boolean {
     return this.isConfigured;
   }
 }
 
-export const twilioService = new TwilioService();
+export const twilioService = new Fast2SMSService();
