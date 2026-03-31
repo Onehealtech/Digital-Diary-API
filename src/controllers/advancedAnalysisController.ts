@@ -8,13 +8,23 @@ import { sendResponse, sendError } from "../utils/response";
 import { logActivity } from "../utils/activityLogger";
 import { CustomRequest } from "../middleware/authMiddleware";
 
+/** Resolves the effective doctor ID — for assistants, use parentId (their doctor). */
+function resolveDoctorId(authReq: CustomRequest): string {
+  const user = authReq.user!;
+  if (user.role === "ASSISTANT") {
+    if (!user.parentId) throw new AppError(403, "Assistant is not linked to a doctor");
+    return user.parentId as string;
+  }
+  return user.id;
+}
+
 export const getAdvancedAnalysisPatients = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const authReq = req as CustomRequest;
-    const doctorId = authReq.user!.id;
+    const doctorId = resolveDoctorId(authReq);
     const userRole = authReq.user!.role;
 
     const parsed = AdvancedAnalysisFilterSchema.safeParse(req.body);
@@ -98,7 +108,7 @@ export const getAdvancedAnalysisCount = async (
 ): Promise<void> => {
   try {
     const authReq = req as CustomRequest;
-    const doctorId = authReq.user!.id;
+    const doctorId = resolveDoctorId(authReq);
 
     const parsed = AdvancedAnalysisFilterSchema.safeParse(req.body);
     if (!parsed.success) {
