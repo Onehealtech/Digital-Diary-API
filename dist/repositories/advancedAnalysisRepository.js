@@ -7,19 +7,41 @@ const BubbleScanResult_1 = require("../models/BubbleScanResult");
 const advancedAnalysisTypes_1 = require("../service/advancedAnalysisTypes");
 // -----------------------------------------------------------------------
 // Helpers to safely extract values from JSONB scanResults
+// scanResults stores answers as nested objects: { answer: "yes"/"no"/"Scheduled"/..., confidence, ... }
 // -----------------------------------------------------------------------
-function getBool(obj, key) {
+/**
+ * Extracts the raw answer value from a scan result entry.
+ * Handles both nested { answer: ... } objects and raw values.
+ */
+function getAnswer(obj, key) {
     const val = obj[key];
+    if (val === null || val === undefined)
+        return null;
+    if (typeof val === "object" && !Array.isArray(val) && "answer" in val) {
+        return val.answer;
+    }
+    return val;
+}
+/**
+ * Returns true if the question answer is truthy ("yes", true, 1).
+ */
+function getBool(obj, key) {
+    const val = getAnswer(obj, key);
+    if (val === null || val === undefined)
+        return false;
     if (typeof val === "boolean")
         return val;
     if (typeof val === "string")
-        return val === "true" || val === "1" || val === "yes";
+        return val === "yes" || val === "true" || val === "1";
     if (typeof val === "number")
         return val === 1;
     return false;
 }
+/**
+ * Returns the string answer value, or null if empty/missing.
+ */
 function getString(obj, key) {
-    const val = obj[key];
+    const val = getAnswer(obj, key);
     if (typeof val === "string" && val.trim() !== "")
         return val.trim();
     return null;
@@ -43,6 +65,7 @@ function safeScanResults(scan) {
 }
 // -----------------------------------------------------------------------
 // Appointment status mapper
+// Select options in diary: "Scheduled", "Completed", "Missed", "Cancelled"
 // -----------------------------------------------------------------------
 function parseAppointmentStatus(val) {
     const s = typeof val === "string" ? val.toUpperCase() : "";
@@ -56,77 +79,97 @@ function parseAppointmentStatus(val) {
         return "CANCELLED";
     return "NONE";
 }
-// -----------------------------------------------------------------------
-// Per-investigation extractor
-// Pages 7-28 contain investigation detail pages. Each investigation key
-// maps to a page range or a field name inside scanResults JSONB.
-// We look for matching keys in all scan pages 7-28.
-// -----------------------------------------------------------------------
-const INV_KEY_TO_PAGE_FIELD_PREFIX = {
-    mammogram: "mammogram",
-    usgBreast: "usgBreast",
-    biopsyBreast: "biopsyBreast",
-    fnacAxillary: "fnacAxillary",
-    petCt: "petCt",
-    mriBreasts: "mriBreasts",
-    geneticTesting: "geneticTesting",
-    mugaScan: "mugaScan",
-    echocardiography: "echocardiography",
-    boneDexa: "boneDexa",
-    ecg: "ecg",
-    chestXray: "chestXray",
-    bloodTests: "bloodTests",
-    otherTests: "otherTests",
+/**
+ * Resolves the most recent appointment status from a schedule page.
+ * Checks q1_status first, then q2_status if q1 was missed/cancelled.
+ * Returns { status, date }.
+ */
+function resolveScheduleStatus(sr) {
+    const s1 = parseAppointmentStatus(getString(sr, "q1_status"));
+    const d1 = toIsoDate(getAnswer(sr, "q1_date"));
+    if (s1 === "NONE")
+        return { status: "NONE", date: null };
+    // If q1 was completed/scheduled, that's the final status
+    if (s1 === "SCHEDULED" || s1 === "COMPLETED")
+        return { status: s1, date: d1 };
+    // q1 was missed/cancelled — check q2 for re-appointment
+    const s2 = parseAppointmentStatus(getString(sr, "q2_status"));
+    if (s2 !== "NONE") {
+        return { status: s2, date: toIsoDate(getAnswer(sr, "q2_date")) ?? d1 };
+    }
+    return { status: s1, date: d1 };
+}
+const INV_PAGE_CONFIG = {
+    mammogram: { orderedPage: 5, orderedQId: "q1", schedulePage: 7, donePage: 8, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    usgBreast: { orderedPage: 5, orderedQId: "q2", schedulePage: 9, donePage: 10, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    biopsyBreast: { orderedPage: 5, orderedQId: "q3", schedulePage: 11, donePage: 12, doneQIds: ["q1", "q2"], reportQId: "q3", problemQId: "q4" },
+    fnacAxillary: { orderedPage: 5, orderedQId: "q4", schedulePage: 13, donePage: 14, doneQIds: ["q1", "q2"], reportQId: "q3", problemQId: "q4" },
+    petCt: { orderedPage: 5, orderedQId: "q5", schedulePage: 15, donePage: 16, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    mriBreasts: { orderedPage: 5, orderedQId: "q6", schedulePage: 17, donePage: 18, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    geneticTesting: { orderedPage: 5, orderedQId: "q7", schedulePage: 19, donePage: 20, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    mugaScan: { orderedPage: 6, orderedQId: "q1", schedulePage: 21, donePage: 22, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    echocardiography: { orderedPage: 6, orderedQId: "q2", schedulePage: 23, donePage: 24, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    boneDexa: { orderedPage: 6, orderedQId: "q3", donePage: 25, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    ecg: { orderedPage: 6, orderedQId: "q4", donePage: 26, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    chestXray: { orderedPage: 6, orderedQId: "q5", donePage: 27, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    bloodTests: { orderedPage: 6, orderedQId: "q6", donePage: 28, doneQIds: ["q1"], reportQId: "q2", problemQId: "q3" },
+    otherTests: { orderedPage: 6, orderedQId: "q7", donePage: undefined, doneQIds: [], reportQId: "q2", problemQId: "q3" },
 };
-function buildInvestigationData(key, orderedPageScans, detailPageScans) {
-    // Check ordered flag from pages 5-6
+// -----------------------------------------------------------------------
+// Per-investigation extractor using page-specific question IDs
+// -----------------------------------------------------------------------
+function buildInvestigationData(key, scansByPage) {
+    const config = INV_PAGE_CONFIG[key];
+    if (!config) {
+        return { ordered: false, appointmentStatus: "NONE", appointmentDate: null, testDone: false, reportCollected: false, problemFlagged: false };
+    }
+    // --- Ordered flag from summary page (page 5 or 6) ---
     let ordered = false;
-    const fieldPrefix = INV_KEY_TO_PAGE_FIELD_PREFIX[key] ?? key;
+    const orderedPageScans = scansByPage.get(config.orderedPage) ?? [];
     for (const sr of orderedPageScans) {
-        if (getBool(sr, key) || getBool(sr, fieldPrefix) || getBool(sr, `${fieldPrefix}Ordered`)) {
+        if (getBool(sr, config.orderedQId)) {
             ordered = true;
             break;
         }
     }
-    // Extract detail data from pages 7-28
+    // --- Appointment status/date from schedule page ---
     let appointmentStatus = "NONE";
     let appointmentDate = null;
+    if (config.schedulePage) {
+        const scheduleScans = scansByPage.get(config.schedulePage) ?? [];
+        for (const sr of scheduleScans) {
+            const resolved = resolveScheduleStatus(sr);
+            if (resolved.status !== "NONE") {
+                appointmentStatus = resolved.status;
+                appointmentDate = resolved.date;
+                break;
+            }
+        }
+    }
+    // --- Done / Report / Problem from done page ---
     let testDone = false;
     let reportCollected = false;
     let problemFlagged = false;
-    for (const sr of detailPageScans) {
-        // Look for keys like mammogramAppointmentStatus, mammogramDone, etc.
-        const apptStatusKey = `${fieldPrefix}AppointmentStatus`;
-        const apptDateKey = `${fieldPrefix}AppointmentDate`;
-        const doneKey = `${fieldPrefix}Done`;
-        const reportKey = `${fieldPrefix}ReportCollected`;
-        const flagKey = `${fieldPrefix}ProblemFlagged`;
-        if (sr[apptStatusKey] !== undefined) {
-            appointmentStatus = parseAppointmentStatus(sr[apptStatusKey]);
-            if (ordered) { /* ordered remains from above */ }
+    if (config.donePage !== undefined) {
+        const donePageScans = scansByPage.get(config.donePage) ?? [];
+        for (const sr of donePageScans) {
+            if (config.doneQIds.some((qId) => getBool(sr, qId)))
+                testDone = true;
+            if (getBool(sr, config.reportQId))
+                reportCollected = true;
+            if (getBool(sr, config.problemQId))
+                problemFlagged = true;
+            // Also check the "problem getting report" question (next QID after problemQId)
+            const problemQNum = parseInt(config.problemQId.replace("q", ""), 10);
+            if (!isNaN(problemQNum) && getBool(sr, `q${problemQNum + 1}`))
+                problemFlagged = true;
         }
-        if (sr[apptDateKey] !== undefined) {
-            appointmentDate = toIsoDate(sr[apptDateKey]);
-        }
-        if (getBool(sr, doneKey))
-            testDone = true;
-        if (getBool(sr, reportKey))
-            reportCollected = true;
-        if (getBool(sr, flagKey))
-            problemFlagged = true;
     }
     // Derive ordered from appointment presence if not explicit
     if (!ordered && appointmentStatus !== "NONE") {
         ordered = true;
     }
-    return {
-        ordered,
-        appointmentStatus,
-        appointmentDate,
-        testDone,
-        reportCollected,
-        problemFlagged,
-    };
+    return { ordered, appointmentStatus, appointmentDate, testDone, reportCollected, problemFlagged };
 }
 // -----------------------------------------------------------------------
 // Stage deriver
@@ -184,8 +227,7 @@ class AdvancedAnalysisRepository {
         });
         if (patients.length === 0)
             return [];
-        // Step 2: fetch all bubble scans for these patients in one query
-        // (Patient has no @HasMany for BubbleScanResult — query separately)
+        // Step 2: fetch all completed bubble scans for these patients in one query
         const patientIds = patients.map((p) => p.id);
         const allScans = await BubbleScanResult_1.BubbleScanResult.findAll({
             where: {
@@ -212,72 +254,131 @@ class AdvancedAnalysisRepository {
     mapToPatientAnalysisRow(patient, scans) {
         const p = patient;
         const typedScans = scans;
-        // Partition scans by page ranges
-        const orderedPageScans = typedScans
-            .filter((s) => s.pageNumber !== undefined && s.pageNumber >= 5 && s.pageNumber <= 6)
-            .map(safeScanResults);
-        const detailPageScans = typedScans
-            .filter((s) => s.pageNumber !== undefined && s.pageNumber >= 7 && s.pageNumber <= 28)
-            .map(safeScanResults);
-        const treatmentPlanScans = typedScans
-            .filter((s) => s.pageNumber === 29)
-            .map(safeScanResults);
-        const nactScans = typedScans
-            .filter((s) => s.pageNumber !== undefined && s.pageNumber >= 30 && s.pageNumber <= 36)
-            .map(safeScanResults);
-        const surgeryScans = typedScans
-            .filter((s) => s.pageNumber !== undefined && s.pageNumber >= 37 && s.pageNumber <= 38)
-            .map(safeScanResults);
+        // Build a page-number → scan results map for O(1) lookup
+        const scansByPage = new Map();
+        for (const scan of typedScans) {
+            if (scan.pageNumber != null) {
+                const existing = scansByPage.get(scan.pageNumber) ?? [];
+                existing.push(safeScanResults(scan));
+                scansByPage.set(scan.pageNumber, existing);
+            }
+        }
         // ---- Build investigations ----
         const investigations = {};
         for (const inv of advancedAnalysisTypes_1.INVESTIGATIONS) {
-            investigations[inv.key] = buildInvestigationData(inv.key, orderedPageScans, detailPageScans);
+            investigations[inv.key] = buildInvestigationData(inv.key, scansByPage);
         }
-        // ---- Build treatment plan ----
-        const tpSr = treatmentPlanScans.length > 0 ? treatmentPlanScans[0] : {};
-        const rawSurgeryType = getString(tpSr, "surgeryType");
+        // ---- Build treatment plan (Page 29) ----
+        // Page 29 questions:
+        //   q1 = Planned For Chemotherapy (NACT)  [yes/no]
+        //   q2 = Surgery Planned                   [select: BCS / Mastectomy]
+        const page29Scans = scansByPage.get(29) ?? [];
+        let nactPlanned = false;
         let surgeryType = null;
-        if (rawSurgeryType === "BCS")
-            surgeryType = "BCS";
-        else if (rawSurgeryType === "MASTECTOMY")
-            surgeryType = "MASTECTOMY";
+        for (const sr of page29Scans) {
+            if (getBool(sr, "q1"))
+                nactPlanned = true;
+            const rawSurgery = getString(sr, "q2");
+            if (rawSurgery) {
+                const upper = rawSurgery.toUpperCase();
+                if (upper === "BCS")
+                    surgeryType = "BCS";
+                else if (upper === "MASTECTOMY")
+                    surgeryType = "MASTECTOMY";
+            }
+        }
         const treatmentPlan = {
-            nact: getBool(tpSr, "nactPlanned"),
+            nact: nactPlanned,
             surgeryType,
-            radiotherapy: getBool(tpSr, "radiotherapyPlanned"),
-            notDecidedYet: getBool(tpSr, "treatmentNotDecided"),
+            radiotherapy: false,
+            notDecidedYet: false, // No "treatment not decided" question in current page 29 definition
         };
         // ---- Build NACT ----
-        const nactMerged = {};
-        for (const sr of nactScans) {
-            Object.assign(nactMerged, sr);
+        // Page 30: q1=clipsBreast, q2=clipsAxilla
+        // Page 33: q1=chemoStartedClipsMissing
+        // Page 34: q1_date=NACT start date, q1_status=status
+        // Page 35: q1=tumorGrowing, q2=unableToComplete
+        // Page 36: q1_date=last cycle date, q1_status=status
+        const page30Scans = scansByPage.get(30) ?? [];
+        const page33Scans = scansByPage.get(33) ?? [];
+        const page34Scans = scansByPage.get(34) ?? [];
+        const page35Scans = scansByPage.get(35) ?? [];
+        const page36Scans = scansByPage.get(36) ?? [];
+        const clipsBreast = page30Scans.some((sr) => getBool(sr, "q1"));
+        const clipsAxilla = page30Scans.some((sr) => getBool(sr, "q2"));
+        const chemoStartedClipsMissing = page33Scans.some((sr) => getBool(sr, "q1"));
+        const tumorGrowing = page35Scans.some((sr) => getBool(sr, "q1"));
+        const unableToComplete = page35Scans.some((sr) => getBool(sr, "q2"));
+        let nactStartDate = null;
+        for (const sr of page34Scans) {
+            const d = toIsoDate(getAnswer(sr, "q1_date"));
+            if (d) {
+                nactStartDate = d;
+                break;
+            }
         }
-        const rawNactStatus = getString(nactMerged, "nactStatus");
+        let lastCycleDate = null;
+        for (const sr of page36Scans) {
+            const d = toIsoDate(getAnswer(sr, "q1_date"));
+            if (d) {
+                lastCycleDate = d;
+                break;
+            }
+        }
+        // NACT status: COMPLETED if page 36 has "Completed" status,
+        //              IN_PROGRESS if page 34 has any data,
+        //              otherwise NOT_STARTED
         let nactStatus = "NOT_STARTED";
-        if (rawNactStatus === "IN_PROGRESS")
+        for (const sr of page36Scans) {
+            const s = getString(sr, "q1_status");
+            if (s && s.toUpperCase() === "COMPLETED") {
+                nactStatus = "COMPLETED";
+                break;
+            }
+        }
+        if (nactStatus === "NOT_STARTED" && page34Scans.length > 0) {
             nactStatus = "IN_PROGRESS";
-        else if (rawNactStatus === "COMPLETED")
-            nactStatus = "COMPLETED";
+        }
         const nact = {
             status: nactStatus,
-            startDate: toIsoDate(nactMerged["nactStartDate"]),
-            lastCycleDate: toIsoDate(nactMerged["lastCycleDate"]),
-            clipsBreast: getBool(nactMerged, "clipsBreast"),
-            clipsAxilla: getBool(nactMerged, "clipsAxilla"),
-            tumorGrowing: getBool(nactMerged, "tumorGrowingOnChemo"),
-            unableToComplete: getBool(nactMerged, "unableToCompleteChemo"),
-            chemoStartedClipsMissing: getBool(nactMerged, "chemoStartedClipsMissing"),
+            startDate: nactStartDate,
+            lastCycleDate,
+            clipsBreast,
+            clipsAxilla,
+            tumorGrowing,
+            unableToComplete,
+            chemoStartedClipsMissing,
         };
         // ---- Build surgery ----
-        const surgMerged = {};
-        for (const sr of surgeryScans) {
-            Object.assign(surgMerged, sr);
+        // Page 37: q1_date=radiation date, q1_status=radiation status
+        // Page 38: q1_date=admission date, q1_status=admission status
+        const page37Scans = scansByPage.get(37) ?? [];
+        const page38Scans = scansByPage.get(38) ?? [];
+        let radiationDate = null;
+        let radiationStatus = null;
+        for (const sr of page37Scans) {
+            const resolved = resolveScheduleStatus(sr);
+            if (resolved.status !== "NONE") {
+                radiationDate = resolved.date;
+                radiationStatus = resolved.status;
+                break;
+            }
+        }
+        let admissionDate = null;
+        let admissionStatus = null;
+        for (const sr of page38Scans) {
+            const resolved = resolveScheduleStatus(sr);
+            if (resolved.status !== "NONE") {
+                admissionDate = resolved.date;
+                admissionStatus = resolved.status;
+                break;
+            }
         }
         const surgery = {
-            admissionDate: toIsoDate(surgMerged["surgeryAdmissionDate"]),
-            admissionStatus: getString(surgMerged, "surgeryAdmissionStatus"),
-            radiationDate: toIsoDate(surgMerged["radiationDate"]),
-            radiationStatus: getString(surgMerged, "radiationStatus"),
+            admissionDate,
+            admissionStatus,
+            radiationDate,
+            radiationStatus,
         };
         // ---- Derive stage ----
         const hasInvestigationData = Object.values(investigations).some((inv) => inv.ordered);
@@ -285,8 +386,10 @@ class AdvancedAnalysisRepository {
             treatmentPlan.surgeryType !== null ||
             treatmentPlan.radiotherapy ||
             treatmentPlan.notDecidedYet;
-        const hasNact = nact.status !== "NOT_STARTED" || nactScans.length > 0;
-        const hasSurgery = surgeryScans.length > 0 && surgery.admissionDate !== null;
+        const nactPageNums = [30, 31, 32, 33, 34, 35, 36];
+        const hasNactScans = nactPageNums.some((p) => (scansByPage.get(p)?.length ?? 0) > 0);
+        const hasNact = nact.status !== "NOT_STARTED" || hasNactScans;
+        const hasSurgery = page38Scans.length > 0 && admissionDate !== null;
         const currentStage = deriveStage(hasInvestigationData, hasTreatmentPlan, hasNact, hasSurgery);
         // ---- Derive issues ----
         const issues = deriveIssues(investigations, treatmentPlan, nact);
@@ -437,24 +540,24 @@ class AdvancedAnalysisRepository {
                 if (row.nact.chemoStartedClipsMissing !== expected)
                     return false;
             }
-            // Radiation booked
+            // Radiation booked (status: SCHEDULED or COMPLETED means booked)
             if (filter.radiationBooked !== "ANY") {
                 const rs = (row.surgery.radiationStatus ?? "").toUpperCase();
-                if (filter.radiationBooked === "YES" && rs !== "BOOKED")
+                if (filter.radiationBooked === "YES" && rs !== "SCHEDULED" && rs !== "COMPLETED")
                     return false;
-                if (filter.radiationBooked === "NO" && rs === "BOOKED")
+                if (filter.radiationBooked === "NO" && (rs === "SCHEDULED" || rs === "COMPLETED"))
                     return false;
                 if (filter.radiationBooked === "MISSED" && rs !== "MISSED")
                     return false;
                 if (filter.radiationBooked === "CANCELLED" && rs !== "CANCELLED")
                     return false;
             }
-            // Surgery admission
+            // Surgery admission (status: SCHEDULED or COMPLETED means admitted/booked)
             if (filter.surgeryAdmission !== "ANY") {
                 const as_ = (row.surgery.admissionStatus ?? "").toUpperCase();
-                if (filter.surgeryAdmission === "YES" && as_ !== "ADMITTED")
+                if (filter.surgeryAdmission === "YES" && as_ !== "SCHEDULED" && as_ !== "COMPLETED")
                     return false;
-                if (filter.surgeryAdmission === "NO" && as_ === "ADMITTED")
+                if (filter.surgeryAdmission === "NO" && (as_ === "SCHEDULED" || as_ === "COMPLETED"))
                     return false;
                 if (filter.surgeryAdmission === "MISSED" && as_ !== "MISSED")
                     return false;

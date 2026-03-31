@@ -10,4 +10,5 @@ const advancedAnalysisController_1 = require("../controllers/advancedAnalysisCon
 const router = express_1.default.Router();
 router.post("/patients", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), advancedAnalysisController_1.getAdvancedAnalysisPatients);
 router.post("/count", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), advancedAnalysisController_1.getAdvancedAnalysisCount);
+router.post("/sync-sheet", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), advancedAnalysisController_1.syncAnalyticsGoogleSheet);
 exports.default = router;
