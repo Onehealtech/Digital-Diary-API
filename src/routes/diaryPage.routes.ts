@@ -11,6 +11,9 @@ router.get("/", patientAuthCheck, diaryPageController.getAllDiaryPages);
 // Get all diary pages (doctor/assistant access for viewing patient submissions)
 router.get("/staff/all", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), diaryPageController.getAllDiaryPagesStaff);
 
+// Get doctor-prefilled question marks for a page (patient app pre-fills checkboxes)
+router.get("/:pageNumber/doctor-marks", patientAuthCheck, diaryPageController.getDoctorMarksForPage);
+
 // Get a single diary page by page number
 router.get("/:pageNumber", patientAuthCheck, diaryPageController.getDiaryPageByNumber);
 

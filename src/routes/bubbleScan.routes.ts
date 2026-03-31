@@ -76,4 +76,18 @@ router.put(
     bubbleScanController.reviewBubbleScan
 );
 
+// Doctor dashboard: filter patients by diary page submission status
+router.get(
+    "/doctor/diary-filter",
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    bubbleScanController.getDiaryFilteredPatients
+);
+
+// Doctor manually fills / pre-fills an investigation report for a patient
+router.post(
+    "/doctor/fill-report",
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    bubbleScanController.doctorFillReport
+);
+
 export default router;

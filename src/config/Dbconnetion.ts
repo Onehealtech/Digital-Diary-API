@@ -487,6 +487,52 @@ export const initializeDatabase = async (): Promise<void> => {
       console.warn('⚠️ REFERRAL_BONUS enum migration warning:', err instanceof Error ? err.message : err);
     });
 
+    // Add "doctor_manual" value to bubble_scan_results submissionType enum
+    await sequelize.query(`
+      ALTER TYPE "enum_bubble_scan_results_submissionType" ADD VALUE IF NOT EXISTS 'doctor_manual';
+    `).catch((err: unknown) => {
+      console.warn('⚠️ bubble_scan_results submissionType enum migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Add questionMarks column to bubble_scan_results for per-question doctor review
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bubble_scan_results' AND column_name = 'questionMarks') THEN
+          ALTER TABLE "bubble_scan_results" ADD COLUMN "questionMarks" JSONB;
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ questionMarks column migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Add attachmentUrl column to notifications table
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'attachmentUrl') THEN
+          ALTER TABLE "notifications" ADD COLUMN "attachmentUrl" TEXT;
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ notifications.attachmentUrl column migration warning:', err instanceof Error ? err.message : err);
+    });
+
+    // Add attachmentUrl column to reminders table
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reminders' AND column_name = 'attachmentUrl') THEN
+          ALTER TABLE "reminders" ADD COLUMN "attachmentUrl" TEXT;
+        END IF;
+      END
+      $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ reminders.attachmentUrl column migration warning:', err instanceof Error ? err.message : err);
+    });
+
     console.log('✅ Database models synchronized');
 
   } catch (error) {

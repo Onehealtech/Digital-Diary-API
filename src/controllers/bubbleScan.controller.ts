@@ -255,11 +255,11 @@ export const reviewBubbleScan = async (
             return;
         }
 
-        const { doctorNotes, flagged, overrides } = req.body;
+        const { doctorNotes, flagged, overrides, questionMarks } = req.body;
         const result = await bubbleScanService.reviewBubbleScan(
             req.params.id as string,
             doctorId,
-            { doctorNotes, flagged, overrides }
+            { doctorNotes, flagged, overrides, questionMarks }
         );
 
         logActivity({
@@ -335,5 +335,107 @@ export const getAllBubbleScans = async (
     } catch (error: any) {
         console.error("Get all bubble scans error:", error);
         sendError(res, 500, error.message || "Failed to get bubble scans");
+    }
+};
+
+/**
+ * GET /api/v1/bubble-scan/doctor/diary-filter
+ * Doctor dashboard: get all assigned patients filtered by whether they submitted a diary page.
+ * Useful for seeing "who uploaded Mammogram", "who hasn't submitted page 5", etc.
+ *
+ * Query params:
+ *   pageNumber  (required) - diary page number to filter on (e.g. 5, 6)
+ *   questionId  (optional) - specific question ID to show individual answer (e.g. "q1")
+ *   filter      (optional) - "submitted" | "not_submitted" | "all" (default: "all")
+ */
+export const getDiaryFilteredPatients = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const userId = req.user?.id;
+        const role = req.user?.role;
+        if (!userId || !role) {
+            sendError(res, 401, "Authentication required");
+            return;
+        }
+
+        const { pageNumber, questionId, filter } = req.query;
+
+        if (!pageNumber || isNaN(Number(pageNumber))) {
+            sendError(res, 400, "pageNumber (number) is required");
+            return;
+        }
+
+        if (filter && !["submitted", "not_submitted", "all"].includes(filter as string)) {
+            sendError(res, 400, "filter must be one of: submitted, not_submitted, all");
+            return;
+        }
+
+        const result = await bubbleScanService.getDiaryFilteredPatients(userId, role, {
+            pageNumber: Number(pageNumber),
+            questionId: questionId as string | undefined,
+            filter: filter as "submitted" | "not_submitted" | "all" | undefined,
+        });
+
+        sendResponse(res, 200, "Diary filter results retrieved", result);
+    } catch (error: any) {
+        console.error("Diary filter error:", error);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to get diary filter results");
+    }
+};
+
+/**
+ * POST /api/v1/bubble-scan/doctor/fill-report
+ * Doctor manually creates or updates an investigation report for a patient.
+ * Used for pages with layoutType "investigation_summary" (pages 05 & 06).
+ */
+export const doctorFillReport = async (
+    req: AuthRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const doctorId = req.user?.id;
+        if (!doctorId) {
+            sendError(res, 401, "Authentication required");
+            return;
+        }
+
+        const { patientId, pageNumber, questionMarks, doctorNotes } = req.body;
+
+        if (!patientId || typeof patientId !== "string") {
+            sendError(res, 400, "patientId is required");
+            return;
+        }
+        if (!pageNumber || typeof pageNumber !== "number") {
+            sendError(res, 400, "pageNumber (number) is required");
+            return;
+        }
+        if (!questionMarks || typeof questionMarks !== "object") {
+            sendError(res, 400, "questionMarks (object) is required");
+            return;
+        }
+
+        const result = await bubbleScanService.doctorFillReport(
+            patientId,
+            doctorId,
+            pageNumber,
+            questionMarks,
+            doctorNotes
+        );
+
+        logActivity({
+            req,
+            userId: doctorId,
+            userRole: req.user?.role || "DOCTOR",
+            action: "DOCTOR_FILL_REPORT",
+            details: { patientId, pageNumber },
+        });
+
+        sendResponse(res, 200, "Investigation report saved successfully", result);
+    } catch (error: any) {
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to save report");
     }
 };
