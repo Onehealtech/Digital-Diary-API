@@ -29,6 +29,46 @@ async function resolveDoctorId(authReq: CustomRequest): Promise<string> {
   return user.id;
 }
 
+const DateRangeSchema = z.enum(["7d", "30d", "90d", "all"]).default("30d");
+
+export const getAdvancedAnalyticsDashboard = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const authReq = req as CustomRequest;
+    const doctorId = await resolveDoctorId(authReq);
+    const userRole = authReq.user!.role;
+
+    const parsedRange = DateRangeSchema.safeParse(req.query.dateRange ?? req.body?.dateRange);
+    const dateRange = parsedRange.success ? parsedRange.data : "30d";
+
+    // Parse optional filter (same schema as patient list) — applies to analytics too
+    const parsedFilter = AdvancedAnalysisFilterSchema.safeParse(req.body?.filter ?? {});
+    const filter = parsedFilter.success ? parsedFilter.data : undefined;
+
+    const data = await advancedAnalysisService.getAnalytics(doctorId, dateRange, filter);
+
+    logActivity({
+      req,
+      userId: doctorId,
+      userRole,
+      action: "ADVANCED_ANALYTICS_DASHBOARD_VIEW",
+      details: { totalPatients: data.kpi.totalActivePatients },
+    });
+
+    sendResponse(res, data, "Analytics fetched successfully");
+  } catch (error: unknown) {
+    console.error("[AdvancedAnalyticsDashboard]", error);
+    if (error instanceof AppError) {
+      sendError(res, error.message, error.statusCode);
+    } else {
+      const msg = error instanceof Error ? error.message : "Internal server error";
+      sendError(res, msg, 500);
+    }
+  }
+};
+
 export const getAdvancedAnalysisPatients = async (
   req: Request,
   res: Response

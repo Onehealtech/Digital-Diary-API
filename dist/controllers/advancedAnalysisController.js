@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAdvancedAnalysisCount = exports.syncAnalyticsGoogleSheet = exports.getAdvancedAnalysisPatients = void 0;
+exports.getAdvancedAnalysisCount = exports.syncAnalyticsGoogleSheet = exports.getAdvancedAnalysisPatients = exports.getAdvancedAnalyticsDashboard = void 0;
 const zod_1 = require("zod");
 const advancedAnalysisService_1 = require("../service/advancedAnalysisService");
 const advancedAnalysisTypes_1 = require("../service/advancedAnalysisTypes");
@@ -29,6 +29,39 @@ async function resolveDoctorId(authReq) {
     }
     return user.id;
 }
+const DateRangeSchema = zod_1.z.enum(["7d", "30d", "90d", "all"]).default("30d");
+const getAdvancedAnalyticsDashboard = async (req, res) => {
+    try {
+        const authReq = req;
+        const doctorId = await resolveDoctorId(authReq);
+        const userRole = authReq.user.role;
+        const parsedRange = DateRangeSchema.safeParse(req.query.dateRange ?? req.body?.dateRange);
+        const dateRange = parsedRange.success ? parsedRange.data : "30d";
+        // Parse optional filter (same schema as patient list) — applies to analytics too
+        const parsedFilter = advancedAnalysisTypes_1.AdvancedAnalysisFilterSchema.safeParse(req.body?.filter ?? {});
+        const filter = parsedFilter.success ? parsedFilter.data : undefined;
+        const data = await advancedAnalysisService_1.advancedAnalysisService.getAnalytics(doctorId, dateRange, filter);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: doctorId,
+            userRole,
+            action: "ADVANCED_ANALYTICS_DASHBOARD_VIEW",
+            details: { totalPatients: data.kpi.totalActivePatients },
+        });
+        (0, response_1.sendResponse)(res, data, "Analytics fetched successfully");
+    }
+    catch (error) {
+        console.error("[AdvancedAnalyticsDashboard]", error);
+        if (error instanceof AppError_1.AppError) {
+            (0, response_1.sendError)(res, error.message, error.statusCode);
+        }
+        else {
+            const msg = error instanceof Error ? error.message : "Internal server error";
+            (0, response_1.sendError)(res, msg, 500);
+        }
+    }
+};
+exports.getAdvancedAnalyticsDashboard = getAdvancedAnalyticsDashboard;
 const getAdvancedAnalysisPatients = async (req, res) => {
     try {
         const authReq = req;

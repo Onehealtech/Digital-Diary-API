@@ -35,6 +35,7 @@ const InvestigationStatusEnum = zod_1.z.enum([
     "PROBLEM_FLAGGED",
 ]);
 exports.AdvancedAnalysisFilterSchema = zod_1.z.object({
+    search: zod_1.z.string().max(200).optional(),
     ageMin: zod_1.z.number().min(0).max(120).optional(),
     ageMax: zod_1.z.number().min(0).max(120).optional(),
     sex: zod_1.z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),
@@ -53,8 +54,9 @@ exports.AdvancedAnalysisFilterSchema = zod_1.z.object({
     chemoStartedClipsMissing: zod_1.z.enum(["ANY", "YES", "NO"]).default("ANY"),
     radiationBooked: zod_1.z.enum(["ANY", "YES", "NO", "MISSED", "CANCELLED"]).default("ANY"),
     surgeryAdmission: zod_1.z.enum(["ANY", "YES", "NO", "MISSED", "CANCELLED"]).default("ANY"),
+    patientIds: zod_1.z.array(zod_1.z.string().uuid()).optional(),
     page: zod_1.z.number().min(1).default(1),
-    limit: zod_1.z.number().min(1).max(50).default(20),
+    limit: zod_1.z.number().min(1).max(1000).default(20),
     sortBy: zod_1.z
         .enum(["name_asc", "name_desc", "most_issues", "latest_activity"])
         .default("name_asc"),
