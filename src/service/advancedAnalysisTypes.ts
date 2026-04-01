@@ -38,6 +38,7 @@ const InvestigationStatusEnum = z.enum([
 ]);
 
 export const AdvancedAnalysisFilterSchema = z.object({
+  search: z.string().max(200).optional(),
   ageMin: z.number().min(0).max(120).optional(),
   ageMax: z.number().min(0).max(120).optional(),
   sex: z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),
@@ -56,8 +57,9 @@ export const AdvancedAnalysisFilterSchema = z.object({
   chemoStartedClipsMissing: z.enum(["ANY", "YES", "NO"]).default("ANY"),
   radiationBooked: z.enum(["ANY", "YES", "NO", "MISSED", "CANCELLED"]).default("ANY"),
   surgeryAdmission: z.enum(["ANY", "YES", "NO", "MISSED", "CANCELLED"]).default("ANY"),
+  patientIds: z.array(z.string().uuid()).optional(),
   page: z.number().min(1).default(1),
-  limit: z.number().min(1).max(50).default(20),
+  limit: z.number().min(1).max(1000).default(20),
   sortBy: z
     .enum(["name_asc", "name_desc", "most_issues", "latest_activity"])
     .default("name_asc"),
@@ -77,6 +79,76 @@ export interface InvestigationData {
   reportCollected: boolean;
   problemFlagged: boolean;
 }
+
+// -----------------------------------------------------------------------
+// Analytics Dashboard Response
+// -----------------------------------------------------------------------
+
+export interface KpiData {
+  totalActivePatients: number;
+  newInRange: number;
+  updatesInRange: number;
+  investigationCompletionRate: number;
+  patientsNeedingAction: number;
+  criticalSafetyFlags: number;
+}
+
+export type PatientStage = "REGISTERED" | "INVESTIGATIONS" | "TREATMENT_PLANNED" | "NACT" | "SURGERY";
+export type InvCompletionStatus = "DONE_REPORT" | "DONE_NO_REPORT" | "MISSED" | "SCHEDULED" | "PENDING";
+export type TreatmentPlan = "NACT_BCS" | "NACT_MASTECTOMY" | "BCS_ONLY" | "MASTECTOMY_ONLY" | "RT_ADDED" | "NOT_PLANNED";
+export type IssueType = "CLIPS_MISSING" | "CHEMO_ISSUE" | "MISSED_APPOINTMENT" | "NO_REPORT" | "NO_TREATMENT_PLAN";
+export type GenderType = "FEMALE" | "MALE" | "OTHER";
+export type InvestigationGroup = "IMAGING" | "PATHOLOGY" | "CARDIAC_BASELINE";
+export type ActivityType = "SUBMISSION" | "UPDATE" | "FLAG" | "DOCTOR_ACTION";
+export type DateGroup = "TODAY" | "YESTERDAY" | "THIS_WEEK" | "EARLIER";
+export type AppointmentDateGroup = "TODAY" | "TOMORROW" | "THIS_WEEK";
+export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "MISSED";
+
+export interface AnalyticsResponse {
+  kpi: KpiData;
+  stageDistribution: { stage: PatientStage; count: number; percentage: number }[];
+  investigationCompletion: { status: InvCompletionStatus; count: number; percentage: number }[];
+  treatmentBreakdown: { plan: TreatmentPlan; count: number; percentage: number }[];
+  activeIssues: { issue: IssueType; count: number; percentage: number }[];
+  genderDistribution: { gender: GenderType; count: number; percentage: number }[];
+  monthlyRegistrations: { month: string; count: number }[];
+  stageFunnel: { stage: string; count: number; percentage: number; color: string }[];
+  investigationHeatmap: {
+    investigation: string;
+    label: string;
+    group: InvestigationGroup;
+    ordered: number;
+    scheduled: number;
+    doneWithReport: number;
+    doneNoReport: number;
+    missed: number;
+    cancelled: number;
+    pending: number;
+    problemFlagged: number;
+  }[];
+  activityFeed: {
+    id: string;
+    patientName: string;
+    patientId: string;
+    uhid: string;
+    action: string;
+    detail: string;
+    type: ActivityType;
+    timestamp: string;
+    dateGroup: DateGroup;
+  }[];
+  upcomingAppointments: {
+    patientName: string;
+    patientId: string;
+    uhid: string;
+    investigation: string;
+    appointmentDate: string;
+    status: AppointmentStatus;
+    dateGroup: AppointmentDateGroup;
+  }[];
+}
+
+// -----------------------------------------------------------------------
 
 export interface PatientAnalysisRow {
   patientId: string;

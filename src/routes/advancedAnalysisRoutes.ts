@@ -2,12 +2,19 @@ import express from "express";
 import { authCheck } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import {
+  getAdvancedAnalyticsDashboard,
   getAdvancedAnalysisPatients,
   getAdvancedAnalysisCount,
   syncAnalyticsGoogleSheet,
 } from "../controllers/advancedAnalysisController";
 
 const router = express.Router();
+
+router.post(
+  "/analytics",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  getAdvancedAnalyticsDashboard
+);
 
 router.post(
   "/patients",

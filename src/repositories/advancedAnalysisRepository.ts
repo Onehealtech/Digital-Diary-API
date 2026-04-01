@@ -524,6 +524,9 @@ export class AdvancedAnalysisRepository {
     filter: AdvancedAnalysisFilter
   ): PatientAnalysisRow[] {
     return rows.filter((row) => {
+      // Specific patient IDs
+      if (filter.patientIds?.length && !filter.patientIds.includes(row.patientId)) return false;
+
       // Age range
       if (filter.ageMin !== undefined && row.age < filter.ageMin) return false;
       if (filter.ageMax !== undefined && row.age > filter.ageMax) return false;
