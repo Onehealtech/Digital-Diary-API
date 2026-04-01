@@ -38,6 +38,8 @@ exports.AdvancedAnalysisFilterSchema = zod_1.z.object({
     ageMin: zod_1.z.number().min(0).max(120).optional(),
     ageMax: zod_1.z.number().min(0).max(120).optional(),
     sex: zod_1.z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),
+    submissionDateFrom: zod_1.z.string().optional(),
+    submissionDateTo: zod_1.z.string().optional(),
     investigations: zod_1.z.record(InvestigationStatusEnum).optional(),
     nactPlanned: zod_1.z.enum(["ANY", "YES", "NO"]).default("ANY"),
     surgeryType: zod_1.z.enum(["ANY", "BCS", "MASTECTOMY", "NOT_PLANNED"]).default("ANY"),

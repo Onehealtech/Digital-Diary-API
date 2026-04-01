@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.doctorFillReport = exports.getDiaryFilteredPatients = exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
+exports.doctorFillReport = exports.removeReportFile = exports.attachReportFiles = exports.getDiaryFilteredPatients = exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
 const bubbleScan_service_1 = require("../service/bubbleScan.service");
 const visionScan_service_1 = require("../modules/visionScan/visionScan.service");
 const response_1 = require("../utils/response");
@@ -285,6 +285,68 @@ const getDiaryFilteredPatients = async (req, res) => {
     }
 };
 exports.getDiaryFilteredPatients = getDiaryFilteredPatients;
+/**
+ * POST /api/v1/bubble-scan/:id/reports
+ * Patient attaches report files (PDF / images) to an existing scan or manual entry.
+ * Accepts up to 5 files via multipart field name "reports".
+ */
+const attachReportFiles = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const scanId = req.params.id;
+        const files = req.files;
+        if (!files || files.length === 0) {
+            (0, response_1.sendError)(res, 400, "At least one report file is required");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.attachReports(scanId, patientId, files);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "REPORT_FILES_ATTACHED",
+            details: { scanId, fileCount: files.length },
+        });
+        (0, response_1.sendResponse)(res, 200, "Reports attached successfully", result);
+    }
+    catch (error) {
+        console.error("Attach reports error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to attach report files");
+    }
+};
+exports.attachReportFiles = attachReportFiles;
+/**
+ * DELETE /api/v1/bubble-scan/:id/reports
+ * Patient removes a previously attached report from a scan entry.
+ * Body: { reportUrl: string }
+ */
+const removeReportFile = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const scanId = req.params.id;
+        const { reportUrl } = req.body;
+        if (!reportUrl || typeof reportUrl !== "string") {
+            (0, response_1.sendError)(res, 400, "reportUrl (string) is required");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.removeReport(scanId, patientId, reportUrl);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "REPORT_FILE_REMOVED",
+            details: { scanId, reportUrl },
+        });
+        (0, response_1.sendResponse)(res, 200, "Report removed successfully", result);
+    }
+    catch (error) {
+        console.error("Remove report error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to remove report file");
+    }
+};
+exports.removeReportFile = removeReportFile;
 /**
  * POST /api/v1/bubble-scan/doctor/fill-report
  * Doctor manually creates or updates an investigation report for a patient.

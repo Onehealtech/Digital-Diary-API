@@ -48,6 +48,10 @@ router.get("/:id", authMiddleware_1.patientAuthCheck, bubbleScanController.getBu
 router.put("/:id/edit", authMiddleware_1.patientAuthCheck, bubbleScanController.editBubbleScan);
 // Retry a failed scan
 router.post("/:id/retry", authMiddleware_1.patientAuthCheck, bubbleScanController.retryBubbleScan);
+// Attach report files (PDF / images) to an existing scan or manual entry
+router.post("/:id/reports", authMiddleware_1.patientAuthCheck, upload_middleware_1.reportUpload.array("reports", 5), bubbleScanController.attachReportFiles);
+// Remove a previously attached report file
+router.delete("/:id/reports", authMiddleware_1.patientAuthCheck, bubbleScanController.removeReportFile);
 // === Doctor/Assistant Routes ===
 // Get all bubble scans for doctor's patients
 router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getAllBubbleScans);

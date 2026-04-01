@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.visionScanUpload = exports.notificationAttachmentUpload = exports.bubbleScanUpload = exports.upload = void 0;
+exports.visionScanUpload = exports.reportUpload = exports.notificationAttachmentUpload = exports.bubbleScanUpload = exports.upload = void 0;
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -73,6 +73,23 @@ exports.notificationAttachmentUpload = (0, multer_1.default)({
         }
         else {
             cb(new Error("Only images (JPEG, PNG, GIF, WebP) and PDF files are allowed"));
+        }
+    },
+});
+// Report upload — memory storage, supports PDF + images, up to 25 MB each, max 5 files
+const REPORT_ALLOWED_TYPES = [
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "application/pdf",
+];
+exports.reportUpload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (REPORT_ALLOWED_TYPES.includes(file.mimetype)) {
+            cb(null, true);
+        }
+        else {
+            cb(new Error("Only JPEG, PNG, WebP images and PDF files are allowed for reports"));
         }
     },
 });

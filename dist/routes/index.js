@@ -36,6 +36,7 @@ const doctorRequest_routes_1 = __importDefault(require("./doctorRequest.routes")
 const accountDeletion_routes_1 = __importDefault(require("./accountDeletion.routes"));
 const paymentConfig_routes_1 = __importDefault(require("./paymentConfig.routes"));
 const advancedAnalysisRoutes_1 = __importDefault(require("./advancedAnalysisRoutes"));
+const public_routes_1 = __importDefault(require("./public.routes"));
 const webhook_controller_1 = require("../controllers/webhook.controller");
 const router = express_1.default.Router();
 // API v1 Routes
@@ -71,6 +72,8 @@ router.use("/v1/subscriptions", subscription_routes_1.default); // Subscription 
 router.use("/v1/doctor-requests", doctorRequest_routes_1.default); // Patient→Doctor assignment requests (self-signup)
 router.use("/v1/account", accountDeletion_routes_1.default); // Account deletion (Play Store compliance)
 router.use("/v1/payment-config", paymentConfig_routes_1.default); // Payment gateway config (Super Admin)
+// Public routes (no auth required)
+router.use("/v1/public", public_routes_1.default);
 // Webhook routes (no auth — verified via signatures)
 router.post("/v1/webhooks/cashfree", webhook_controller_1.handleCashfreeWebhook);
 router.post("/v1/webhooks/razorpay", webhook_controller_1.handleRazorpayWebhook);

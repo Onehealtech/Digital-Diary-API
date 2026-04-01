@@ -503,6 +503,21 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ reminders.attachmentUrl column migration warning:', err instanceof Error ? err.message : err);
         });
+        // ── bubble_scan_results.reportUrls ────────────────────────────────────
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'bubble_scan_results' AND column_name = 'reportUrls'
+        ) THEN
+          ALTER TABLE "bubble_scan_results" ADD COLUMN "reportUrls" JSONB NOT NULL DEFAULT '[]'::jsonb;
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ bubble_scan_results.reportUrls migration warning:', err instanceof Error ? err.message : err);
+        });
         console.log('✅ Database models synchronized');
     }
     catch (error) {
