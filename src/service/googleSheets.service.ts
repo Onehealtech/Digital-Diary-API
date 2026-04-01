@@ -5,6 +5,7 @@ import {
   PatientAnalysisRow,
 } from "./advancedAnalysisTypes";
 import { AdvancedAnalysisRepository } from "../repositories/advancedAnalysisRepository";
+import { AppUser } from "../models/Appuser";
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -19,11 +20,22 @@ function getAuth() {
     );
   }
 
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: email,
-      private_key: rawKey.replace(/\\n/g, "\n"),
-    },
+  // Normalize the private key:
+  // 1. Convert escaped \n literals (stored in .env) to real newlines
+  // 2. Collapse any \r\n Windows-style endings
+  // 3. Trim surrounding whitespace / stray quotes
+  const privateKey = rawKey
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/^["']|["']$/g, "")
+    .trim();
+
+  // Use JWT directly — avoids the OpenSSL 3.x DECODER error that
+  // google.auth.GoogleAuth triggers on Node.js 18+ when parsing
+  // service-account credentials from env vars.
+  return new google.auth.JWT({
+    email,
+    key: privateKey,
     scopes: [
       "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/drive",
@@ -299,11 +311,32 @@ export class GoogleSheetsService {
         },
       });
 
-      // Share: anyone with the link can view
-      await driveApi.permissions.create({
-        fileId: sheetId,
-        requestBody: { type: "anyone", role: "reader" },
-      });
+      // Share: first try to give the doctor direct editor access,
+      // then open it to anyone-with-link as a fallback.
+      // Both require Google Drive API to be enabled in GCP Console.
+      // If Drive API is not enabled the sheet is still created; only sharing will silently skip.
+      try {
+        const doctor = await AppUser.findByPk(doctorId, { attributes: ["email"] });
+        if (doctor?.email) {
+          await driveApi.permissions.create({
+            fileId: sheetId,
+            requestBody: { type: "user", role: "writer", emailAddress: doctor.email },
+            sendNotificationEmail: false,
+          });
+        }
+        // Also allow anyone with the link to view
+        await driveApi.permissions.create({
+          fileId: sheetId,
+          requestBody: { type: "anyone", role: "reader" },
+        });
+      } catch (shareErr: unknown) {
+        console.warn(
+          "[GoogleSheets] Could not set sheet permissions. " +
+          "Ensure Google Drive API is enabled in your GCP project. " +
+          "Sheet was created but may not be publicly accessible.",
+          shareErr
+        );
+      }
     }
 
     return {

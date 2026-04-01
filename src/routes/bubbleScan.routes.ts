@@ -1,7 +1,7 @@
 import express from "express";
 import { patientAuthCheck, authCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
-import { visionScanUpload } from "../middleware/upload.middleware";
+import { visionScanUpload, reportUpload } from "../middleware/upload.middleware";
 import { UserRole } from "../utils/constants";
 import * as bubbleScanController from "../controllers/bubbleScan.controller";
 
@@ -57,6 +57,21 @@ router.post(
     "/:id/retry",
     patientAuthCheck,
     bubbleScanController.retryBubbleScan
+);
+
+// Attach report files (PDF / images) to an existing scan or manual entry
+router.post(
+    "/:id/reports",
+    patientAuthCheck,
+    reportUpload.array("reports", 5),
+    bubbleScanController.attachReportFiles
+);
+
+// Remove a previously attached report file
+router.delete(
+    "/:id/reports",
+    patientAuthCheck,
+    bubbleScanController.removeReportFile
 );
 
 // === Doctor/Assistant Routes ===

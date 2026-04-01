@@ -81,6 +81,24 @@ export const notificationAttachmentUpload = multer({
   },
 });
 
+// Report upload — memory storage, supports PDF + images, up to 25 MB each, max 5 files
+const REPORT_ALLOWED_TYPES = [
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "application/pdf",
+];
+
+export const reportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB per file
+  fileFilter: (req: any, file: any, cb: any) => {
+    if (REPORT_ALLOWED_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG, PNG, WebP images and PDF files are allowed for reports"));
+    }
+  },
+});
+
 // Vision scan upload — memory storage (no local file, buffer goes to S3)
 export const visionScanUpload = multer({
   storage: multer.memoryStorage(),

@@ -169,6 +169,11 @@ export class AppUser extends Model {
     callPatients?: boolean;
     exportData?: boolean;
     sendNotifications?: boolean;
+    sendAppointments?: boolean;
+    deactivatePatients?: boolean;
+    markReviewed?: boolean;
+    manageOnboardingRequests?: boolean;
+    advancedAnalysis?: boolean;
     sellDiary?: boolean;
   };
 

@@ -1,6 +1,41 @@
 import { AdvancedAnalysisRepository } from "../repositories/advancedAnalysisRepository";
 import { AdvancedAnalysisFilter, PatientAnalysisRow } from "./advancedAnalysisTypes";
+import { BubbleScanResult } from "../models/BubbleScanResult";
+import { Patient } from "../models/Patient";
 import { AppError } from "../utils/AppError";
+
+interface PatientWithScans { patient: Patient; scans: BubbleScanResult[] }
+
+/**
+ * If submissionDateFrom or submissionDateTo is set, keep only patients who
+ * have at least one scan whose scannedAt falls within [from, to] (inclusive).
+ * If neither is set, returns the list unchanged.
+ */
+function applySubmissionDateFilter(
+  patients: PatientWithScans[],
+  filter: AdvancedAnalysisFilter
+): PatientWithScans[] {
+  const { submissionDateFrom, submissionDateTo } = filter;
+  if (!submissionDateFrom && !submissionDateTo) return patients;
+
+  const from = submissionDateFrom ? new Date(submissionDateFrom) : null;
+  // End of the "to" day (23:59:59.999)
+  let to: Date | null = null;
+  if (submissionDateTo) {
+    to = new Date(submissionDateTo);
+    to.setHours(23, 59, 59, 999);
+  }
+
+  return patients.filter(({ scans }) =>
+    scans.some((s) => {
+      if (!s.scannedAt) return false;
+      const d = new Date(s.scannedAt);
+      if (from && d < from) return false;
+      if (to   && d > to)   return false;
+      return true;
+    })
+  );
+}
 
 const repo = new AdvancedAnalysisRepository();
 
@@ -19,7 +54,12 @@ export class AdvancedAnalysisService {
     }
 
     const allPatients = await repo.findPatientsForDoctor(doctorId);
-    const rows = allPatients.map(({ patient, scans }) =>
+
+    // Pre-filter by submission date range: keep patients who have at least one
+    // scan submitted within the requested window.
+    const dateFilteredPatients = applySubmissionDateFilter(allPatients, filter);
+
+    const rows = dateFilteredPatients.map(({ patient, scans }) =>
       repo.mapToPatientAnalysisRow(patient, scans)
     );
     const filtered = repo.applyFilters(rows, filter);
@@ -39,7 +79,8 @@ export class AdvancedAnalysisService {
     }
 
     const allPatients = await repo.findPatientsForDoctor(doctorId);
-    const rows = allPatients.map(({ patient, scans }) =>
+    const dateFilteredPatients = applySubmissionDateFilter(allPatients, filter);
+    const rows = dateFilteredPatients.map(({ patient, scans }) =>
       repo.mapToPatientAnalysisRow(patient, scans)
     );
     const filtered = repo.applyFilters(rows, filter);
