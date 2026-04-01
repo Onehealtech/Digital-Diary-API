@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.doctorFillReport = exports.removeReportFile = exports.attachReportFiles = exports.getDiaryFilteredPatients = exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
+exports.doctorFillReport = exports.removeQuestionReportFile = exports.attachQuestionReportFiles = exports.removeReportFile = exports.attachReportFiles = exports.getDiaryFilteredPatients = exports.getAllBubbleScans = exports.reviewBubbleScan = exports.editBubbleScan = exports.retryBubbleScan = exports.getBubbleScanById = exports.getAvailableTemplates = exports.getBubbleScanHistory = exports.uploadBubbleScan = exports.manualSubmitBubbleScan = void 0;
 const bubbleScan_service_1 = require("../service/bubbleScan.service");
 const visionScan_service_1 = require("../modules/visionScan/visionScan.service");
 const response_1 = require("../utils/response");
@@ -10,28 +10,67 @@ const AppError_1 = require("../utils/AppError");
 const activityLogger_1 = require("../utils/activityLogger");
 /**
  * POST /api/v1/bubble-scan/manual
- * Patient submits diary answers manually (for non-scan mode)
+ * Patient submits diary answers manually, optionally with per-question report files.
+ *
+ * Send as multipart/form-data:
+ *   pageNumber  (text)          — e.g. "5"
+ *   answers     (text, JSON)    — e.g. {"q1":"yes","q2":"no"}
+ *   questionId  (text, repeat)  — one per file, e.g. "Q1", "Q2"
+ *   reports     (file, repeat)  — report files matched to questionId by position
+ *
+ * Files and questionIds are optional — the endpoint still works as pure JSON
+ * if no files are attached (Content-Type: application/json or multipart with no files).
  */
 const manualSubmitBubbleScan = async (req, res) => {
     try {
         const patientId = req.user.id;
-        const { pageNumber, answers } = req.body;
         const diaryType = (0, constants_1.getDiaryTypeForCaseType)(req.user?.caseType);
-        if (!pageNumber || typeof pageNumber !== "number") {
-            (0, response_1.sendError)(res, 400, "pageNumber (number) is required");
+        // pageNumber — accept string (multipart) or number (JSON)
+        const rawPage = req.body.pageNumber;
+        const pageNumber = typeof rawPage === "string" ? Number(rawPage) : rawPage;
+        if (!pageNumber || isNaN(pageNumber)) {
+            (0, response_1.sendError)(res, 400, "pageNumber is required");
             return;
+        }
+        // answers — accept JSON string (multipart) or object (JSON body)
+        let answers = req.body.answers;
+        if (typeof answers === "string") {
+            try {
+                answers = JSON.parse(answers);
+            }
+            catch {
+                (0, response_1.sendError)(res, 400, "answers must be a valid JSON object");
+                return;
+            }
         }
         if (!answers || typeof answers !== "object") {
             (0, response_1.sendError)(res, 400, "answers (object) is required");
             return;
         }
-        const result = await bubbleScan_service_1.bubbleScanService.manualSubmit(patientId, pageNumber, answers, diaryType);
+        // Build question-report pairs from optional files
+        const files = req.files ?? [];
+        const raw = req.body.questionId;
+        const questionIds = Array.isArray(raw)
+            ? raw.map((q) => q.trim()).filter(Boolean)
+            : typeof raw === "string" && raw.trim()
+                ? [raw.trim()]
+                : [];
+        if (files.length > 0 && questionIds.length !== files.length) {
+            (0, response_1.sendError)(res, 400, `Mismatch: ${questionIds.length} questionId(s) but ${files.length} file(s). ` +
+                "Each report file must have a matching questionId at the same position.");
+            return;
+        }
+        const questionReportPairs = files.map((file, i) => ({
+            questionId: questionIds[i],
+            file,
+        }));
+        const result = await bubbleScan_service_1.bubbleScanService.manualSubmit(patientId, pageNumber, answers, diaryType, questionReportPairs);
         (0, activityLogger_1.logActivity)({
             req,
             userId: patientId,
             userRole: "PATIENT",
             action: "MANUAL_ENTRY_SUBMITTED",
-            details: { patientId, pageNumber },
+            details: { patientId, pageNumber, reportCount: files.length },
         });
         (0, response_1.sendResponse)(res, 201, "Manual submission saved successfully", result);
     }
@@ -347,6 +386,96 @@ const removeReportFile = async (req, res) => {
     }
 };
 exports.removeReportFile = removeReportFile;
+/**
+ * POST /api/v1/bubble-scan/:id/question-reports
+ * Attach report files per question in a single multipart request.
+ *
+ * Supported formats:
+ *   Single question  → questionId: "Q1",  reports: file
+ *   Multiple questions → questionId: "Q1", reports: file1,
+ *                        questionId: "Q2", reports: file2
+ *
+ * Rules: number of questionId values must equal number of files.
+ * questionId[i] is paired with files[i] by position.
+ */
+const attachQuestionReportFiles = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const scanId = req.params.id;
+        const files = req.files;
+        // Normalize questionId — multer puts repeated fields as array, single as string
+        const raw = req.body.questionId;
+        const questionIds = Array.isArray(raw)
+            ? raw.map((q) => q.trim()).filter(Boolean)
+            : typeof raw === "string" && raw.trim()
+                ? [raw.trim()]
+                : [];
+        if (questionIds.length === 0) {
+            (0, response_1.sendError)(res, 400, "At least one questionId field is required");
+            return;
+        }
+        if (!files || files.length === 0) {
+            (0, response_1.sendError)(res, 400, "At least one report file is required");
+            return;
+        }
+        if (questionIds.length !== files.length) {
+            (0, response_1.sendError)(res, 400, `Mismatch: ${questionIds.length} questionId(s) but ${files.length} file(s). ` +
+                "Each file must have a matching questionId at the same position.");
+            return;
+        }
+        const pairs = files.map((file, i) => ({ questionId: questionIds[i], file }));
+        const result = await bubbleScan_service_1.bubbleScanService.attachQuestionReports(scanId, patientId, pairs);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "QUESTION_REPORT_FILES_ATTACHED",
+            details: { scanId, questions: questionIds, fileCount: files.length },
+        });
+        (0, response_1.sendResponse)(res, 200, "Question reports attached successfully", result);
+    }
+    catch (error) {
+        console.error("Attach question reports error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to attach question report files");
+    }
+};
+exports.attachQuestionReportFiles = attachQuestionReportFiles;
+/**
+ * DELETE /api/v1/bubble-scan/:id/question-reports
+ * Patient removes a specific report from a question.
+ * Body: { questionId: string, reportUrl: string }
+ */
+const removeQuestionReportFile = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const scanId = req.params.id;
+        const { questionId, reportUrl } = req.body;
+        if (!questionId || typeof questionId !== "string") {
+            (0, response_1.sendError)(res, 400, "questionId (string) is required");
+            return;
+        }
+        if (!reportUrl || typeof reportUrl !== "string") {
+            (0, response_1.sendError)(res, 400, "reportUrl (string) is required");
+            return;
+        }
+        const result = await bubbleScan_service_1.bubbleScanService.removeQuestionReport(scanId, patientId, questionId, reportUrl);
+        (0, activityLogger_1.logActivity)({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "QUESTION_REPORT_FILE_REMOVED",
+            details: { scanId, questionId, reportUrl },
+        });
+        (0, response_1.sendResponse)(res, 200, "Question report removed successfully", result);
+    }
+    catch (error) {
+        console.error("Remove question report error:", error);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to remove question report file");
+    }
+};
+exports.removeQuestionReportFile = removeQuestionReportFile;
 /**
  * POST /api/v1/bubble-scan/doctor/fill-report
  * Doctor manually creates or updates an investigation report for a patient.

@@ -7,33 +7,53 @@ const advancedAnalysisRepository_1 = require("../repositories/advancedAnalysisRe
 const Appuser_1 = require("../models/Appuser");
 // ── Auth ──────────────────────────────────────────────────────────────────
 function getAuth() {
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-    if (!email || !rawKey) {
-        throw new Error("Google service account credentials not configured. " +
-            "Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY in .env");
+    const b64Json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!b64Json) {
+        throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not set in .env. " +
+            "Download the service-account JSON key from GCP and base64-encode it " +
+            "(see instructions below the function).");
     }
-    // Normalize the private key:
-    // 1. Convert escaped \n literals (stored in .env) to real newlines
-    // 2. Collapse any \r\n Windows-style endings
-    // 3. Trim surrounding whitespace / stray quotes
-    const privateKey = rawKey
-        .replace(/\\n/g, "\n")
-        .replace(/\r\n/g, "\n")
-        .replace(/^["']|["']$/g, "")
-        .trim();
-    // Use JWT directly — avoids the OpenSSL 3.x DECODER error that
-    // google.auth.GoogleAuth triggers on Node.js 18+ when parsing
-    // service-account credentials from env vars.
+    let credentials;
+    try {
+        credentials = JSON.parse(Buffer.from(b64Json, "base64").toString("utf8"));
+    }
+    catch {
+        throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid base64-encoded JSON. " +
+            "Re-encode the service-account key file and update .env.");
+    }
+    if (!credentials.client_email || !credentials.private_key) {
+        throw new Error("Service account JSON is missing client_email or private_key.");
+    }
+    // Parsing the key from the JSON file (not from env string escaping)
+    // means the private key has real newlines — OpenSSL 3.x (Node 18+) can
+    // parse it without triggering the "DECODER routines::unsupported" error.
     return new googleapis_1.google.auth.JWT({
-        email,
-        key: privateKey,
+        email: credentials.client_email,
+        key: credentials.private_key,
         scopes: [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
         ],
     });
 }
+/*
+ * HOW TO SET GOOGLE_SERVICE_ACCOUNT_JSON
+ * ─────────────────────────────────────
+ * 1. Go to GCP Console → IAM & Admin → Service Accounts
+ *    → select your service account → Keys → Add Key → JSON
+ * 2. Encode the downloaded file:
+ *
+ *    PowerShell:
+ *      [Convert]::ToBase64String([IO.File]::ReadAllBytes("key.json")) | clip
+ *
+ *    Git-Bash / Linux / macOS:
+ *      base64 -w 0 key.json | pbcopy        # macOS
+ *      base64 -w 0 key.json | xclip         # Linux
+ *      base64 -w 0 key.json                 # Git-Bash (copy manually)
+ *
+ * 3. Paste into .env (no quotes needed):
+ *      GOOGLE_SERVICE_ACCOUNT_JSON=eyJ0eXBlIjoic2VydmljZV9hY2...
+ */
 // ── Data formatters ───────────────────────────────────────────────────────
 function fmtDate(iso) {
     if (!iso)

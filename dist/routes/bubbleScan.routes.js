@@ -35,7 +35,9 @@ const bubbleScanController = __importStar(require("../controllers/bubbleScan.con
 const router = express_1.default.Router();
 // === Patient Routes (require patient authentication) ===
 // Manual diary answer submission (for non-scan mode)
-router.post("/manual", authMiddleware_1.patientAuthCheck, bubbleScanController.manualSubmitBubbleScan);
+// Accepts multipart/form-data so report files can be included in the same request.
+// Fields: pageNumber (text), answers (JSON text), questionId[] (text), reports[] (files)
+router.post("/manual", authMiddleware_1.patientAuthCheck, upload_middleware_1.reportUpload.array("reports", 10), bubbleScanController.manualSubmitBubbleScan);
 // Upload diary page photo for AI vision scanning (replaces Python OMR)
 router.post("/upload", authMiddleware_1.patientAuthCheck, upload_middleware_1.visionScanUpload.single("image"), bubbleScanController.uploadBubbleScan);
 // Get patient's bubble scan history
@@ -52,6 +54,12 @@ router.post("/:id/retry", authMiddleware_1.patientAuthCheck, bubbleScanControlle
 router.post("/:id/reports", authMiddleware_1.patientAuthCheck, upload_middleware_1.reportUpload.array("reports", 5), bubbleScanController.attachReportFiles);
 // Remove a previously attached report file
 router.delete("/:id/reports", authMiddleware_1.patientAuthCheck, bubbleScanController.removeReportFile);
+// Attach report files to a specific question (PDF, DOC, DOCX, images — max 5 files, 25 MB each)
+// multipart fields: questionId (text) + reports (files)
+router.post("/:id/question-reports", authMiddleware_1.patientAuthCheck, upload_middleware_1.reportUpload.array("reports", 5), bubbleScanController.attachQuestionReportFiles);
+// Remove a specific report from a question
+// Body: { questionId, reportUrl }
+router.delete("/:id/question-reports", authMiddleware_1.patientAuthCheck, bubbleScanController.removeQuestionReportFile);
 // === Doctor/Assistant Routes ===
 // Get all bubble scans for doctor's patients
 router.get("/", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getAllBubbleScans);

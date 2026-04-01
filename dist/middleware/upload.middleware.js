@@ -76,10 +76,12 @@ exports.notificationAttachmentUpload = (0, multer_1.default)({
         }
     },
 });
-// Report upload — memory storage, supports PDF + images, up to 25 MB each, max 5 files
+// Report upload — memory storage, supports PDF + DOC/DOCX + images, up to 25 MB each, max 5 files
 const REPORT_ALLOWED_TYPES = [
     "image/jpeg", "image/jpg", "image/png", "image/webp",
     "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
 ];
 exports.reportUpload = (0, multer_1.default)({
     storage: multer_1.default.memoryStorage(),
@@ -89,7 +91,7 @@ exports.reportUpload = (0, multer_1.default)({
             cb(null, true);
         }
         else {
-            cb(new Error("Only JPEG, PNG, WebP images and PDF files are allowed for reports"));
+            cb(new Error("Only JPEG, PNG, WebP images, PDF, and DOC/DOCX files are allowed for reports"));
         }
     },
 });
