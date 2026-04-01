@@ -31,6 +31,16 @@ export async function uploadBufferToS3(
   return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Key}`;
 }
 
+const MIME_EXT_MAP: Record<string, string> = {
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
 /**
  * Builds an S3 key for a patient report file.
  * Pattern: patient-reports/{patientId}/{scanId}/{timestamp}-{random}.{ext}
@@ -43,7 +53,27 @@ export function buildReportS3Key(
 ): string {
   const ext =
     path.extname(originalname).toLowerCase() ||
+    MIME_EXT_MAP[mimeType] ||
     `.${mimeType.split("/")[1] ?? "bin"}`;
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `patient-reports/${patientId}/${scanId}/${unique}${ext}`;
+}
+
+/**
+ * Builds an S3 key for a question-specific report file.
+ * Pattern: patient-reports/{patientId}/{scanId}/questions/{questionId}/{timestamp}-{random}.{ext}
+ */
+export function buildQuestionReportS3Key(
+  patientId: string,
+  scanId: string,
+  questionId: string,
+  originalname: string,
+  mimeType: string
+): string {
+  const ext =
+    path.extname(originalname).toLowerCase() ||
+    MIME_EXT_MAP[mimeType] ||
+    `.${mimeType.split("/")[1] ?? "bin"}`;
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `patient-reports/${patientId}/${scanId}/questions/${questionId}/${unique}${ext}`;
 }

@@ -10,9 +10,12 @@ const router = express.Router();
 // === Patient Routes (require patient authentication) ===
 
 // Manual diary answer submission (for non-scan mode)
+// Accepts multipart/form-data so report files can be included in the same request.
+// Fields: pageNumber (text), answers (JSON text), questionId[] (text), reports[] (files)
 router.post(
     "/manual",
     patientAuthCheck,
+    reportUpload.array("reports", 10),
     bubbleScanController.manualSubmitBubbleScan
 );
 
@@ -72,6 +75,23 @@ router.delete(
     "/:id/reports",
     patientAuthCheck,
     bubbleScanController.removeReportFile
+);
+
+// Attach report files to a specific question (PDF, DOC, DOCX, images — max 5 files, 25 MB each)
+// multipart fields: questionId (text) + reports (files)
+router.post(
+    "/:id/question-reports",
+    patientAuthCheck,
+    reportUpload.array("reports", 5),
+    bubbleScanController.attachQuestionReportFiles
+);
+
+// Remove a specific report from a question
+// Body: { questionId, reportUrl }
+router.delete(
+    "/:id/question-reports",
+    patientAuthCheck,
+    bubbleScanController.removeQuestionReportFile
 );
 
 // === Doctor/Assistant Routes ===
