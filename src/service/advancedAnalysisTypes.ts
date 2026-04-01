@@ -38,6 +38,7 @@ const InvestigationStatusEnum = z.enum([
 ]);
 
 export const AdvancedAnalysisFilterSchema = z.object({
+  search: z.string().max(200).optional(),
   ageMin: z.number().min(0).max(120).optional(),
   ageMax: z.number().min(0).max(120).optional(),
   sex: z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),

@@ -1,5 +1,5 @@
 import { AdvancedAnalysisRepository } from "../repositories/advancedAnalysisRepository";
-import { AdvancedAnalysisFilter, PatientAnalysisRow } from "./advancedAnalysisTypes";
+import type { AdvancedAnalysisFilter, PatientAnalysisRow } from "./advancedAnalysisTypes";
 import { BubbleScanResult } from "../models/BubbleScanResult";
 import { Patient } from "../models/Patient";
 import { AppError } from "../utils/AppError";
@@ -37,6 +37,24 @@ function applySubmissionDateFilter(
   );
 }
 
+/**
+ * Client-side text search across name and UHID fields.
+ * Returns the list unchanged if query is empty.
+ */
+function applySearchFilter(
+  rows: PatientAnalysisRow[],
+  query: string | undefined
+): PatientAnalysisRow[] {
+  if (!query || query.trim() === "") return rows;
+  const q = query.trim().toLowerCase();
+  return rows.filter(
+    (r) =>
+      (r.name ?? "").toLowerCase().includes(q) ||
+      (r.uhid ?? "").toLowerCase().includes(q) ||
+      (r.patientId ?? "").toLowerCase().includes(q)
+  );
+}
+
 const repo = new AdvancedAnalysisRepository();
 
 export class AdvancedAnalysisService {
@@ -63,7 +81,8 @@ export class AdvancedAnalysisService {
       repo.mapToPatientAnalysisRow(patient, scans)
     );
     const filtered = repo.applyFilters(rows, filter);
-    const sorted = repo.applySorting(filtered, filter.sortBy);
+    const searched = applySearchFilter(filtered, filter.search);
+    const sorted = repo.applySorting(searched, filter.sortBy);
 
     const total = sorted.length;
     const totalPages = Math.ceil(total / filter.limit) || 1;
@@ -84,7 +103,7 @@ export class AdvancedAnalysisService {
       repo.mapToPatientAnalysisRow(patient, scans)
     );
     const filtered = repo.applyFilters(rows, filter);
-    return filtered.length;
+    return applySearchFilter(filtered, filter.search).length;
   }
 }
 
