@@ -387,6 +387,80 @@ export const getDiaryFilteredPatients = async (
 };
 
 /**
+ * POST /api/v1/bubble-scan/:id/reports
+ * Patient attaches report files (PDF / images) to an existing scan or manual entry.
+ * Accepts up to 5 files via multipart field name "reports".
+ */
+export const attachReportFiles = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const scanId = req.params.id as string;
+        const files = req.files as Express.Multer.File[];
+
+        if (!files || files.length === 0) {
+            sendError(res, 400, "At least one report file is required");
+            return;
+        }
+
+        const result = await bubbleScanService.attachReports(scanId, patientId, files);
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "REPORT_FILES_ATTACHED",
+            details: { scanId, fileCount: files.length },
+        });
+
+        sendResponse(res, 200, "Reports attached successfully", result);
+    } catch (error: any) {
+        console.error("Attach reports error:", error);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to attach report files");
+    }
+};
+
+/**
+ * DELETE /api/v1/bubble-scan/:id/reports
+ * Patient removes a previously attached report from a scan entry.
+ * Body: { reportUrl: string }
+ */
+export const removeReportFile = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const patientId = req.user!.id;
+        const scanId = req.params.id as string;
+        const { reportUrl } = req.body;
+
+        if (!reportUrl || typeof reportUrl !== "string") {
+            sendError(res, 400, "reportUrl (string) is required");
+            return;
+        }
+
+        const result = await bubbleScanService.removeReport(scanId, patientId, reportUrl);
+
+        logActivity({
+            req,
+            userId: patientId,
+            userRole: "PATIENT",
+            action: "REPORT_FILE_REMOVED",
+            details: { scanId, reportUrl },
+        });
+
+        sendResponse(res, 200, "Report removed successfully", result);
+    } catch (error: any) {
+        console.error("Remove report error:", error);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to remove report file");
+    }
+};
+
+/**
  * POST /api/v1/bubble-scan/doctor/fill-report
  * Doctor manually creates or updates an investigation report for a patient.
  * Used for pages with layoutType "investigation_summary" (pages 05 & 06).

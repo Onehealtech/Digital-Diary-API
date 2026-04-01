@@ -41,6 +41,8 @@ export const AdvancedAnalysisFilterSchema = z.object({
   ageMin: z.number().min(0).max(120).optional(),
   ageMax: z.number().min(0).max(120).optional(),
   sex: z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),
+  submissionDateFrom: z.string().optional(), // ISO date string (YYYY-MM-DD)
+  submissionDateTo: z.string().optional(),   // ISO date string (YYYY-MM-DD)
   investigations: z.record(InvestigationStatusEnum).optional(),
   nactPlanned: z.enum(["ANY", "YES", "NO"]).default("ANY"),
   surgeryType: z.enum(["ANY", "BCS", "MASTECTOMY", "NOT_PLANNED"]).default("ANY"),

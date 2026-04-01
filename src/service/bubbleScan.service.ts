@@ -10,6 +10,7 @@ import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
 import { AppError } from "../utils/AppError";
+import { uploadBufferToS3, buildReportS3Key } from "../utils/s3Upload";
 const pythonPath = path.join(__dirname, "../../python/venv/bin/python3");
 
 
@@ -1008,6 +1009,63 @@ class BubbleScanService {
             },
             patients: filtered,
         };
+    }
+
+    /**
+     * Attach one or more report files (PDF / images) to an existing scan entry.
+     * Files are uploaded to S3 and their URLs appended to reportUrls.
+     * Can be called after both scan-type and manual-type submissions.
+     */
+    async attachReports(
+        scanId: string,
+        patientId: string,
+        files: Array<{ buffer: Buffer; mimetype: string; originalname: string }>
+    ): Promise<BubbleScanResult> {
+        const scan = await BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+        if (!scan) throw new AppError(404, "Scan entry not found");
+        if (files.length === 0) throw new AppError(400, "No report files provided");
+
+        const uploadedUrls: string[] = [];
+        for (const file of files) {
+            const key = buildReportS3Key(patientId, scanId, file.originalname, file.mimetype);
+            const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
+            uploadedUrls.push(url);
+        }
+
+        const existing = Array.isArray(scan.reportUrls) ? (scan.reportUrls as string[]) : [];
+        scan.reportUrls = [...existing, ...uploadedUrls];
+        scan.changed("reportUrls", true);
+        await scan.save();
+
+        return scan;
+    }
+
+    /**
+     * Remove a specific report URL from a scan entry (patient-initiated deletion).
+     */
+    async removeReport(
+        scanId: string,
+        patientId: string,
+        reportUrl: string
+    ): Promise<BubbleScanResult> {
+        const scan = await BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+        if (!scan) throw new AppError(404, "Scan entry not found");
+
+        const existing = Array.isArray(scan.reportUrls) ? (scan.reportUrls as string[]) : [];
+        const updated = existing.filter((u) => u !== reportUrl);
+        if (updated.length === existing.length) {
+            throw new AppError(404, "Report URL not found on this scan entry");
+        }
+
+        scan.reportUrls = updated;
+        scan.changed("reportUrls", true);
+        await scan.save();
+
+        return scan;
     }
 }
 

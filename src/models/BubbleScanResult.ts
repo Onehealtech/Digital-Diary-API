@@ -152,4 +152,11 @@ export class BubbleScanResult extends Model {
         allowNull: true,
     })
     questionMarks?: object; // { q1: true, q2: false, ... } — per-question doctor review marks
+
+    @Column({
+        type: DataType.JSONB,
+        allowNull: true,
+        defaultValue: [],
+    })
+    reportUrls?: string[]; // S3 URLs of patient-uploaded report files (PDFs / images)
 }
