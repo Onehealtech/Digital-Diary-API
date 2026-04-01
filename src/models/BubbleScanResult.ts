@@ -159,4 +159,11 @@ export class BubbleScanResult extends Model {
         defaultValue: [],
     })
     reportUrls?: string[]; // S3 URLs of patient-uploaded report files (PDFs / images)
+
+    @Column({
+        type: DataType.JSONB,
+        allowNull: true,
+        defaultValue: {},
+    })
+    questionReports?: Record<string, string[]>; // { "q1": ["url1", "url2"], "q3": ["url3"] }
 }
