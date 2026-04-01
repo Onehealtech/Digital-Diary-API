@@ -187,6 +187,14 @@ __decorate([
     }),
     __metadata("design:type", Array)
 ], BubbleScanResult.prototype, "reportUrls", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.JSONB,
+        allowNull: true,
+        defaultValue: {},
+    }),
+    __metadata("design:type", Object)
+], BubbleScanResult.prototype, "questionReports", void 0);
 BubbleScanResult = __decorate([
     (0, sequelize_typescript_1.Table)({
         tableName: "bubble_scan_results",

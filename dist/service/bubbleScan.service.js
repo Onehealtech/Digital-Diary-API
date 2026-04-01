@@ -42,9 +42,11 @@ class BubbleScanService {
             .map((f) => f.replace(".json", ""));
     }
     /**
-     * Manual submission: Patient fills answers directly in the app
+     * Manual submission: Patient fills answers directly in the app.
+     * Optionally attach report files per question in the same call.
+     * questionReportPairs: [{ questionId, file }] — one entry per uploaded file.
      */
-    async manualSubmit(patientId, pageNumber, answers, diaryType) {
+    async manualSubmit(patientId, pageNumber, answers, diaryType, questionReportPairs = []) {
         // Fetch the diary page from DB
         const diaryPage = await DiaryPage_1.DiaryPage.findOne({
             where: { pageNumber, diaryType, isActive: true },
@@ -63,7 +65,14 @@ class BubbleScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
-        console.log(enrichedResults, "enrichedResults");
+        // Build questionReports map by uploading files to S3
+        const questionReports = {};
+        for (const { questionId, file } of questionReportPairs) {
+            const qid = questionId.trim();
+            const key = (0, s3Upload_1.buildQuestionReportS3Key)(patientId, "pending", qid, file.originalname, file.mimetype);
+            const url = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, key);
+            questionReports[qid] = [...(questionReports[qid] ?? []), url];
+        }
         const record = await BubbleScanResult_1.BubbleScanResult.create({
             patientId,
             pageId: `page-${pageNumber}`,
@@ -72,10 +81,22 @@ class BubbleScanService {
             submissionType: "manual",
             processingStatus: "completed",
             scanResults: enrichedResults,
+            questionReports,
             scannedAt: new Date(),
         });
-        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
-        console.log(record, "record");
+        // Re-upload with the real scanId in the S3 key if reports were attached
+        if (questionReportPairs.length > 0) {
+            const fixedReports = {};
+            for (const { questionId, file } of questionReportPairs) {
+                const qid = questionId.trim();
+                const key = (0, s3Upload_1.buildQuestionReportS3Key)(patientId, record.id, qid, file.originalname, file.mimetype);
+                const url = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, key);
+                fixedReports[qid] = [...(fixedReports[qid] ?? []), url];
+            }
+            record.questionReports = fixedReports;
+            record.changed("questionReports", true);
+            await record.save();
+        }
         return record;
     }
     /**
@@ -834,6 +855,59 @@ class BubbleScanService {
         }
         scan.reportUrls = updated;
         scan.changed("reportUrls", true);
+        await scan.save();
+        return scan;
+    }
+    /**
+     * Attach report files to one or more questions in a single request.
+     * pairs: [{ questionId, file }] — one entry per file.
+     * Supports PDF, DOC, DOCX, and images.
+     * Stored in questionReports: { "Q1": ["url1"], "Q2": ["url2"], ... }
+     */
+    async attachQuestionReports(scanId, patientId, pairs) {
+        const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+        if (!scan)
+            throw new AppError_1.AppError(404, "Scan entry not found");
+        if (pairs.length === 0)
+            throw new AppError_1.AppError(400, "No question-file pairs provided");
+        const updated = { ...(scan.questionReports ?? {}) };
+        for (const { questionId, file } of pairs) {
+            const qid = questionId.trim();
+            const key = (0, s3Upload_1.buildQuestionReportS3Key)(patientId, scanId, qid, file.originalname, file.mimetype);
+            const url = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, key);
+            updated[qid] = [...(Array.isArray(updated[qid]) ? updated[qid] : []), url];
+        }
+        scan.questionReports = updated;
+        scan.changed("questionReports", true);
+        await scan.save();
+        return scan;
+    }
+    /**
+     * Remove a specific report URL from a question in a scan entry.
+     */
+    async removeQuestionReport(scanId, patientId, questionId, reportUrl) {
+        const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
+            where: { id: scanId, patientId },
+        });
+        if (!scan)
+            throw new AppError_1.AppError(404, "Scan entry not found");
+        const existing = (scan.questionReports ?? {});
+        const forQuestion = Array.isArray(existing[questionId]) ? existing[questionId] : [];
+        const updated = forQuestion.filter((u) => u !== reportUrl);
+        if (updated.length === forQuestion.length) {
+            throw new AppError_1.AppError(404, "Report URL not found for this question");
+        }
+        const newMap = { ...existing };
+        if (updated.length === 0) {
+            delete newMap[questionId];
+        }
+        else {
+            newMap[questionId] = updated;
+        }
+        scan.questionReports = newMap;
+        scan.changed("questionReports", true);
         await scan.save();
         return scan;
     }
