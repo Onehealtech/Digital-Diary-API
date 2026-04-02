@@ -3,12 +3,12 @@ import { Request, Response } from "express";
 // In-memory counter for total /api/welcome visits.
 // This resets when the server restarts.
 let visitCount = 0;
-const MAX_WELCOME_VISITS = 21;
+const MAX_WELCOME_VISITS = 6;
 
 export const getWelcomeMessage = (req: Request, res: Response): Response => {
   visitCount += 1;
 
-  // Show welcome message only for the first 21 visits.
+  // Show welcome message only for the first 6 visits.
   if (visitCount <= MAX_WELCOME_VISITS) {
     return res.status(200).json({
       success: true,

@@ -296,7 +296,7 @@ class BubbleScanService {
     async getPatientScanHistory(patientId, page = 1, limit = 20) {
         const offset = (page - 1) * limit;
         const { rows, count } = await BubbleScanResult_1.BubbleScanResult.findAndCountAll({
-            where: { patientId, submissionType: { [sequelize_1.Op.ne]: "doctor_manual" } },
+            where: { patientId },
             order: [["scannedAt", "DESC"]],
             limit,
             offset,
