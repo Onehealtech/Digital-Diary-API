@@ -224,6 +224,31 @@ const verifyPhoneOtpSchema = z.object({
  * POST /api/v1/diary-sales/send-phone-otp
  * Send OTP to patient's phone number during diary selling
  */
+// export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+//   try {
+//     const parsed = sendPhoneOtpSchema.safeParse(req.body);
+//     if (!parsed.success) {
+//       res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+//       return;
+//     }
+
+//     const { phone } = parsed.data;
+//     const key = `sell-phone-${phone}`;
+//     const otp = generateOTP(key);
+
+//     const sent = await twilioService.sendOTP(phone, otp);
+//     if (!sent) {
+//       res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
+//       return;
+//     }
+
+//     res.status(200).json({ success: true, message: "OTP sent successfully" });
+//   } catch (error: unknown) {
+//     const message = error instanceof Error ? error.message : "Unknown error";
+//     console.error("Send phone OTP error:", message);
+//     res.status(500).json({ success: false, message: "Failed to send OTP" });
+//   }
+// };
 export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const parsed = sendPhoneOtpSchema.safeParse(req.body);
@@ -233,6 +258,17 @@ export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Pr
     }
 
     const { phone } = parsed.data;
+
+    // ✅ FALLBACK MODE
+    if (process.env.FALLBACK_OTP === "true") {
+       res.status(200).json({
+        success: true,
+        message: "OTP sent successfully (DEV MODE)",
+        otp: "123456", // optional (for testing)
+      });
+      return;
+    }
+
     const key = `sell-phone-${phone}`;
     const otp = generateOTP(key);
 
@@ -249,11 +285,35 @@ export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Pr
     res.status(500).json({ success: false, message: "Failed to send OTP" });
   }
 };
-
 /**
  * POST /api/v1/diary-sales/verify-phone-otp
  * Verify OTP for patient's phone number during diary selling
  */
+// export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+//   try {
+//     const parsed = verifyPhoneOtpSchema.safeParse(req.body);
+//     if (!parsed.success) {
+//       res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+//       return;
+//     }
+
+//     const { phone, otp } = parsed.data;
+//     const key = `sell-phone-${phone}`;
+//     const valid = verifyOTP(key, otp);
+
+//     if (!valid) {
+//       res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+//       return;
+//     }
+
+//     res.status(200).json({ success: true, message: "Phone number verified successfully" });
+//   } catch (error: unknown) {
+//     const message = error instanceof Error ? error.message : "Unknown error";
+//     console.error("Verify phone OTP error:", message);
+//     res.status(500).json({ success: false, message: "Failed to verify OTP" });
+//   }
+// };
+
 export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const parsed = verifyPhoneOtpSchema.safeParse(req.body);
@@ -264,7 +324,15 @@ export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): 
 
     const { phone, otp } = parsed.data;
     const key = `sell-phone-${phone}`;
-    const valid = verifyOTP(key, otp);
+
+    let valid = false;
+
+    // ✅ FALLBACK MODE (STATIC OTP)
+    if (process.env.FALLBACK_OTP === "true") {
+      valid = otp === "123456";
+    } else {
+      valid = verifyOTP(key, otp);
+    }
 
     if (!valid) {
       res.status(400).json({ success: false, message: "Invalid or expired OTP" });
