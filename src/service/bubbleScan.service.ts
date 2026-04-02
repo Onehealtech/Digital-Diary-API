@@ -424,7 +424,7 @@ class BubbleScanService {
     async getPatientScanHistory(patientId: string, page = 1, limit = 20) {
         const offset = (page - 1) * limit;
         const { rows, count } = await BubbleScanResult.findAndCountAll({
-            where: { patientId, submissionType: { [Op.ne]: "doctor_manual" } },
+            where: { patientId },
             order: [["scannedAt", "DESC"]],
             limit,
             offset,
@@ -802,7 +802,7 @@ class BubbleScanService {
      */
     async getDoctorMarksForPage(patientId: string, pageNumber: number): Promise<Record<string, boolean>> {
         const record = await BubbleScanResult.findOne({
-            where: { patientId, pageNumber, submissionType: "doctor_manual" },
+            where: { patientId, pageNumber, doctorReviewed: true },
             attributes: ["questionMarks"],
             order: [["createdAt", "DESC"]],
         });
@@ -819,7 +819,8 @@ class BubbleScanService {
         doctorId: string,
         pageNumber: number,
         questionMarks: Record<string, boolean>,
-        doctorNotes?: string
+        doctorNotes?: string,
+        questionSelections?: Record<string, string>  // select-type answers (e.g. surgery: "BCS")
     ): Promise<BubbleScanResult> {
         // Verify doctor has access to this patient
         const patient = await Patient.findByPk(patientId, { attributes: ["id", "doctorId", "caseType"] });
@@ -852,6 +853,7 @@ class BubbleScanService {
             await existing.update({
                 questionMarks,
                 doctorNotes: doctorNotes ?? existing.doctorNotes,
+                doctorOverrides: questionSelections ?? existing.doctorOverrides ?? {},
                 doctorReviewed: true,
                 reviewedBy: doctorId,
                 reviewedAt: new Date(),
@@ -870,10 +872,11 @@ class BubbleScanService {
             pageId,
             pageNumber,
             diaryPageId: diaryPage?.id,
-            submissionType: "doctor_manual",
+            submissionType: "manual",
             processingStatus: "completed",
             scanResults: {},
             questionMarks,
+            doctorOverrides: questionSelections ?? {},
             doctorNotes,
             doctorReviewed: true,
             reviewedBy: doctorId,

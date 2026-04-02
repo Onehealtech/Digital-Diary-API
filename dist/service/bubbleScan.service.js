@@ -615,7 +615,7 @@ class BubbleScanService {
      */
     async getDoctorMarksForPage(patientId, pageNumber) {
         const record = await BubbleScanResult_1.BubbleScanResult.findOne({
-            where: { patientId, pageNumber, submissionType: "doctor_manual" },
+            where: { patientId, pageNumber, doctorReviewed: true },
             attributes: ["questionMarks"],
             order: [["createdAt", "DESC"]],
         });
@@ -626,7 +626,8 @@ class BubbleScanService {
      * Used for pages with layoutType "investigation_summary" (pages 05 & 06).
      * Creates a new BubbleScanResult if none exists, or updates the existing one.
      */
-    async doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes) {
+    async doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes, questionSelections // select-type answers (e.g. surgery: "BCS")
+    ) {
         // Verify doctor has access to this patient
         const patient = await Patient_1.Patient.findByPk(patientId, { attributes: ["id", "doctorId", "caseType"] });
         if (!patient)
@@ -655,6 +656,7 @@ class BubbleScanService {
             await existing.update({
                 questionMarks,
                 doctorNotes: doctorNotes ?? existing.doctorNotes,
+                doctorOverrides: questionSelections ?? existing.doctorOverrides ?? {},
                 doctorReviewed: true,
                 reviewedBy: doctorId,
                 reviewedAt: new Date(),
@@ -672,10 +674,11 @@ class BubbleScanService {
             pageId,
             pageNumber,
             diaryPageId: diaryPage?.id,
-            submissionType: "doctor_manual",
+            submissionType: "manual",
             processingStatus: "completed",
             scanResults: {},
             questionMarks,
+            doctorOverrides: questionSelections ?? {},
             doctorNotes,
             doctorReviewed: true,
             reviewedBy: doctorId,
