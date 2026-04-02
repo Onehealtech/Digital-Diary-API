@@ -628,7 +628,7 @@ export const doctorFillReport = async (
             return;
         }
 
-        const { patientId, pageNumber, questionMarks, doctorNotes } = req.body;
+        const { patientId, pageNumber, questionMarks, doctorNotes, questionSelections } = req.body;
 
         if (!patientId || typeof patientId !== "string") {
             sendError(res, 400, "patientId is required");
@@ -648,7 +648,8 @@ export const doctorFillReport = async (
             doctorId,
             pageNumber,
             questionMarks,
-            doctorNotes
+            doctorNotes,
+            questionSelections
         );
 
         logActivity({

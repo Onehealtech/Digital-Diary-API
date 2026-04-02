@@ -271,15 +271,18 @@ const PAGES = [
         pageNumber: 28, title: "Blood Tests Done & Report Collected", titleHi: "ब्लड टेस्ट किए गए और रिपोर्ट ली गई",
         layoutType: "done_report", questions: doneReportQuestions("Blood Tests", "खून की जांच"),
     },
-    // ─── Page 29: Treatment Planned In Breast DMG/MDT ───
+    // ─── Page 29: Treatment Plan Summary (Doctor Pre-filled) ───
     {
         pageNumber: 29,
         title: "Your Treatment Is Being Planned In Breast DMG/MDT",
         titleHi: "आपका ट्रीटमेंट ब्रेस्ट DMG/MDT में प्लान किया जा रहा है",
-        layoutType: "treatment",
+        layoutType: "treatment_summary",
         questions: [
             { id: "q1", text: "Planned For Chemotherapy (NACT)", textHi: "कीमोथेरेपी के लिए नियोजित (NACT)", type: "yes_no", category: "treatment" },
-            { id: "q2", text: "Surgery Planned", textHi: "सर्जरी की योजना", type: "select", options: ["BCS", "Mastectomy"], category: "treatment" },
+            { id: "q2", text: "Surgery Planned", textHi: "सर्जरी की योजना", type: "select", options: ["None", "BCS", "Mastectomy"], category: "treatment" },
+            { id: "q3", text: "Radiotherapy Planned", textHi: "रेडियोथेरेपी की योजना", type: "yes_no", category: "treatment" },
+            { id: "q4", text: "Any Other Treatment Planned", textHi: "कोई अन्य उपचार नियोजित", type: "yes_no", category: "treatment" },
+            { id: "q5", text: "All reports ready but treatment not yet planned", textHi: "सभी रिपोर्ट तैयार हैं लेकिन अभी तक इलाज की योजना नहीं बनाई गई", type: "yes_no", category: "treatment" },
         ],
     },
     // ─── Page 30: Next Steps If Planned For NACT BCS ───

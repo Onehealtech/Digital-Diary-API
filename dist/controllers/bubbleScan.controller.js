@@ -488,7 +488,7 @@ const doctorFillReport = async (req, res) => {
             (0, response_1.sendError)(res, 401, "Authentication required");
             return;
         }
-        const { patientId, pageNumber, questionMarks, doctorNotes } = req.body;
+        const { patientId, pageNumber, questionMarks, doctorNotes, questionSelections } = req.body;
         if (!patientId || typeof patientId !== "string") {
             (0, response_1.sendError)(res, 400, "patientId is required");
             return;
@@ -501,7 +501,7 @@ const doctorFillReport = async (req, res) => {
             (0, response_1.sendError)(res, 400, "questionMarks (object) is required");
             return;
         }
-        const result = await bubbleScan_service_1.bubbleScanService.doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes);
+        const result = await bubbleScan_service_1.bubbleScanService.doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes, questionSelections);
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
