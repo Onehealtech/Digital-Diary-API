@@ -63,7 +63,8 @@ router.use("/v1/bubble-scan", bubbleScanRoutes); // Bubble scan OMR routes (Pati
 router.use("/v1/vision-scan", visionScanRoutes); // Vision AI scan routes (Patient upload, Doctor review)
 router.use("/v1/diary-pages", diaryPageRoutes); // Diary page routes (questions for manual entry, seed)
 router.use("/v1/doctor-onboard", doctorOnboardRoutes); // Doctor onboard requests & vendor-doctor assignments
-router.use("/v1/welcome", welcomeRoutes); // Welcome route (first 6 visits show message)
+router.use("/v1/welcome", welcomeRoutes); // Versioned welcome route
+router.use("/welcome", welcomeRoutes); // Direct welcome route alias: /api/welcome
 router.use("/v1/diary-sales", diarySalesRoutes); // Diary selling (all roles) & diary requests
 router.use("/v1/subscriptions", subscriptionRoutes); // Subscription plans & patient subscriptions
 router.use("/v1/doctor-requests", doctorRequestRoutes); // Patient→Doctor assignment requests (self-signup)

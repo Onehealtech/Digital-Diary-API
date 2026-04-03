@@ -1,13 +1,14 @@
 "use strict";
-// In your staff controller file
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.retryCashfreeOnboarding = exports.createStaff = void 0;
-const Appuser_1 = require("../models/Appuser");
-const cashfree_vendor_service_1 = require("../service/cashfree-vendor.service");
 const constants_1 = require("../utils/constants");
+const Appuser_1 = require("../models/Appuser");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const emailService_1 = require("../service/emailService");
 const wallet_service_1 = require("../service/wallet.service");
+const AppError_1 = require("../utils/AppError");
+const doctorCreation_service_1 = require("../service/doctorCreation.service");
+const cashfreeOnboarding_service_1 = require("../service/cashfreeOnboarding.service");
 const walletTypeMap = {
     VENDOR: "VENDOR",
     DOCTOR: "DOCTOR",
@@ -15,8 +16,7 @@ const walletTypeMap = {
 };
 const createStaff = async (req, res) => {
     try {
-        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, address, city, state, commissionType, commissionRate, landLinePhone } = req.body;
-        // ── Validate required fields ───────────────────────────────────
+        const { fullName, email, phone, role, bank, upi, license, hospital, specialization, GST, address, city, state, commissionType, commissionRate, landLinePhone, } = req.body;
         if (!fullName || !email || !role) {
             res.status(400).json({
                 success: false,
@@ -36,7 +36,59 @@ const createStaff = async (req, res) => {
             });
             return;
         }
-        // Check if user already exists
+        // Doctor flow (primary + secondary split)
+        if (role === constants_1.UserRole.DOCTOR) {
+            const doctor = await (0, doctorCreation_service_1.createDoctorService)({
+                fullName,
+                email,
+                phone,
+                license,
+                hospital,
+                specialization,
+                GST,
+                address,
+                city,
+                state,
+                commissionType,
+                commissionRate,
+                landLinePhone,
+                bank,
+                createdBy: req.user.id,
+            });
+            let cashfree = {
+                status: "SUCCESS",
+            };
+            // Secondary operation: non-blocking. Doctor creation must not fail due to Cashfree.
+            // TODO: move this to a background queue/job for retryable async onboarding.
+            try {
+                await (0, cashfreeOnboarding_service_1.registerCashfreeVendor)({ userId: doctor.id, bank, upi });
+            }
+            catch (cfError) {
+                const detail = cfError instanceof Error ? cfError.message : "Unknown error";
+                console.error(`Cashfree onboarding failed for doctor ${doctor.id}:`, detail);
+                cashfree = {
+                    status: "FAILED",
+                    message: "Cashfree onboarding failed. Please retry.",
+                };
+            }
+            // Refresh to include latest cashfreeVendorId if onboarding succeeded.
+            await doctor.reload();
+            res.status(201).json({
+                success: true,
+                message: "Doctor created successfully",
+                cashfree,
+                data: {
+                    id: doctor.id,
+                    fullName: doctor.fullName,
+                    email: doctor.email,
+                    role: doctor.role,
+                    cashfreeVendorId: doctor.cashfreeVendorId || null,
+                    createdBy: req.user.id,
+                },
+            });
+            return;
+        }
+        // Non-doctor flow (existing behavior retained for VENDOR/SUPER_ADMIN).
         const existingUser = await Appuser_1.AppUser.findOne({
             where: { email: email.toLowerCase() },
         });
@@ -47,9 +99,7 @@ const createStaff = async (req, res) => {
             });
             return;
         }
-        // ── Generate password ──────────────────────────────────────────
         const plainPassword = (0, passwordUtils_1.generateSecurePassword)();
-        // ── Create user in DB first ────────────────────────────────────
         const newUser = await Appuser_1.AppUser.create({
             fullName,
             email: email.toLowerCase(),
@@ -68,48 +118,18 @@ const createStaff = async (req, res) => {
             city,
             state,
             landLinePhone,
+            bankDetails: bank,
         });
-        // Create wallet for VENDOR and DOCTOR roles
         if (role === constants_1.UserRole.VENDOR || role === constants_1.UserRole.DOCTOR) {
             const walletType = walletTypeMap[role];
             if (walletType) {
                 await (0, wallet_service_1.createWallet)(newUser.id, walletType);
             }
         }
-        // ── Cashfree vendor registration (DISABLED — uncomment when needed) ──
-        // let cashfreeVendorId: string | null = null;
-        // const needsCashfree = [UserRole.DOCTOR, UserRole.VENDOR].includes(role as UserRole);
-        // if (needsCashfree) {
-        //     try {
-        //         const cfResult = await createCashfreeVendor({
-        //             vendorId: newUser.id,
-        //             name: fullName,
-        //             email: email.toLowerCase(),
-        //             phone,
-        //             role,
-        //             bank,
-        //             upi,
-        //         });
-        //         cashfreeVendorId = cfResult.vendor_id;
-        //         await newUser.update({ cashfreeVendorId });
-        //     } catch (cfError: any) {
-        //         console.error(`Cashfree vendor registration failed for ${email}:`, cfError.message);
-        //         await sendPasswordEmail(email, plainPassword, role, fullName);
-        //         res.status(201).json({
-        //             success: true,
-        //             message: `${role} created successfully. Credentials sent to ${email}.`,
-        //             data: { id: newUser.id, fullName: newUser.fullName, email: newUser.email, role: newUser.role, cashfreeVendorId: null, createdBy: req.user!.id },
-        //             warnings: [{ type: "CASHFREE_ONBOARDING_FAILED", message: "Cashfree vendor registration failed. Please retry onboarding from the user profile.", detail: cfError.message }],
-        //         });
-        //         return;
-        //     }
-        // }
-        // ── Send password email ────────────────────────────────────────
         await (0, emailService_1.sendPasswordEmail)(email, plainPassword, role, fullName);
-        // ── Success response ───────────────────────────────────────────
         res.status(201).json({
             success: true,
-            message: `${role} created successfully. Credentials sent to ${email}`,
+            message: `${role} created successfully. Credentials sent to ${email}.`,
             data: {
                 id: newUser.id,
                 fullName: newUser.fullName,
@@ -120,67 +140,58 @@ const createStaff = async (req, res) => {
         });
     }
     catch (error) {
-        console.error("Create staff error:", error);
+        if (error instanceof AppError_1.AppError) {
+            res.status(error.statusCode).json({ success: false, message: error.message });
+            return;
+        }
+        const message = error instanceof Error ? error.message : "Failed to create staff member";
+        console.error("Create staff error:", message);
         res.status(500).json({
             success: false,
-            message: error.message || "Failed to create staff member",
+            message,
         });
     }
 };
 exports.createStaff = createStaff;
 /**
- * Retry Cashfree vendor registration for users where it previously failed.
- * Called by SuperAdmin when cashfreeVendorId is null on a Doctor/Vendor.
+ * Retry Cashfree onboarding.
+ * Idempotent by design: already-onboarded users return success without duplicate vendor creation.
  */
 const retryCashfreeOnboarding = async (req, res) => {
     try {
-        const { userId } = req.params;
+        const userId = (req.params.userId || req.params.id);
         const { bank, upi } = req.body;
-        const user = await Appuser_1.AppUser.findByPk(userId);
-        if (!user) {
-            res.status(404).json({ success: false, message: "User not found" });
-            return;
-        }
-        if (user.cashfreeVendorId) {
-            res.status(400).json({
-                success: false,
+        const result = await (0, cashfreeOnboarding_service_1.registerCashfreeVendor)({ userId, bank, upi });
+        if (result.status === "ALREADY_REGISTERED") {
+            res.status(200).json({
+                success: true,
                 message: "User is already registered on Cashfree",
-                data: { cashfreeVendorId: user.cashfreeVendorId },
+                cashfree: {
+                    status: "ALREADY_REGISTERED",
+                    vendorId: result.vendorId,
+                },
             });
             return;
         }
-        if (![constants_1.UserRole.DOCTOR, constants_1.UserRole.VENDOR].includes(user.role)) {
-            res.status(400).json({
-                success: false,
-                message: "Only Doctors and Vendors need Cashfree registration",
-            });
-            return;
-        }
-        const cfResult = await (0, cashfree_vendor_service_1.createCashfreeVendor)({
-            vendorId: user.id,
-            name: user.fullName,
-            email: user.email,
-            phone: user.phone,
-            role: user.role,
-            bank,
-            upi,
-        });
-        await user.update({ cashfreeVendorId: cfResult.vendor_id });
         res.status(200).json({
             success: true,
-            message: "Cashfree vendor registration successful",
-            data: {
-                id: user.id,
-                cashfreeVendorId: cfResult.vendor_id,
-                cashfreeStatus: cfResult.status,
+            message: "Cashfree vendor onboarding completed",
+            cashfree: {
+                status: "SUCCESS",
+                vendorId: result.vendorId,
             },
         });
     }
     catch (error) {
-        console.error("Retry Cashfree onboarding error:", error);
+        if (error instanceof AppError_1.AppError) {
+            res.status(error.statusCode).json({ success: false, message: error.message });
+            return;
+        }
+        const message = error instanceof Error ? error.message : "Failed to register on Cashfree";
+        console.error("Retry Cashfree onboarding error:", message);
         res.status(500).json({
             success: false,
-            message: error.message || "Failed to register on Cashfree",
+            message,
         });
     }
 };
