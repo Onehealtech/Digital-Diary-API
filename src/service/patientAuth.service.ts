@@ -54,7 +54,7 @@ export const verifyPatientOTP = async (
     // Get patient details
     const patient = await Patient.findOne({
         where: { diaryId },
-        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
+        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone", "tokenVersion"],
     });
 
     if (!patient) {
@@ -80,6 +80,7 @@ export const verifyPatientOTP = async (
             fullName: patient.fullName,
             caseType: patient.caseType,
             type: "PATIENT",
+            tokenVersion: (patient as any).tokenVersion ?? 0,
         },
         process.env.JWT_SECRET!,
         { expiresIn: "30d" }

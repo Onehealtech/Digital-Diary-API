@@ -50,7 +50,7 @@ const verifyPatientOTP = async (diaryId, otp) => {
     // Get patient details
     const patient = await Patient_1.Patient.findOne({
         where: { diaryId },
-        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
+        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone", "tokenVersion"],
     });
     if (!patient) {
         throw new Error("Patient not found");
@@ -70,6 +70,7 @@ const verifyPatientOTP = async (diaryId, otp) => {
         fullName: patient.fullName,
         caseType: patient.caseType,
         type: "PATIENT",
+        tokenVersion: patient.tokenVersion ?? 0,
     }, process.env.JWT_SECRET, { expiresIn: "30d" });
     return {
         token,

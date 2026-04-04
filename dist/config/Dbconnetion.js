@@ -298,6 +298,23 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ Patient self-signup migration warning:', err instanceof Error ? err.message : err);
         });
+        // Add tokenVersion columns for stateless JWT invalidation.
+        // JWT cannot be revoked directly; tokenVersion rotation invalidates old tokens immediately.
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'app-users' AND column_name = 'tokenVersion') THEN
+          ALTER TABLE "app-users" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'tokenVersion') THEN
+          ALTER TABLE "patients" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0;
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('⚠️ tokenVersion migration warning:', err instanceof Error ? err.message : err);
+        });
         // Create payment_config table and seed default row
         await exports.sequelize.query(`
       CREATE TABLE IF NOT EXISTS "payment_config" (

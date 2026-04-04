@@ -184,6 +184,14 @@ __decorate([
     __metadata("design:type", String)
 ], Patient.prototype, "language", void 0);
 __decorate([
+    (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+    }),
+    __metadata("design:type", Number)
+], Patient.prototype, "tokenVersion", void 0);
+__decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,

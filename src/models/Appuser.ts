@@ -144,6 +144,13 @@ export class AppUser extends Model {
   isActive!: boolean;
 
   @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  })
+  tokenVersion!: number;
+
+  @Column({
     type: DataType.ENUM("SUPER_ADMIN", "VENDOR", "DOCTOR", "ASSISTANT"),
     allowNull: false,
   })

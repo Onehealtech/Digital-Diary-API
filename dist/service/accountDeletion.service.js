@@ -106,6 +106,7 @@ async function deletePatientAccount(patientId, reason) {
         patient.deactivationReason = reason || "Account deleted by user (Play Store compliance)";
         patient.deactivatedAt = new Date();
         patient.deactivatedBy = patientId; // self-deletion
+        patient.tokenVersion = (patient.tokenVersion ?? 0) + 1;
         patient.prescribedTests = [];
         await patient.save({ transaction: t });
         // 11. Log deletion in audit trail

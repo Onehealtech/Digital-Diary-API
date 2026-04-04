@@ -445,6 +445,8 @@ class PatientService {
       deactivationReason: reason,
       deactivatedAt: new Date(),
       deactivatedBy: requesterId,
+      // JWT is stateless; tokenVersion rotation invalidates previously issued tokens.
+      tokenVersion: ((patient as any).tokenVersion ?? 0) + 1,
     });
 
     return patient;

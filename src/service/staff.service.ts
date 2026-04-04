@@ -582,7 +582,16 @@ async getVendorDoctors(
       const patient = await Patient.findByPk(userId);
       if (patient) {
         const newStatus = patient.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
-        await patient.update({ status: newStatus });
+
+        // JWT is stateless and cannot be revoked directly.
+        // Incrementing tokenVersion invalidates all previously issued patient tokens.
+        const shouldRotateTokenVersion = newStatus === "INACTIVE";
+        await patient.update({
+          status: newStatus,
+          ...(shouldRotateTokenVersion
+            ? { tokenVersion: ((patient as any).tokenVersion ?? 0) + 1 }
+            : {}),
+        });
         try {
           await AuditLog.create({
             userId: toggledByUserId,
@@ -613,7 +622,14 @@ async getVendorDoctors(
     }
 
     const newStatus = !user.isActive;
-    await user.update({ isActive: newStatus });
+
+    // Rotate token version on deactivation so old JWTs stop working immediately.
+    await user.update({
+      isActive: newStatus,
+      ...(newStatus === false
+        ? { tokenVersion: ((user as any).tokenVersion ?? 0) + 1 }
+        : {}),
+    });
 
     try {
       await AuditLog.create({

@@ -70,6 +70,7 @@ export class DoctorAuthService {
         role: doctor.role,
         fullName: doctor.fullName,
         email: doctor.email,
+        tokenVersion: (doctor as any).tokenVersion ?? 0,
       },
       process.env.JWT_SECRET!,
       { expiresIn: "7d" }
@@ -125,6 +126,7 @@ export class DoctorAuthService {
           role: user.role,
           fullName: user.fullName,
           email: user.email,
+          tokenVersion: (user as any).tokenVersion ?? 0,
         },
         process.env.JWT_SECRET!,
         { expiresIn: "7d" }

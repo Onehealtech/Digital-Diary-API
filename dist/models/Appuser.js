@@ -183,6 +183,14 @@ __decorate([
 ], AppUser.prototype, "isActive", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+    }),
+    __metadata("design:type", Number)
+], AppUser.prototype, "tokenVersion", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.ENUM("SUPER_ADMIN", "VENDOR", "DOCTOR", "ASSISTANT"),
         allowNull: false,
     }),
