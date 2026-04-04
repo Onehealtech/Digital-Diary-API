@@ -1318,47 +1318,22 @@ function buildSchedulePrompt(diaryPage: DiaryPage): string {
 
   return `Page ${pageNum}: "${diaryPage.title}"
 
-PAGE STRUCTURE (top to bottom):
-${hasSecond
-    ? "1. First Appointment box (upper portion of page)\n2. Second Attempt box (lower portion, labeled \"Second Attempt/द्वितीय प्रयास\")"
-    : "1. First Appointment box (upper portion of page)"}
-${yesNoFields.length ? (hasSecond ? "3." : "2.") + " Yes/No question at the very bottom" : ""}
+This is a CANTrac diary schedule page. Each row on the page has a set of options. The user fills in one option per row by marking the circle (bubble) next to their chosen option.
 
-═══ BUBBLE READING RULES ═══
-Every row on this page follows this layout:  ○ Label  ○ Label  ○ Label ...
-- Each small circle (○) is the bubble for the label printed DIRECTLY TO ITS RIGHT.
-- A filled bubble has clear pen ink or pencil shading inside it — visibly darker than empty bubbles.
-- An empty bubble has a clean white interior with only a thin pink outline.
-- If no bubble in a row is clearly filled → value = null, confidence = 0.95. Do not guess.
+Your job: For each field below, look at the corresponding row on the page and identify which option the user has marked. A marked option has a visibly filled circle (dark ink or pencil shading). An unmarked option has an empty circle with a clean white interior.
 
-MONTH ROW — CRITICAL READING RULE:
-The physical layout of the MM row on the page looks like this:
-  ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
-
-Each bubble is positioned BEFORE (to the left of) its own month label.
-This means a filled bubble will always appear visually BETWEEN the PREVIOUS month's label and ITS OWN month label.
-
-EXACT MAPPING — if the bubble between these two labels is filled, the answer is the RIGHT label:
-  Between start and "Jan"  → Jan    Between "Jan" and "Feb"  → Feb
-  Between "Feb" and "Mar"  → Mar    Between "Mar" and "Apr"  → Apr
-  Between "Apr" and "May"  → May    Between "May" and "Jun"  → Jun
-  Between "Jun" and "Jul"  → Jul    Between "Jul" and "Aug"  → Aug
-  Between "Aug" and "Sep"  → Sep    Between "Sep" and "Oct"  → Oct
-  Between "Oct" and "Nov"  → Nov    Between "Nov" and "Dec"  → Dec
-
-MANDATORY CHECK: After picking a month, ask yourself — "Is there a label to the LEFT of this filled bubble?"
-  If YES → that left label is NOT the answer. The label to the RIGHT is the answer.
-  Example: filled bubble between "Mar" and "Apr" → answer is "Apr", NOT "Mar".
+If no option in a row is clearly marked → value = null, confidence = 0.95.
 
 ${sections}
 
-═══ REQUIRED OUTPUT ═══
-Every field MUST use: { "value": <answer or null>, "confidence": <0.0–1.0> }
-- Date fields: "DD/Mon/YYYY" string (e.g. "14/Apr/2027") OR null if no bubbles filled
-- Status fields: one of "Scheduled", "Completed", "Missed", "Cancelled" OR null
-- Yes/No fields: "yes" or "no" OR null
+OUTPUT FORMAT — every field must be:
+{ "value": <selected option as a string, or null if nothing marked>, "confidence": <0.0–1.0> }
 
-Return this EXACT JSON structure (replace null only where a bubble is clearly filled):
+- Date: combine day + month + year as "DD/Mon/YYYY" (e.g. "14/Apr/2027"). If any of the three rows (day/month/year) has no marked option → value = null.
+- Status: one of "Scheduled", "Completed", "Missed", "Cancelled", or null.
+- Yes/No: "yes", "no", or null.
+
+Return ONLY this JSON (replace null with the actual selected value where something is clearly marked):
 ${JSON.stringify(example, null, 2)}
 
 JSON only. No markdown. No explanation. Start with { end with }.`;
@@ -1372,30 +1347,27 @@ function buildAppointmentSection(
   return `
 ─── ${sectionTitle} ───
 ${dateId ? `
-"${dateId}" — Read from three rows labeled on the page:
+"${dateId}" — Look inside this section's box for three rows:
 
-  Row labeled "DD: दिन" (DAY):
-    Line 1 → ○ 01  ○ 02  ○ 03  ○ 04  ○ 05  ○ 06  ○ 07  ○ 08  ○ 09  ○ 10  ○ 11  ○ 12  ○ 13  ○ 14  ○ 15  ○ 16
-    Line 2 → ○ 17  ○ 18  ○ 19  ○ 20  ○ 21  ○ 22  ○ 23  ○ 24  ○ 25  ○ 26  ○ 27  ○ 28  ○ 29  ○ 30  ○ 31
-    Find the ONE filled bubble. The number printed to its immediate right = day.
+  DAY row (labeled "DD: दिन / Day"):
+    Options are the numbers 01 through 31 spread across two lines.
+    Which day number has its circle marked by the user?
 
-  Row labeled "MM: माह" (MONTH):
-    ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
-    The filled bubble will appear BETWEEN two month labels. The answer is ALWAYS the label on the RIGHT of the filled bubble.
-    The label on the LEFT belongs to the previous bubble — ignore it.
-    Quick reference: Jan=1st, Feb=2nd, Mar=3rd, Apr=4th, May=5th, Jun=6th, Jul=7th, Aug=8th, Sep=9th, Oct=10th, Nov=11th, Dec=12th bubble from left.
+  MONTH row (labeled "MM: माह / Month"):
+    Options are: Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec
+    Which month name has its circle marked by the user?
 
-  Row labeled "YY: साल" (YEAR):
-    ○ 2026  ○ 2027  ○ 2028
-    Find the ONE filled bubble. The year to its immediate right = year.
+  YEAR row (labeled "YY: साल / Year"):
+    Options are: 2026  2027  2028
+    Which year has its circle marked by the user?
 
-  Combine: day + "/" + month + "/" + year → e.g. "14/Apr/2027"
-  If no bubble is clearly filled in a row → value = null.` : ""}
+  Combine the three answers as "DD/Mon/YYYY" → e.g. "02/Apr/2026".
+  If none of the options in a row are marked → value = null.` : ""}
 ${statusId ? `
-"${statusId}" — Row labeled "Status/स्थिति":
-    ○ Scheduled  ○ Completed  ○ Missed  ○ Cancelled
-    Find the ONE filled bubble. The word to its immediate right = status.
-    If no bubble is clearly filled → value = null.` : ""}
+"${statusId}" — Look inside this same section's box for the row labeled "Status / स्थिति":
+    Options are: Scheduled  Completed  Missed  Cancelled
+    Which option has its circle marked by the user? → that is the status.
+    If none are marked → value = null.` : ""}
 `;
 }
 
