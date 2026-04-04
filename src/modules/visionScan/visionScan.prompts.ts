@@ -291,7 +291,7 @@
 //     if (dateFields[1]?.id)   example[dateFields[1].id]   = { value: "29/Jun/2028", confidence: 0.90 };
 //     if (statusFields[1]?.id) example[statusFields[1].id] = { value: "Missed",      confidence: 0.91 };
 //   }
-//   for (const yn of yesNoFields) example[yn.id] = { value: "no",  confidence: 0.95 };
+//   for (const yn of yesNoFields) example[yn.id] = { value: null, confidence: 0.95 };
 //   for (const tf of textFields)  example[tf.id] = { value: "",    confidence: 0.90 };
 
 //   return `Page ${pageNum}: "${diaryPage.title}"
@@ -1222,7 +1222,7 @@ function buildYesNoPrompt(diaryPage: DiaryPage): string {
   const example: Record<string, any> = {};
   questions.forEach(q => {
     example[q.id] = q.type === "yes_no"
-      ? { value: "yes", confidence: 0.95 }
+      ? { value: null, confidence: 0.95 }
       : q.type === "text"
         ? { value: "", confidence: 0.90 }
         : { value: null, confidence: 0.95 };
@@ -1232,16 +1232,20 @@ function buildYesNoPrompt(diaryPage: DiaryPage): string {
 
 ${questions.length} Yes/No questions. Each row has two bubbles:
 - LEFT = Yes(हाँ)   RIGHT = No(नहीं)
-One is FILLED (dark ink OR grey pencil shading — any mark inside the circle).
-The other is EMPTY (clean pink outline, white interior, no marks).
-Compare both bubbles: the one with MORE visual material inside is the answer.
+- A FILLED bubble has a visible mark inside it (pen ink, pencil shading, grey fill).
+- An EMPTY bubble has a clean white interior with only a pink outline — no marks at all.
+
+BLANK PAGE RULE: If BOTH bubbles in a row are empty (no marks in either), return null with confidence 0.95. Do NOT pick a side — null means the question was not answered.
 
 FIELDS:
 ${fieldList}
 
-Return this EXACT JSON (replace example values with actual readings):
+Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
 
+- If a bubble IS filled, replace null with "yes" or "no" based on which side is filled.
+- If NEITHER bubble is filled, keep value as null with confidence 0.95.
+- Never copy example values — only return what you actually see in the image.
 JSON only. No markdown. No explanation.`;
 }
 
@@ -1299,7 +1303,7 @@ function buildSchedulePrompt(diaryPage: DiaryPage): string {
     if (dateFields[1]?.id)   example[dateFields[1].id]   = { value: null, confidence: 0.95 };
     if (statusFields[1]?.id) example[statusFields[1].id] = { value: null, confidence: 0.95 };
   }
-  for (const yn of yesNoFields) example[yn.id] = { value: "no",  confidence: 0.95 };
+  for (const yn of yesNoFields) example[yn.id] = { value: null, confidence: 0.95 };
   for (const tf of textFields)  example[tf.id] = { value: "",    confidence: 0.90 };
 
   return `Page ${pageNum}: "${diaryPage.title}"
@@ -1322,9 +1326,9 @@ ${sections}
 ═══ REQUIRED OUTPUT ═══
 
 CRITICAL: Every field MUST use this format: { "value": <answer>, "confidence": <score> }
-- For dates: "value" must be a string in "DD/Mon/YYYY" format, e.g. "22/Sep/2027"
-- For status: "value" must be one of "Scheduled", "Completed", "Missed", "Cancelled"
-- For yes/no: "value" must be "yes" or "no"
+- For dates: "value" must be a string in "DD/Mon/YYYY" format, e.g. "22/Sep/2027" — or null if no bubble is filled
+- For status: "value" must be one of "Scheduled", "Completed", "Missed", "Cancelled" — or null if no bubble is filled
+- For yes/no: "value" must be "yes" or "no" — or null if neither bubble is filled
 
 Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
