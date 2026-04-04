@@ -1172,13 +1172,18 @@ BUBBLE APPEARANCE:
 - EMPTY = thin PINK outline with WHITE/CLEAN interior. No ink or graphite inside. The interior is crisp and matches the page background.
 
 KEY DETECTION RULE:
-Compare bubble interiors RELATIVE TO EACH OTHER within the same row. The filled bubble — whether pen or pencil — will always have MORE visual material (darker, greyer, hazier) inside it than the empty bubbles in that same row. Even a faint pencil mark makes the bubble interior noticeably different from the clean, crisp empty bubbles nearby.
+A bubble is FILLED only when there is a clear, intentional mark inside it — pen ink, pencil shading, or any deliberate fill that is unmistakably different from a blank circle. The difference must be obvious and unambiguous, not a subtle shade or printing artifact.
 
-Do NOT require dark black ink to count as filled. ANY intentional mark — dark pen, light pencil, grey graphite — counts as a fill if the bubble interior looks different from empty bubbles in the same row.
+BLANK PAGE / UNANSWERED FIELD:
+- If ALL bubbles in a row look essentially the same — clean white circles with only their pink outline — then NONE are filled. Return null for that field.
+- Do NOT use relative comparison to pick a "more filled" bubble when the difference is tiny or caused by lighting, shadows, image compression, or printing variation.
+- The mark must be CLEARLY visible, not just slightly different. When in doubt, return null.
+
+Do NOT require dark black ink to count as filled. A clear pencil mark (visibly grey/shaded interior) also counts — but only when the mark is genuinely obvious, not marginal.
 
 RULES:
-- If a bubble row has NO filled bubble (all circles are clean and empty), return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
-- Only return a non-null value when you can clearly see a bubble with a mark inside it.
+- If a bubble row has NO clearly filled bubble, return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
+- Only return a non-null value when you can clearly and confidently see an intentional mark inside a bubble.
 - Return ONLY valid JSON. No markdown. No explanation. No code fences. Start with { end with }.`;
 
 
