@@ -50,7 +50,8 @@ Compare bubble interiors RELATIVE TO EACH OTHER within the same row. The filled 
 Do NOT require dark black ink to count as filled. ANY intentional mark — dark pen, light pencil, grey graphite — counts as a fill if the bubble interior looks different from empty bubbles in the same row.
 
 RULES:
-- Submitted forms almost always have answers filled in. All-null is almost always wrong.
+- If a bubble row has NO filled bubble (all circles are clean and empty), return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
+- Only return a non-null value when you can clearly see a bubble with a mark inside it.
 - Return ONLY valid JSON. No markdown. No explanation. No code fences. Start with { end with }.`;
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2. PAGE DETECTION
@@ -134,14 +135,14 @@ function buildSchedulePrompt(diaryPage) {
     // ── Example output — UNIFORM { value, confidence } for ALL fields ──
     const example = {};
     if (dateFields[0]?.id)
-        example[dateFields[0].id] = { value: "20/Sep/2028", confidence: 0.92 };
+        example[dateFields[0].id] = { value: null, confidence: 0.95 };
     if (statusFields[0]?.id)
-        example[statusFields[0].id] = { value: "Completed", confidence: 0.93 };
+        example[statusFields[0].id] = { value: null, confidence: 0.95 };
     if (hasSecond) {
         if (dateFields[1]?.id)
-            example[dateFields[1].id] = { value: "29/Jun/2028", confidence: 0.90 };
+            example[dateFields[1].id] = { value: null, confidence: 0.95 };
         if (statusFields[1]?.id)
-            example[statusFields[1].id] = { value: "Missed", confidence: 0.91 };
+            example[statusFields[1].id] = { value: null, confidence: 0.95 };
     }
     for (const yn of yesNoFields)
         example[yn.id] = { value: "no", confidence: 0.95 };
@@ -174,7 +175,9 @@ CRITICAL: Every field MUST use this format: { "value": <answer>, "confidence": <
 Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
 
-Replace ALL example values with your actual readings from the image.
+- If a bubble IS filled for a field, replace null with the actual value (date string, status word, "yes"/"no").
+- If NO bubble is filled for a field, keep value as null with confidence 0.95.
+- Never copy example values — only return what you actually see in the image.
 JSON only. No markdown fences. No explanation. Start with { end with }.`;
 }
 function buildAppointmentSection(sectionTitle, dateId, statusId) {
