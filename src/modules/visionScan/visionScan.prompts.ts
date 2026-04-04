@@ -1320,20 +1320,13 @@ function buildSchedulePrompt(diaryPage: DiaryPage): string {
 
 This page has ${hasSecond ? "TWO appointment sections" : "ONE appointment section"}${yesNoFields.length ? " and a Yes/No question" : ""}.
 
-═══ DATE READING RULE ═══
-Every bubble row is written as: [○ Label] [○ Label] [○ Label]
-Each [○ Label] is a PAIR — the bubble (○) belongs to the label directly to its right.
+═══ HOW TO READ ALL BUBBLE ROWS ON THIS PAGE ═══
+Layout: [○ Label] [○ Label] [○ Label] ...
+Rule: Each ○ bubble is PAIRED with the label to its IMMEDIATE RIGHT — that is the value if the bubble is filled.
+NEVER read the label to the LEFT of a filled bubble. Always read the label to its RIGHT.
+Example: [○ Jan] [● Feb] [○ Mar] → "Feb" (NOT "Jan")
 
-To read a value:
-  1. Find the ONE bubble that is clearly filled (obvious pen ink or pencil shading inside it).
-  2. Read the label INSIDE THE SAME PAIR — immediately to the right of that bubble.
-  3. That label is the value. Do NOT read the label to the LEFT of the bubble.
-
-Example: [○ 19] [● 20] [○ 21]  (● = filled)
-→ Filled bubble is paired with "20" → value = 20 (NOT 19)
-
-OFF-BY-ONE WARNING: The most common mistake is reading the label to the LEFT of the filled bubble.
-Always read the label to the RIGHT — the one that belongs to the same [○ Label] pair as the filled bubble.
+BLANK RULE: If no bubble in a row has a clear mark, return null (confidence 0.95). Do not guess.
 
 ${sections}
 
@@ -1361,34 +1354,18 @@ function buildAppointmentSection(
   return `
 ═══ ${sectionTitle} ═══
 
-${dateId ? `"${dateId}" — Read the date from three rows:` : ""}
+${dateId ? `"${dateId}" — Date (three separate rows):
+  DD ROW: [○ 01] [○ 02] [○ 03] [○ 04] [○ 05] [○ 06] [○ 07] [○ 08] [○ 09] [○ 10] [○ 11] [○ 12] [○ 13] [○ 14] [○ 15] [○ 16]
+          [○ 17] [○ 18] [○ 19] [○ 20] [○ 21] [○ 22] [○ 23] [○ 24] [○ 25] [○ 26] [○ 27] [○ 28] [○ 29] [○ 30] [○ 31]
+  MM ROW: [○ Jan] [○ Feb] [○ Mar] [○ Apr] [○ May] [○ Jun] [○ Jul] [○ Aug] [○ Sep] [○ Oct] [○ Nov] [○ Dec]
+  YY ROW: [○ 2026] [○ 2027] [○ 2028]
+  → Find the filled bubble in each row. Its paired label (to its right) = that part of the date.
+  → Combine as "DD/Mon/YYYY". Example: 22 + Sep + 2027 → "22/Sep/2027"
+  → If no bubble is filled in any row, value = null.` : ""}
 
-HOW TO READ ANY BUBBLE ROW:
-Each bubble is written as [○ LABEL] — the bubble and its label are a PAIR.
-The bubble belongs to the label INSIDE the same bracket, NOT to the label before it.
-Example: [○ Jan] [● Feb] [○ Mar] → Feb bubble is filled → month = Feb (NOT Jan).
-CRITICAL: Do NOT read the label to the LEFT of the filled bubble. Always read the label PAIRED with (to the immediate right of) the filled bubble.
-
-DD ROW ("DD: दिन"):
-  Line 1: [○ 01] [○ 02] [○ 03] [○ 04] [○ 05] [○ 06] [○ 07] [○ 08] [○ 09] [○ 10] [○ 11] [○ 12] [○ 13] [○ 14] [○ 15] [○ 16]
-  Line 2: [○ 17] [○ 18] [○ 19] [○ 20] [○ 21] [○ 22] [○ 23] [○ 24] [○ 25] [○ 26] [○ 27] [○ 28] [○ 29] [○ 30] [○ 31]
-  The filled bubble's paired number = day.
-
-MM ROW ("MM: माह"):
-  [○ Jan] [○ Feb] [○ Mar] [○ Apr] [○ May] [○ Jun] [○ Jul] [○ Aug] [○ Sep] [○ Oct] [○ Nov] [○ Dec]
-  The filled bubble's paired month = month.
-  OFF-BY-ONE WARNING: If you think "Apr" bubble is filled but "Mar" and "Apr" are adjacent, double-check.
-  The filled bubble's label is the one printed DIRECTLY to its right, not the one to its left.
-
-YY ROW ("YY: साल"):
-  [○ 2026] [○ 2027] [○ 2028]
-  The filled bubble's paired year = year.
-
-Combine as "DD/Mon/YYYY". Example: day=22, month=Sep, year=2027 → "22/Sep/2027"
-
-${statusId ? `"${statusId}" — Status row ("Status/स्थिति"):
+${statusId ? `"${statusId}" — Status:
   [○ Scheduled] [○ Completed] [○ Missed] [○ Cancelled]
-  The filled bubble's paired status word = status.` : ""}
+  → The filled bubble's paired label = status. If none filled, value = null.` : ""}
 `;
 }
 
