@@ -562,6 +562,19 @@ class BubbleScanService {
         if (scan.processingStatus !== "completed") {
             throw new AppError_1.AppError(400, "Can only edit completed scan entries");
         }
+        // Validate second-attempt fields: q2_date and q2_status can only be set
+        // if q1_status is "Missed" or "Cancelled"
+        const SECOND_ATTEMPT_FIELDS = ["q2_date", "q2_status"];
+        const hasSecondAttemptEdit = SECOND_ATTEMPT_FIELDS.some(f => f in answers);
+        if (hasSecondAttemptEdit) {
+            const existingResults = (scan.scanResults || {});
+            const q1StatusIncoming = answers["q1_status"];
+            const q1StatusExisting = existingResults["q1_status"]?.answer ?? existingResults["q1_status"];
+            const q1Status = q1StatusIncoming ?? q1StatusExisting;
+            if (!["Missed", "Cancelled"].includes(q1Status)) {
+                throw new AppError_1.AppError(400, "Second attempt date and status can only be filled when the first attempt status is Missed or Cancelled");
+            }
+        }
         // Merge new answers into existing scanResults
         const existingResults = (scan.scanResults || {});
         for (const [qId, answer] of Object.entries(answers)) {
