@@ -134,7 +134,12 @@ function buildSchedulePrompt(diaryPage) {
     for (const yn of yesNoFields) {
         sections += `
 ═══ BOTTOM OF PAGE ═══
-"${yn.id}" — "${yn.text}": LEFT bubble = Yes(हाँ), RIGHT = No(नहीं). Which is dark?
+"${yn.id}" — "${yn.text}":
+  [○ Yes(हाँ)]  [○ No(नहीं)]
+  If the LEFT bubble has a clear mark inside it → value = "yes"
+  If the RIGHT bubble has a clear mark inside it → value = "no"
+  If NEITHER bubble has any mark → value = null, confidence = 0.95
+  Do NOT guess — only return "yes" or "no" when you clearly see a filled bubble.
 `;
     }
     // Text fields
@@ -162,15 +167,19 @@ function buildSchedulePrompt(diaryPage) {
 This page has ${hasSecond ? "TWO appointment sections" : "ONE appointment section"}${yesNoFields.length ? " and a Yes/No question" : ""}.
 
 ═══ DATE READING RULE ═══
-Every bubble row is laid out as:  ○ Label  ○ Label  ○ Label
-The bubble (○) is BEFORE its label. To read a value:
-  1. Find the ONE bubble that is filled (dark ink OR grey pencil shading — any mark inside the circle)
-  2. Compare all bubbles in the row — the filled one has MORE visual material inside than the clean empty ones
-  3. Read the text printed IMMEDIATELY TO ITS RIGHT
-  4. That text is the value
+Every bubble row is written as: [○ Label] [○ Label] [○ Label]
+Each [○ Label] is a PAIR — the bubble (○) belongs to the label directly to its right.
 
-Example: ... ○ 19  ● 20  ○ 21 ...  (● = filled)
-→ The filled bubble is before "20" → value = 20
+To read a value:
+  1. Find the ONE bubble that is clearly filled (obvious pen ink or pencil shading inside it).
+  2. Read the label INSIDE THE SAME PAIR — immediately to the right of that bubble.
+  3. That label is the value. Do NOT read the label to the LEFT of the bubble.
+
+Example: [○ 19] [● 20] [○ 21]  (● = filled)
+→ Filled bubble is paired with "20" → value = 20 (NOT 19)
+
+OFF-BY-ONE WARNING: The most common mistake is reading the label to the LEFT of the filled bubble.
+Always read the label to the RIGHT — the one that belongs to the same [○ Label] pair as the filled bubble.
 
 ${sections}
 
@@ -195,25 +204,32 @@ function buildAppointmentSection(sectionTitle, dateId, statusId) {
 
 ${dateId ? `"${dateId}" — Read the date from three rows:` : ""}
 
+HOW TO READ ANY BUBBLE ROW:
+Each bubble is written as [○ LABEL] — the bubble and its label are a PAIR.
+The bubble belongs to the label INSIDE the same bracket, NOT to the label before it.
+Example: [○ Jan] [● Feb] [○ Mar] → Feb bubble is filled → month = Feb (NOT Jan).
+CRITICAL: Do NOT read the label to the LEFT of the filled bubble. Always read the label PAIRED with (to the immediate right of) the filled bubble.
+
 DD ROW ("DD: दिन"):
-  Two lines of bubbles:
-  Line 1: ○ 01  ○ 02  ○ 03  ○ 04  ○ 05  ○ 06  ○ 07  ○ 08  ○ 09  ○ 10  ○ 11  ○ 12  ○ 13  ○ 14  ○ 15  ○ 16
-  Line 2: ○ 17  ○ 18  ○ 19  ○ 20  ○ 21  ○ 22  ○ 23  ○ 24  ○ 25  ○ 26  ○ 27  ○ 28  ○ 29  ○ 30  ○ 31
-  Find the ONE dark bubble → number to its RIGHT = day
+  Line 1: [○ 01] [○ 02] [○ 03] [○ 04] [○ 05] [○ 06] [○ 07] [○ 08] [○ 09] [○ 10] [○ 11] [○ 12] [○ 13] [○ 14] [○ 15] [○ 16]
+  Line 2: [○ 17] [○ 18] [○ 19] [○ 20] [○ 21] [○ 22] [○ 23] [○ 24] [○ 25] [○ 26] [○ 27] [○ 28] [○ 29] [○ 30] [○ 31]
+  The filled bubble's paired number = day.
 
 MM ROW ("MM: माह"):
-  ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
-  Find the ONE dark bubble → month name to its RIGHT = month (use 3-letter English: Jan, Feb, Mar...)
+  [○ Jan] [○ Feb] [○ Mar] [○ Apr] [○ May] [○ Jun] [○ Jul] [○ Aug] [○ Sep] [○ Oct] [○ Nov] [○ Dec]
+  The filled bubble's paired month = month.
+  OFF-BY-ONE WARNING: If you think "Apr" bubble is filled but "Mar" and "Apr" are adjacent, double-check.
+  The filled bubble's label is the one printed DIRECTLY to its right, not the one to its left.
 
 YY ROW ("YY: साल"):
-  ○ 2026  ○ 2027  ○ 2028
-  Find the ONE dark bubble → year to its RIGHT = year
+  [○ 2026] [○ 2027] [○ 2028]
+  The filled bubble's paired year = year.
 
 Combine as "DD/Mon/YYYY". Example: day=22, month=Sep, year=2027 → "22/Sep/2027"
 
 ${statusId ? `"${statusId}" — Status row ("Status/स्थिति"):
-  ○ Scheduled  ○ Completed  ○ Missed  ○ Cancelled
-  Find the dark bubble → status word to its RIGHT` : ""}
+  [○ Scheduled] [○ Completed] [○ Missed] [○ Cancelled]
+  The filled bubble's paired status word = status.` : ""}
 `;
 }
 // ═══════════════════════════════════════════════════════════════════════════════
