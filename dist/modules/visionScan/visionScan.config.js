@@ -3,8 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIME_TYPE_MAP = exports.VISION_SCAN_CONFIG = void 0;
 exports.VISION_SCAN_CONFIG = {
     OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
-    // MODEL: "google/gemini-2.5-flash",
-    MODEL: "google/gemini-2.5-pro",
+    MODEL: "google/gemini-2.5-flash",
+    // MODEL: "google/gemini-2.5-pro",
     /** Must be large enough for the full JSON response.
      *  Gemini 2.5 Pro is a thinking model — reasoning tokens consume from this budget.
      *  4096 ensures the model has enough room to think and produce the JSON output. */
