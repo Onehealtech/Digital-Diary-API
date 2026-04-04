@@ -45,13 +45,18 @@ BUBBLE APPEARANCE:
 - EMPTY = thin PINK outline with WHITE/CLEAN interior. No ink or graphite inside. The interior is crisp and matches the page background.
 
 KEY DETECTION RULE:
-Compare bubble interiors RELATIVE TO EACH OTHER within the same row. The filled bubble — whether pen or pencil — will always have MORE visual material (darker, greyer, hazier) inside it than the empty bubbles in that same row. Even a faint pencil mark makes the bubble interior noticeably different from the clean, crisp empty bubbles nearby.
+A bubble is FILLED only when there is a clear, intentional mark inside it — pen ink, pencil shading, or any deliberate fill that is unmistakably different from a blank circle. The difference must be obvious and unambiguous, not a subtle shade or printing artifact.
 
-Do NOT require dark black ink to count as filled. ANY intentional mark — dark pen, light pencil, grey graphite — counts as a fill if the bubble interior looks different from empty bubbles in the same row.
+BLANK PAGE / UNANSWERED FIELD:
+- If ALL bubbles in a row look essentially the same — clean white circles with only their pink outline — then NONE are filled. Return null for that field.
+- Do NOT use relative comparison to pick a "more filled" bubble when the difference is tiny or caused by lighting, shadows, image compression, or printing variation.
+- The mark must be CLEARLY visible, not just slightly different. When in doubt, return null.
+
+Do NOT require dark black ink to count as filled. A clear pencil mark (visibly grey/shaded interior) also counts — but only when the mark is genuinely obvious, not marginal.
 
 RULES:
-- If a bubble row has NO filled bubble (all circles are clean and empty), return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
-- Only return a non-null value when you can clearly see a bubble with a mark inside it.
+- If a bubble row has NO clearly filled bubble, return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
+- Only return a non-null value when you can clearly and confidently see an intentional mark inside a bubble.
 - Return ONLY valid JSON. No markdown. No explanation. No code fences. Start with { end with }.`;
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2. PAGE DETECTION
@@ -83,7 +88,7 @@ function buildYesNoPrompt(diaryPage) {
     const example = {};
     questions.forEach(q => {
         example[q.id] = q.type === "yes_no"
-            ? { value: "yes", confidence: 0.95 }
+            ? { value: null, confidence: 0.95 }
             : q.type === "text"
                 ? { value: "", confidence: 0.90 }
                 : { value: null, confidence: 0.95 };
@@ -92,16 +97,20 @@ function buildYesNoPrompt(diaryPage) {
 
 ${questions.length} Yes/No questions. Each row has two bubbles:
 - LEFT = Yes(हाँ)   RIGHT = No(नहीं)
-One is FILLED (dark ink OR grey pencil shading — any mark inside the circle).
-The other is EMPTY (clean pink outline, white interior, no marks).
-Compare both bubbles: the one with MORE visual material inside is the answer.
+- A FILLED bubble has a visible mark inside it (pen ink, pencil shading, grey fill).
+- An EMPTY bubble has a clean white interior with only a pink outline — no marks at all.
+
+BLANK PAGE RULE: If BOTH bubbles in a row are empty (no marks in either), return null with confidence 0.95. Do NOT pick a side — null means the question was not answered.
 
 FIELDS:
 ${fieldList}
 
-Return this EXACT JSON (replace example values with actual readings):
+Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
 
+- If a bubble IS filled, replace null with "yes" or "no" based on which side is filled.
+- If NEITHER bubble is filled, keep value as null with confidence 0.95.
+- Never copy example values — only return what you actually see in the image.
 JSON only. No markdown. No explanation.`;
 }
 // ─────────────────────── SCHEDULE PAGES ──────────────────────
@@ -145,7 +154,7 @@ function buildSchedulePrompt(diaryPage) {
             example[statusFields[1].id] = { value: null, confidence: 0.95 };
     }
     for (const yn of yesNoFields)
-        example[yn.id] = { value: "no", confidence: 0.95 };
+        example[yn.id] = { value: null, confidence: 0.95 };
     for (const tf of textFields)
         example[tf.id] = { value: "", confidence: 0.90 };
     return `Page ${pageNum}: "${diaryPage.title}"
@@ -168,9 +177,9 @@ ${sections}
 ═══ REQUIRED OUTPUT ═══
 
 CRITICAL: Every field MUST use this format: { "value": <answer>, "confidence": <score> }
-- For dates: "value" must be a string in "DD/Mon/YYYY" format, e.g. "22/Sep/2027"
-- For status: "value" must be one of "Scheduled", "Completed", "Missed", "Cancelled"
-- For yes/no: "value" must be "yes" or "no"
+- For dates: "value" must be a string in "DD/Mon/YYYY" format, e.g. "22/Sep/2027" — or null if no bubble is filled
+- For status: "value" must be one of "Scheduled", "Completed", "Missed", "Cancelled" — or null if no bubble is filled
+- For yes/no: "value" must be "yes" or "no" — or null if neither bubble is filled
 
 Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
