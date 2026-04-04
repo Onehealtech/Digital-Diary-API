@@ -17,6 +17,7 @@ const GeneratedDiary_1 = require("../models/GeneratedDiary");
 const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
 const Order_1 = require("../models/Order");
 const paymentGateway_service_1 = require("./paymentGateway.service");
+const diaryStatus_1 = require("../utils/diaryStatus");
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -263,11 +264,12 @@ const activateSubscriptionAfterPayment = async (orderId, paymentMethod, transact
             id: generatedDiary.id,
             patientId: order.patientId,
             doctorId,
-            status: "active",
+            status: diaryStatus_1.DIARY_STATUS.APPROVED,
             activationDate: new Date(),
             saleAmount: Number(plan.monthlyPrice),
             commissionAmount: 0,
         }, { transaction: t });
+        console.info(`[DIARY_CREATE] scope=subscription_checkout patientId=${order.patientId} diaryId=${generatedDiary.id} status=${diaryStatus_1.DIARY_STATUS.APPROVED}`);
         // Update patient with diaryId
         patient.diaryId = generatedDiary.id;
         await patient.save({ transaction: t });
@@ -364,11 +366,12 @@ const subscribeToPlan = async (params) => {
             id: generatedDiary.id,
             patientId,
             doctorId,
-            status: "active",
+            status: diaryStatus_1.DIARY_STATUS.APPROVED,
             activationDate: new Date(),
             saleAmount: Number(plan.monthlyPrice),
             commissionAmount: 0,
         }, { transaction: t });
+        console.info(`[DIARY_CREATE] scope=subscription_direct patientId=${patientId} diaryId=${generatedDiary.id} status=${diaryStatus_1.DIARY_STATUS.APPROVED}`);
         patient.diaryId = generatedDiary.id;
         await patient.save({ transaction: t });
         // 5. Create subscription with diary and doctor linked

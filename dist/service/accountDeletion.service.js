@@ -19,6 +19,7 @@ const Export_1 = require("../models/Export");
 const ImageHistory_model_1 = __importDefault(require("../models/ImageHistory.model"));
 const AuditLog_1 = require("../models/AuditLog");
 const AppError_1 = require("../utils/AppError");
+const diaryStatus_1 = require("../utils/diaryStatus");
 const ANONYMIZED_NAME = "Deleted User";
 const ANONYMIZED_PHONE = "0000000000";
 /**
@@ -44,8 +45,8 @@ async function deletePatientAccount(patientId, reason) {
         // 1. Cancel active subscriptions
         const [cancelledSubs] = await UserSubscription_1.UserSubscription.update({ status: "CANCELLED", cancelledAt: new Date() }, { where: { patientId, status: "ACTIVE" }, transaction: t });
         deletedData.subscriptionsCancelled = cancelledSubs;
-        // 2. Deactivate diaries
-        const [deactivatedDiaries] = await Diary_1.Diary.update({ status: "inactive" }, { where: { patientId }, transaction: t });
+        // 2. Move diaries back to non-usable approval state
+        const [deactivatedDiaries] = await Diary_1.Diary.update({ status: diaryStatus_1.DIARY_STATUS.PENDING }, { where: { patientId }, transaction: t });
         deletedData.diariesDeactivated = deactivatedDiaries;
         // 3. Cancel pending doctor assignment requests
         const [cancelledRequests] = await DoctorAssignmentRequest_1.DoctorAssignmentRequest.update({

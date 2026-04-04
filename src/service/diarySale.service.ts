@@ -8,6 +8,7 @@ import { Patient } from "../models/Patient";
 import { AppError } from "../utils/AppError";
 import { HTTP_STATUS } from "../utils/constants";
 import { Op } from "sequelize";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 interface SellDiaryParams {
   diaryId: string;
@@ -27,10 +28,8 @@ class DiarySaleService {
   /**
    * Sell a diary — role-aware logic for all 4 roles.
    *
-   * - SUPER_ADMIN: any available diary, auto-approved
-   * - VENDOR: diary assigned to them, pending approval
-   * - DOCTOR: diary assigned to them, pending approval
-   * - ASSISTANT: diary assigned to parent doctor, pending approval (requires sellDiary permission)
+   * All seller roles create diary entries in PENDING state.
+   * Super Admin approval transitions the diary to APPROVED.
    */
   async sellDiary(params: SellDiaryParams) {
     const { diaryId, sellerId, sellerRole } = params;
@@ -57,12 +56,6 @@ class DiarySaleService {
       }
 
       // 2️⃣ Status Logic
-      const diaryStatus =
-        sellerRole === "SUPER_ADMIN" ? "active" : "pending";
-
-      const activationDate =
-        sellerRole === "SUPER_ADMIN" ? new Date() : null;
-
       const vendorId = sellerRole === "VENDOR" ? sellerId : null;
 
       // 3️⃣ Create Patient
@@ -93,10 +86,10 @@ class DiarySaleService {
           vendorId,
           soldBy: sellerId,
           soldByRole: sellerRole,
-          status: diaryStatus,
-          activationDate: sellerRole === "SUPER_ADMIN" ? new Date() : null,
-          approvedBy: sellerRole === "SUPER_ADMIN" ? sellerId : null,
-          approvedAt: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+          status: DIARY_STATUS.PENDING,
+          activationDate: null,
+          approvedBy: null,
+          approvedAt: null,
           saleAmount: params.paymentAmount || 0,
           commissionAmount: 0,
           commissionPaid: false,
@@ -112,18 +105,17 @@ class DiarySaleService {
 
       await transaction.commit();
 
-      // 🔔 Notify Super Admin if approval needed
-      if (sellerRole !== "SUPER_ADMIN") {
-        this.notifySuperAdminsOfSale(
-          sellerId,
-          sellerRole,
-          diaryId
-        ).catch((err: unknown) => {
-          const message =
-            err instanceof Error ? err.message : "Unknown error";
-          console.error("Notification error:", message);
-        });
-      }
+      console.info(`[DIARY_CREATE] sellerRole=${sellerRole} sellerId=${sellerId} diaryId=${diaryId} status=${diary.status}`);
+
+      this.notifySuperAdminsOfSale(
+        sellerId,
+        sellerRole,
+        diaryId
+      ).catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "Unknown error";
+        console.error("Notification error:", message);
+      });
 
       return {
         patient: {
@@ -291,8 +283,6 @@ class DiarySaleService {
     const page = params.page || 1;
     const limit = params.limit || 20;
     const offset = (page - 1) * limit;
-    console.log( userId,role , "aaa");
-    
     const where: Record<string, unknown> = {};
 
     if (role === "SUPER_ADMIN") {
@@ -309,7 +299,7 @@ class DiarySaleService {
     }
 
     if (params.status) {
-      where.status = params.status;
+      where.status = normalizeDiaryStatus(params.status);
     }
 
     const diaries = await Diary.findAndCountAll({
@@ -324,8 +314,14 @@ class DiarySaleService {
       order: [["createdAt", "DESC"]],
     });
 
+    console.info(
+      `[DIARY_FETCH] scope=sales role=${role} userId=${userId} total=${diaries.count}`
+    );
+
+    const rows = diaries.rows.map((diary: any) => diary.toJSON());
+
     return {
-      data: diaries.rows,
+      data: rows,
       total: diaries.count,
       page,
       limit,
@@ -473,3 +469,4 @@ class DiarySaleService {
 }
 
 export const diarySaleService = new DiarySaleService();
+

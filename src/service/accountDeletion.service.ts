@@ -15,6 +15,7 @@ import { Export } from "../models/Export";
 import ImageHistory from "../models/ImageHistory.model";
 import { AuditLog } from "../models/AuditLog";
 import { AppError } from "../utils/AppError";
+import { DIARY_STATUS } from "../utils/diaryStatus";
 
 const ANONYMIZED_NAME = "Deleted User";
 const ANONYMIZED_PHONE = "0000000000";
@@ -50,9 +51,9 @@ export async function deletePatientAccount(
     );
     deletedData.subscriptionsCancelled = cancelledSubs;
 
-    // 2. Deactivate diaries
+    // 2. Move diaries back to non-usable approval state
     const [deactivatedDiaries] = await Diary.update(
-      { status: "inactive" },
+      { status: DIARY_STATUS.PENDING },
       { where: { patientId }, transaction: t }
     );
     deletedData.diariesDeactivated = deactivatedDiaries;

@@ -73,15 +73,12 @@ export class Diary extends Model {
   // ================== STATUS ==================
   @Column({
     type: DataType.ENUM(
-      "pending",
-      "active",
-      "inactive",
-      "rejected",
-      "completed"
+      "PENDING",
+      "APPROVED"
     ),
-    defaultValue: "pending",
+    defaultValue: "PENDING",
   })
-  status!: "pending" | "active" | "inactive" | "rejected" | "completed";
+  status!: "PENDING" | "APPROVED";
 
   @Column(DataType.DATE)
   activationDate?: Date;

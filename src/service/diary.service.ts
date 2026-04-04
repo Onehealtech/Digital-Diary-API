@@ -8,6 +8,7 @@ import { Transaction } from "../models/Transaction";
 import { Notification } from "../models/Notification";
 import { Op } from "sequelize";
 import QRCode from "qrcode";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 export class DiaryService {
   /**
@@ -227,10 +228,13 @@ async getAllSoldDiaries(params: {
 
       return {
         ...diary.toJSON(),
+        status: normalizeDiaryStatus(diary.status),
         vendor,
       };
     })
   );
+
+  console.info(`[DIARY_FETCH] scope=super_admin_inventory total=${diaries.count}`);
 
   return {
     data: rows,
@@ -252,22 +256,16 @@ async getAllSoldDiaries(params: {
       throw new Error("Diary not found");
     }
 
-    if (diary.status !== "pending") {
+    if (normalizeDiaryStatus(diary.status) !== DIARY_STATUS.PENDING) {
       throw new Error("Diary is not pending approval");
     }
 
     // Update diary status
-    diary.status = "active";
+    diary.status = DIARY_STATUS.APPROVED;
     diary.approvedBy = superAdminId;
     diary.approvedAt = new Date();
     diary.activationDate = new Date();
     await diary.save();
-
-    // Update generated diary
-    await GeneratedDiary.update(
-      { status: "active" },
-      { where: { id: diaryId } }
-    );
 
     // Credit vendor commission
     // const vendorProfile = await VendorProfile.findOne({
@@ -311,11 +309,13 @@ async getAllSoldDiaries(params: {
         type: "info",
         severity: "low",
         title: "Diary Sale Approved",
-        message: `Your diary sale (${diaryId}) has been approved and activated.`,
+        message: `Your diary sale (${diaryId}) has been approved.`,
         read: false,
         delivered: true,
       });
     }
+
+    console.info(`[DIARY_APPROVAL] diaryId=${diaryId} approvedBy=${superAdminId} status=${diary.status}`);
 
     return diary;
   }
@@ -330,12 +330,12 @@ async getAllSoldDiaries(params: {
       throw new Error("Diary not found");
     }
 
-    if (diary.status !== "pending") {
+    if (normalizeDiaryStatus(diary.status) !== DIARY_STATUS.PENDING) {
       throw new Error("Diary is not pending approval");
     }
 
-    // Update diary status
-    diary.status = "rejected";
+    // Keep only two-state workflow: rejected diaries remain PENDING until corrected/resubmitted.
+    diary.status = DIARY_STATUS.PENDING;
     diary.rejectionReason = reason;
     await diary.save();
 

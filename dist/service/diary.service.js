@@ -12,6 +12,7 @@ const Appuser_1 = require("../models/Appuser");
 const Notification_1 = require("../models/Notification");
 const sequelize_1 = require("sequelize");
 const qrcode_1 = __importDefault(require("qrcode"));
+const diaryStatus_1 = require("../utils/diaryStatus");
 class DiaryService {
     /**
      * Generate diary IDs in bulk with QR codes
@@ -179,9 +180,11 @@ class DiaryService {
             }
             return {
                 ...diary.toJSON(),
+                status: (0, diaryStatus_1.normalizeDiaryStatus)(diary.status),
                 vendor,
             };
         }));
+        console.info(`[DIARY_FETCH] scope=super_admin_inventory total=${diaries.count}`);
         return {
             data: rows,
             total: diaries.count,
@@ -198,17 +201,15 @@ class DiaryService {
         if (!diary) {
             throw new Error("Diary not found");
         }
-        if (diary.status !== "pending") {
+        if ((0, diaryStatus_1.normalizeDiaryStatus)(diary.status) !== diaryStatus_1.DIARY_STATUS.PENDING) {
             throw new Error("Diary is not pending approval");
         }
         // Update diary status
-        diary.status = "active";
+        diary.status = diaryStatus_1.DIARY_STATUS.APPROVED;
         diary.approvedBy = superAdminId;
         diary.approvedAt = new Date();
         diary.activationDate = new Date();
         await diary.save();
-        // Update generated diary
-        await GeneratedDiary_1.GeneratedDiary.update({ status: "active" }, { where: { id: diaryId } });
         // Credit vendor commission
         // const vendorProfile = await VendorProfile.findOne({
         //   where: { vendorId: diary.vendorId },
@@ -246,11 +247,12 @@ class DiaryService {
                 type: "info",
                 severity: "low",
                 title: "Diary Sale Approved",
-                message: `Your diary sale (${diaryId}) has been approved and activated.`,
+                message: `Your diary sale (${diaryId}) has been approved.`,
                 read: false,
                 delivered: true,
             });
         }
+        console.info(`[DIARY_APPROVAL] diaryId=${diaryId} approvedBy=${superAdminId} status=${diary.status}`);
         return diary;
     }
     /**
@@ -261,11 +263,11 @@ class DiaryService {
         if (!diary) {
             throw new Error("Diary not found");
         }
-        if (diary.status !== "pending") {
+        if ((0, diaryStatus_1.normalizeDiaryStatus)(diary.status) !== diaryStatus_1.DIARY_STATUS.PENDING) {
             throw new Error("Diary is not pending approval");
         }
-        // Update diary status
-        diary.status = "rejected";
+        // Keep only two-state workflow: rejected diaries remain PENDING until corrected/resubmitted.
+        diary.status = diaryStatus_1.DIARY_STATUS.PENDING;
         diary.rejectionReason = reason;
         await diary.save();
         // Reset generated diary to assigned status

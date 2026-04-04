@@ -9,6 +9,7 @@ const UserSubscription_1 = require("../models/UserSubscription");
 const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
+const diaryStatus_1 = require("../utils/diaryStatus");
 /**
  * Get complete access info for a patient.
  * Used by the mobile app to determine UI rendering and feature gating.
@@ -34,7 +35,7 @@ async function getPatientAccessInfo(patientId) {
         if (diary) {
             diaryInfo = {
                 id: diary.id,
-                status: diary.status,
+                status: (0, diaryStatus_1.normalizeDiaryStatus)(diary.status),
                 activationDate: diary.activationDate || null,
             };
         }
@@ -102,7 +103,7 @@ async function getPatientAccessInfo(patientId) {
             endDate,
             daysRemaining,
             isExpired,
-            isActive: !!diaryInfo && diaryInfo.status === "active" && !isExpired,
+            isActive: !!diaryInfo && diaryInfo.status === diaryStatus_1.DIARY_STATUS.APPROVED && !isExpired,
         };
     }
     else {

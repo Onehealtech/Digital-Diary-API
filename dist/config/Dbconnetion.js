@@ -229,6 +229,36 @@ const initializeDatabase = async () => {
     `).catch((err) => {
             console.warn('⚠️ diaries seller tracking migration warning:', err instanceof Error ? err.message : err);
         });
+        // Normalize diary approval statuses to a single source of truth:
+        // PENDING (not approved) and APPROVED (approved by Super Admin).
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'diaries' AND column_name = 'status') THEN
+          -- Add new enum values for the approval workflow if the enum type exists.
+          BEGIN
+            ALTER TYPE "enum_diaries_status" ADD VALUE IF NOT EXISTS 'PENDING';
+            ALTER TYPE "enum_diaries_status" ADD VALUE IF NOT EXISTS 'APPROVED';
+          EXCEPTION WHEN undefined_object THEN
+            NULL;
+          END;
+
+          -- Map legacy statuses to canonical states.
+          UPDATE "diaries"
+          SET "status" = 'APPROVED'
+          WHERE "status"::text = 'active';
+
+          UPDATE "diaries"
+          SET "status" = 'PENDING'
+          WHERE "status"::text IN ('pending', 'inactive', 'rejected', 'completed');
+
+          ALTER TABLE "diaries" ALTER COLUMN "status" SET DEFAULT 'PENDING';
+        END IF;
+      END
+      $$;
+    `).catch((err) => {
+            console.warn('diary status normalization migration warning:', err instanceof Error ? err.message : err);
+        });
         // Create subscription_plans table if not exists
         await exports.sequelize.query(`
       CREATE TABLE IF NOT EXISTS "subscription_plans" (

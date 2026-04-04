@@ -3,6 +3,7 @@ import { VendorProfile } from "../models/VendorProfile";
 import { AppUser } from "../models/Appuser";
 import { Diary } from "../models/Diary";
 import { Op } from "sequelize";
+import { DIARY_STATUS } from "../utils/diaryStatus";
 
 interface TransactionFilters {
   page?: number;
@@ -28,7 +29,7 @@ class FinancialService {
   async getFinancialDashboard() {
     // Total revenue from diary sales
     const totalRevenue = await Diary.sum("saleAmount", {
-      where: { status: { [Op.in]: ["active", "completed"] } },
+      where: { status: DIARY_STATUS.APPROVED },
     });
 
     // Total commission paid
@@ -44,7 +45,7 @@ class FinancialService {
     // Pending commission (approved sales but commission not paid)
     const pendingCommissionCount = await Diary.count({
       where: {
-        status: "active",
+        status: DIARY_STATUS.APPROVED,
         commissionPaid: false,
       },
     });
@@ -59,7 +60,7 @@ class FinancialService {
     const thisMonthRevenue = await Diary.sum("saleAmount", {
       where: {
         createdAt: { [Op.gte]: startOfMonth },
-        status: { [Op.in]: ["active", "completed"] },
+        status: DIARY_STATUS.APPROVED,
       },
     });
 

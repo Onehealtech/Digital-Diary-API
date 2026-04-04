@@ -6,6 +6,7 @@ import { Transaction } from "../models/Transaction";
 import { GeneratedDiary } from "../models/GeneratedDiary";
 import { Op } from "sequelize";
 import bcrypt from "bcrypt";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 export class VendorService {
   /**
@@ -283,7 +284,7 @@ export class VendorService {
     }
 
     if (params.status) {
-      whereClause.status = params.status;
+      whereClause.status = normalizeDiaryStatus(params.status);
     }
 
     const sales = await Diary.findAndCountAll({
@@ -337,6 +338,8 @@ export class VendorService {
         createdAt: { [Op.gte]: thisMonth },
       },
     });
+
+    console.info(`[DIARY_FETCH] scope=vendor_sales vendorId=${vendorId} total=${sales.count}`);
 
     return {
       sales: salesWithType,
@@ -456,7 +459,7 @@ export class VendorService {
       patientId: patient.id,
       doctorId: data.doctorId,
       vendorId: data.vendorId,
-      status: "pending",
+      status: DIARY_STATUS.PENDING,
       saleAmount: data.paymentAmount,
       commissionAmount: 50, // ₹50 commission
       commissionPaid: false,
@@ -467,6 +470,8 @@ export class VendorService {
     generatedDiary.soldTo = patient.id;
     generatedDiary.soldDate = new Date();
     await generatedDiary.save();
+
+    console.info(`[DIARY_CREATE] scope=vendor_service vendorId=${data.vendorId} diaryId=${data.diaryId} status=${diary.status}`);
 
     return { patient, diary };
   }
@@ -525,11 +530,11 @@ export class VendorService {
       },
     });
 
-    // Get active diaries count
+    // Get approved diaries count (kept variable name for response compatibility)
     const activeDiaries = await Diary.count({
       where: {
         vendorId,
-        status: "active",
+        status: DIARY_STATUS.APPROVED,
       },
     });
 
