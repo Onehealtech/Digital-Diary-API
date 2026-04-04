@@ -1,21 +1,56 @@
 import { z } from "zod";
 
-// ── Plan CRUD Schemas ────────────────────────────────────────────────────
+// Plan CRUD schemas
+
+const PLAN_NAME_MAX_LENGTH = 100;
+const DESCRIPTION_MAX_LENGTH = 500;
+const PRICE_MAX_INPUT_LENGTH = 10; // aligned with DECIMAL(10,2)
+const MAX_DIARY_PAGES_INPUT_LENGTH = 7; // supports -1 and large positive integers
+
+const monthlyPriceSchema = z
+  .union([
+    z.number(),
+    z
+      .string()
+      .trim()
+      .min(1, "Price is required")
+      .max(PRICE_MAX_INPUT_LENGTH, `Price must be ${PRICE_MAX_INPUT_LENGTH} characters or less`),
+  ])
+  .transform((value) => Number(value))
+  .refine((value) => Number.isFinite(value), "Price must be a valid number")
+  .refine((value) => value >= 0, "Price must be non-negative")
+  .refine((value) => value <= 99999999.99, "Price exceeds allowed limit")
+  .refine((value) => Number.isInteger(value * 100), "Price can have at most 2 decimal places");
+
+const maxDiaryPagesSchema = z
+  .union([
+    z.number(),
+    z
+      .string()
+      .trim()
+      .min(1, "Max diary pages is required")
+      .max(
+        MAX_DIARY_PAGES_INPUT_LENGTH,
+        `Max diary pages must be ${MAX_DIARY_PAGES_INPUT_LENGTH} characters or less`
+      ),
+  ])
+  .transform((value) => Number(value))
+  .refine((value) => Number.isInteger(value), "Max diary pages must be a whole number")
+  .refine((value) => value === -1 || value > 0, "Use -1 for unlimited, or a positive number");
 
 export const createPlanSchema = z.object({
   name: z
     .string({ required_error: "Plan name is required" })
+    .trim()
     .min(1, "Plan name is required")
-    .max(100, "Plan name must be 100 characters or less")
-    .trim(),
-  description: z.string().max(500).optional(),
-  monthlyPrice: z.coerce
-    .number({ required_error: "Monthly price is required" })
-    .min(0, "Price must be non-negative"),
-  maxDiaryPages: z.coerce
-    .number({ required_error: "Max diary pages is required" })
-    .int("Must be a whole number")
-    .min(-1, "Use -1 for unlimited, or a positive number"),
+    .max(PLAN_NAME_MAX_LENGTH, `Plan name must be ${PLAN_NAME_MAX_LENGTH} characters or less`),
+  description: z
+    .string()
+    .trim()
+    .max(DESCRIPTION_MAX_LENGTH, `Description must be ${DESCRIPTION_MAX_LENGTH} characters or less`)
+    .optional(),
+  monthlyPrice: monthlyPriceSchema,
+  maxDiaryPages: maxDiaryPagesSchema,
   scanEnabled: z.coerce.boolean().default(false),
   manualEntryEnabled: z.coerce.boolean().default(false),
   isPopular: z.coerce.boolean().default(false),
@@ -25,7 +60,7 @@ export const createPlanSchema = z.object({
 
 export const updatePlanSchema = createPlanSchema.partial();
 
-// ── Subscribe Schema (Patient) ───────────────────────────────────────────
+// Subscribe schema (Patient)
 
 export const subscribeToPlanSchema = z.object({
   planId: z.string().uuid("Invalid plan ID"),
@@ -33,13 +68,13 @@ export const subscribeToPlanSchema = z.object({
   paymentMethod: z.string().optional(),
 });
 
-// ── Link Doctor Schema ───────────────────────────────────────────────────
+// Link Doctor schema
 
 export const linkDoctorSchema = z.object({
   doctorId: z.string().uuid("Invalid doctor ID"),
 });
 
-// ── Query Schemas ────────────────────────────────────────────────────────
+// Query schemas
 
 export const subscriptionQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
