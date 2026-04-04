@@ -1331,13 +1331,24 @@ Every row on this page follows this layout:  ○ Label  ○ Label  ○ Label ...
 - An empty bubble has a clean white interior with only a thin pink outline.
 - If no bubble in a row is clearly filled → value = null, confidence = 0.95. Do not guess.
 
-MONTH ROW ANTI-ERROR RULE (most common mistake):
-The MM row has 12 bubbles in fixed left-to-right order:
-  Pos 1=Jan  Pos 2=Feb  Pos 3=Mar  Pos 4=Apr  Pos 5=May  Pos 6=Jun
-  Pos 7=Jul  Pos 8=Aug  Pos 9=Sep  Pos 10=Oct  Pos 11=Nov  Pos 12=Dec
-Step 1: Count the filled bubble's position from the LEFT (starting at 1).
-Step 2: Look up the month at that position in the table above.
-Step 3: VERIFY — the month label printed to the RIGHT of the filled bubble must match your position lookup. If they disagree, recount.
+MONTH ROW — CRITICAL READING RULE:
+The physical layout of the MM row on the page looks like this:
+  ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
+
+Each bubble is positioned BEFORE (to the left of) its own month label.
+This means a filled bubble will always appear visually BETWEEN the PREVIOUS month's label and ITS OWN month label.
+
+EXACT MAPPING — if the bubble between these two labels is filled, the answer is the RIGHT label:
+  Between start and "Jan"  → Jan    Between "Jan" and "Feb"  → Feb
+  Between "Feb" and "Mar"  → Mar    Between "Mar" and "Apr"  → Apr
+  Between "Apr" and "May"  → May    Between "May" and "Jun"  → Jun
+  Between "Jun" and "Jul"  → Jul    Between "Jul" and "Aug"  → Aug
+  Between "Aug" and "Sep"  → Sep    Between "Sep" and "Oct"  → Oct
+  Between "Oct" and "Nov"  → Nov    Between "Nov" and "Dec"  → Dec
+
+MANDATORY CHECK: After picking a month, ask yourself — "Is there a label to the LEFT of this filled bubble?"
+  If YES → that left label is NOT the answer. The label to the RIGHT is the answer.
+  Example: filled bubble between "Mar" and "Apr" → answer is "Apr", NOT "Mar".
 
 ${sections}
 
@@ -1370,8 +1381,9 @@ ${dateId ? `
 
   Row labeled "MM: माह" (MONTH):
     ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
-    Count the filled bubble from the left (1=Jan, 2=Feb, 3=Mar, 4=Apr, 5=May, 6=Jun, 7=Jul, 8=Aug, 9=Sep, 10=Oct, 11=Nov, 12=Dec).
-    VERIFY: the 3-letter label to the RIGHT of the filled bubble must match the position count.
+    The filled bubble will appear BETWEEN two month labels. The answer is ALWAYS the label on the RIGHT of the filled bubble.
+    The label on the LEFT belongs to the previous bubble — ignore it.
+    Quick reference: Jan=1st, Feb=2nd, Mar=3rd, Apr=4th, May=5th, Jun=6th, Jul=7th, Aug=8th, Sep=9th, Oct=10th, Nov=11th, Dec=12th bubble from left.
 
   Row labeled "YY: साल" (YEAR):
     ○ 2026  ○ 2027  ○ 2028
