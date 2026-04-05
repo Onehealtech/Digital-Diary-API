@@ -16,7 +16,7 @@ router.get("/getDoctorsByVendor", (0, authMiddleware_1.authCheck)([constants_1.U
 // Retry Cashfree onboarding for a doctor (idempotent).
 router.post("/:id/retry-cashfree", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), admin_controller_1.retryCashfreeOnboarding);
 // Get doctor by ID
-router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getDoctorById);
+router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR]), staff_controller_1.staffController.getDoctorById);
 // Update doctor
 router.put("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.updateDoctor);
 // Delete doctor

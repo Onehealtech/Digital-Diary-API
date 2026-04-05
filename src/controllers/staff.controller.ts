@@ -65,10 +65,17 @@ class StaffController {
   async getDoctorById(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
+      const userId = req.user?.id;
       const role = req.user?.role;
 
-      if (role !== "SUPER_ADMIN") {
-        return sendError(res, "Only Super Admins can view doctor details", 403);
+      // Super Admin can open any doctor profile.
+      // Doctors can only open their own profile.
+      if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+        return sendError(res, "Only Doctors and Super Admins can view doctor details", 403);
+      }
+
+      if (role === "DOCTOR" && userId !== id) {
+        return sendError(res, "You can only view your own doctor profile", 403);
       }
 
       const doctor = await staffService.getDoctorById(id);
@@ -334,13 +341,24 @@ class StaffController {
   async getUserById(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
+      const userId = req.user?.id;
       const role = req.user?.role;
 
-      if (role !== "SUPER_ADMIN") {
-        return sendError(res, "Only Super Admins can view user profiles", 403);
+      if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+        return sendError(res, "Only Doctors and Super Admins can view user profiles", 403);
+      }
+
+      // Doctor profile API can be reused by doctor self-profile screens.
+      // Doctors must stay scoped to their own record.
+      if (role === "DOCTOR" && userId !== id) {
+        return sendError(res, "You can only view your own user profile", 403);
       }
 
       const user = await staffService.getUserById(id);
+
+      if (role === "DOCTOR" && user.role !== "DOCTOR") {
+        return sendError(res, "Access denied", 403);
+      }
 
       return sendResponse(res, user, "User details fetched successfully");
     } catch (error: any) {

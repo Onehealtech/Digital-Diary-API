@@ -54,9 +54,15 @@ class StaffController {
     async getDoctorById(req, res) {
         try {
             const id = req.params.id;
+            const userId = req.user?.id;
             const role = req.user?.role;
-            if (role !== "SUPER_ADMIN") {
-                return (0, response_1.sendError)(res, "Only Super Admins can view doctor details", 403);
+            // Super Admin can open any doctor profile.
+            // Doctors can only open their own profile.
+            if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+                return (0, response_1.sendError)(res, "Only Doctors and Super Admins can view doctor details", 403);
+            }
+            if (role === "DOCTOR" && userId !== id) {
+                return (0, response_1.sendError)(res, "You can only view your own doctor profile", 403);
             }
             const doctor = await staff_service_1.staffService.getDoctorById(id);
             return (0, response_1.sendResponse)(res, doctor, "Doctor details fetched successfully");
@@ -278,11 +284,20 @@ class StaffController {
     async getUserById(req, res) {
         try {
             const id = req.params.id;
+            const userId = req.user?.id;
             const role = req.user?.role;
-            if (role !== "SUPER_ADMIN") {
-                return (0, response_1.sendError)(res, "Only Super Admins can view user profiles", 403);
+            if (!userId || !["SUPER_ADMIN", "DOCTOR"].includes(role || "")) {
+                return (0, response_1.sendError)(res, "Only Doctors and Super Admins can view user profiles", 403);
+            }
+            // Doctor profile API can be reused by doctor self-profile screens.
+            // Doctors must stay scoped to their own record.
+            if (role === "DOCTOR" && userId !== id) {
+                return (0, response_1.sendError)(res, "You can only view your own user profile", 403);
             }
             const user = await staff_service_1.staffService.getUserById(id);
+            if (role === "DOCTOR" && user.role !== "DOCTOR") {
+                return (0, response_1.sendError)(res, "Access denied", 403);
+            }
             return (0, response_1.sendResponse)(res, user, "User details fetched successfully");
         }
         catch (error) {
