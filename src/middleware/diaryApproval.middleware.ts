@@ -1,8 +1,10 @@
 import { NextFunction, Response } from "express";
-import { Patient } from "../models/Patient";
-import { Diary } from "../models/Diary";
 import { AuthenticatedRequest } from "./authMiddleware";
-import { DIARY_STATUS } from "../utils/diaryStatus";
+import {
+  assertApprovedDiaryAccess,
+  DIARY_ACCESS_REQUIRED_MESSAGE,
+} from "../service/diaryAccess.service";
+import { AppError } from "../utils/AppError";
 
 /**
  * Blocks patient diary APIs until Super Admin approves the sold diary.
@@ -20,38 +22,18 @@ export const requireApprovedDiary = async (
       return;
     }
 
-    const patient = await Patient.findByPk(patientId, {
-      attributes: ["id", "diaryId"],
-    });
-
-    if (!patient?.diaryId) {
-      console.info(`[DIARY_ACCESS] denied patient=${patientId} reason=no_diary`);
-      res.status(403).json({
-        success: false,
-        message: "Diary not approved by Super Admin",
-      });
-      return;
-    }
-
-    const diary = await Diary.findByPk(patient.diaryId, {
-      attributes: ["id", "status"],
-    });
-
-    const diaryStatus = (diary as any)?.status;
-    console.info(
-      `[DIARY_ACCESS] patient=${patientId} diary=${patient.diaryId} status=${diaryStatus ?? "UNKNOWN"}`
-    );
-
-    if (!diary || diaryStatus !== DIARY_STATUS.APPROVED) {
-      res.status(403).json({
-        success: false,
-        message: "Diary not approved by Super Admin",
-      });
-      return;
-    }
+    await assertApprovedDiaryAccess(patientId);
 
     next();
   } catch (error) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message || DIARY_ACCESS_REQUIRED_MESSAGE,
+      });
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[DIARY_ACCESS] approval check failed:", message);
     res.status(500).json({ success: false, message: "Failed to validate diary approval" });

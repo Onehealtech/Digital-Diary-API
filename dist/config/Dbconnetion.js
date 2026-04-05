@@ -230,7 +230,7 @@ const initializeDatabase = async () => {
             console.warn('⚠️ diaries seller tracking migration warning:', err instanceof Error ? err.message : err);
         });
         // Normalize diary approval statuses to a single source of truth:
-        // PENDING (not approved) and APPROVED (approved by Super Admin).
+        // PENDING (awaiting approval), APPROVED, and REJECTED.
         await exports.sequelize.query(`
       DO $$
       BEGIN
@@ -239,6 +239,7 @@ const initializeDatabase = async () => {
           BEGIN
             ALTER TYPE "enum_diaries_status" ADD VALUE IF NOT EXISTS 'PENDING';
             ALTER TYPE "enum_diaries_status" ADD VALUE IF NOT EXISTS 'APPROVED';
+            ALTER TYPE "enum_diaries_status" ADD VALUE IF NOT EXISTS 'REJECTED';
           EXCEPTION WHEN undefined_object THEN
             NULL;
           END;
@@ -250,9 +251,15 @@ const initializeDatabase = async () => {
 
           UPDATE "diaries"
           SET "status" = 'PENDING'
-          WHERE "status"::text IN ('pending', 'inactive', 'rejected', 'completed');
+          WHERE "status"::text IN ('pending', 'inactive', 'completed');
+
+          UPDATE "diaries"
+          SET "status" = 'REJECTED'
+          WHERE "status"::text IN ('rejected', 'available');
 
           ALTER TABLE "diaries" ALTER COLUMN "status" SET DEFAULT 'PENDING';
+          ALTER TABLE "diaries" ALTER COLUMN "patientId" DROP NOT NULL;
+          ALTER TABLE "diaries" ALTER COLUMN "doctorId" DROP NOT NULL;
         END IF;
       END
       $$;

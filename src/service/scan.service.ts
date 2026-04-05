@@ -3,6 +3,10 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { Op } from "sequelize";
+import {
+  assertApprovedDiaryAccess,
+  filterPatientsWithApprovedDiaries,
+} from "./diaryAccess.service";
 
 interface DiaryEntryFilters {
   page?: number;
@@ -47,6 +51,8 @@ class ScanService {
     patientId: string,
     doctorId: string
   ): Promise<Date | null> {
+    await assertApprovedDiaryAccess(patientId);
+
     const patient = await Patient.findByPk(patientId, { attributes: ["doctorId"] });
     if (patient && patient.doctorId === doctorId) {
       return null; // current doctor — full access
@@ -79,7 +85,12 @@ class ScanService {
       attributes: ["id"],
       raw: true,
     });
-    const currentPatientIds = currentPatients.map((p: any) => p.id);
+    const approvedCurrentPatientIds = await filterPatientsWithApprovedDiaries(
+      currentPatients.map((p: any) => p.id)
+    );
+    const currentPatientIds = currentPatients
+      .map((p: any) => p.id)
+      .filter((patientId: string) => approvedCurrentPatientIds.has(patientId));
 
     // Historical patients (transferred away)
     const historyRecords = await DoctorPatientHistory.findAll({
@@ -99,7 +110,13 @@ class ScanService {
       }
     }
 
-    const historicalPatients = Array.from(historicalMap.entries()).map(
+    const approvedHistoricalPatientIds = await filterPatientsWithApprovedDiaries(
+      Array.from(historicalMap.keys())
+    );
+
+    const historicalPatients = Array.from(historicalMap.entries())
+      .filter(([patientId]) => approvedHistoricalPatientIds.has(patientId))
+      .map(
       ([patientId, cutoffDate]) => ({ patientId, cutoffDate })
     );
 
@@ -298,6 +315,8 @@ class ScanService {
       throw new Error("Diary entry not found or access denied");
     }
 
+    await assertApprovedDiaryAccess(entry.patientId);
+
     // Verify access and date cutoff
     const cutoff = await this.getDateCutoff(entry.patientId, doctorId);
     if (cutoff && entry.scannedAt > cutoff) {
@@ -333,6 +352,8 @@ class ScanService {
       throw new Error("Diary entry not found or access denied");
     }
 
+    await assertApprovedDiaryAccess(entry.patientId);
+
     await entry.update({
       doctorReviewed: true,
       reviewedBy: doctorId,
@@ -366,6 +387,8 @@ class ScanService {
       throw new Error("Diary entry not found or access denied");
     }
 
+    await assertApprovedDiaryAccess(entry.patientId);
+
     await entry.update({ flagged });
 
     return entry;
@@ -376,10 +399,28 @@ class ScanService {
    * Only shows entries from current patients (not historical).
    */
   async getEntriesNeedingReview(doctorId: string) {
+    const approvedPatientIds = await filterPatientsWithApprovedDiaries(
+      (
+        await Patient.findAll({
+          where: { doctorId },
+          attributes: ["id"],
+          raw: true,
+        })
+      ).map((patient: any) => patient.id)
+    );
+
+    const visiblePatientIds = [...approvedPatientIds];
+    if (visiblePatientIds.length === 0) {
+      return {
+        unreviewed: [],
+        flagged: [],
+      };
+    }
+
     const patientInclude = {
       model: Patient,
       as: "patient",
-      where: { doctorId },
+      where: { doctorId, id: { [Op.in]: visiblePatientIds } },
       required: true as const,
       attributes: ["id", "fullName", "phone", "diaryId"],
     };
