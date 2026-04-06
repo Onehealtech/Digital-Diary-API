@@ -123,7 +123,7 @@ class BubbleScanService {
                 const qid = questionId.trim();
                 const key = (0, s3Upload_1.buildQuestionReportS3Key)(patientId, record.id, qid, file.originalname, file.mimetype);
                 const url = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, key);
-                fixedReports[qid] = [...(fixedReports[qid] ?? []), url];
+                fixedReports[qid] = [...(fixedReports[qid] ?? []), { url, name: file.originalname }];
             }
             record.questionReports = fixedReports;
             record.changed("questionReports", true);
@@ -901,7 +901,7 @@ class BubbleScanService {
      * Attach report files to one or more questions in a single request.
      * pairs: [{ questionId, file }] — one entry per file.
      * Supports PDF, DOC, DOCX, and images.
-     * Stored in questionReports: { "Q1": ["url1"], "Q2": ["url2"], ... }
+     * Stored in questionReports: { "Q1": [{ url, name }], "Q2": [{ url, name }], ... }
      */
     async attachQuestionReports(scanId, patientId, pairs) {
         await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
@@ -917,7 +917,8 @@ class BubbleScanService {
             const qid = questionId.trim();
             const key = (0, s3Upload_1.buildQuestionReportS3Key)(patientId, scanId, qid, file.originalname, file.mimetype);
             const url = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, key);
-            updated[qid] = [...(Array.isArray(updated[qid]) ? updated[qid] : []), url];
+            const existing = Array.isArray(updated[qid]) ? updated[qid] : [];
+            updated[qid] = [...existing, { url, name: file.originalname }];
         }
         scan.questionReports = updated;
         scan.changed("questionReports", true);
@@ -936,7 +937,7 @@ class BubbleScanService {
             throw new AppError_1.AppError(404, "Scan entry not found");
         const existing = (scan.questionReports ?? {});
         const forQuestion = Array.isArray(existing[questionId]) ? existing[questionId] : [];
-        const updated = forQuestion.filter((u) => u !== reportUrl);
+        const updated = forQuestion.filter((u) => (typeof u === "string" ? u : u.url) !== reportUrl);
         if (updated.length === forQuestion.length) {
             throw new AppError_1.AppError(404, "Report URL not found for this question");
         }

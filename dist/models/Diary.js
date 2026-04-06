@@ -83,8 +83,8 @@ __decorate([
 ], Diary.prototype, "soldByRole", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("PENDING", "APPROVED", "REJECTED"),
-        defaultValue: "PENDING",
+        type: sequelize_typescript_1.DataType.ENUM("pending", "active", "inactive", "rejected", "completed"),
+        defaultValue: "pending",
     }),
     __metadata("design:type", String)
 ], Diary.prototype, "status", void 0);

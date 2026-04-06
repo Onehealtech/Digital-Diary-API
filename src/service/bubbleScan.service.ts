@@ -202,12 +202,12 @@ class BubbleScanService {
 
         // Re-upload with the real scanId in the S3 key if reports were attached
         if (questionReportPairs.length > 0) {
-            const fixedReports: Record<string, string[]> = {};
+            const fixedReports: Record<string, { url: string; name: string }[]> = {};
             for (const { questionId, file } of questionReportPairs) {
                 const qid = questionId.trim();
                 const key = buildQuestionReportS3Key(patientId, record.id, qid, file.originalname, file.mimetype);
                 const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
-                fixedReports[qid] = [...(fixedReports[qid] ?? []), url];
+                fixedReports[qid] = [...(fixedReports[qid] ?? []), { url, name: file.originalname }];
             }
             record.questionReports = fixedReports;
             record.changed("questionReports", true);
