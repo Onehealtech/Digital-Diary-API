@@ -3,7 +3,7 @@ node_modules
 
 
 # Ignore build output
-dist
+# dist
 
 # Ignore environment variables
 .env
