@@ -106,10 +106,23 @@ const generateOrderId = (): string => {
   return `SUB-${timestamp}-${random}`.toUpperCase();
 };
 
-const generateDiaryId = (): string => {
-  const year = new Date().getFullYear();
-  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `DRY-${year}-AUTO-${random}`;
+/**
+ * Generate a new CANTrac diary ID in the format CANTrac-A###.
+ * Finds the highest existing sequence number and increments by 1.
+ */
+const generateCanTracId = async (): Promise<string> => {
+  const lastDiary = await GeneratedDiary.findOne({
+    where: { id: { [Op.like]: "CANTrac-A%" } },
+    order: [["createdAt", "DESC"]],
+  });
+
+  let sequence = 1;
+  if (lastDiary) {
+    const lastSeq = parseInt(lastDiary.id.replace("CANTrac-A", ""), 10);
+    if (!isNaN(lastSeq)) sequence = lastSeq + 1;
+  }
+
+  return `CANTrac-A${String(sequence).padStart(3, "0")}`;
 };
 
 /**
@@ -291,7 +304,7 @@ export const activateSubscriptionAfterPayment = async (
     });
 
     if (!generatedDiary) {
-      const diaryId = generateDiaryId();
+      const diaryId = await generateCanTracId();
       generatedDiary = await GeneratedDiary.create(
         {
           id: diaryId,
@@ -420,7 +433,7 @@ export const subscribeToPlan = async (params: {
     });
 
     if (!generatedDiary) {
-      const diaryId = generateDiaryId();
+      const diaryId = await generateCanTracId();
       generatedDiary = await GeneratedDiary.create(
         {
           id: diaryId,

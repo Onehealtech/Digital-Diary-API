@@ -39,8 +39,12 @@ exports.AdvancedAnalysisFilterSchema = zod_1.z.object({
     ageMin: zod_1.z.number().min(0).max(120).optional(),
     ageMax: zod_1.z.number().min(0).max(120).optional(),
     sex: zod_1.z.enum(["ALL", "FEMALE", "MALE", "OTHER"]).default("ALL"),
-    submissionDateFrom: zod_1.z.string().optional(),
-    submissionDateTo: zod_1.z.string().optional(),
+    submissionDateFrom: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
+        .refine((v) => { const d = new Date(v); return !isNaN(d.getTime()) && d.toISOString().startsWith(v); }, "Invalid calendar date")
+        .optional(),
+    submissionDateTo: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)")
+        .refine((v) => { const d = new Date(v); return !isNaN(d.getTime()) && d.toISOString().startsWith(v); }, "Invalid calendar date")
+        .optional(),
     investigations: zod_1.z.record(InvestigationStatusEnum).optional(),
     nactPlanned: zod_1.z.enum(["ANY", "YES", "NO"]).default("ANY"),
     surgeryType: zod_1.z.enum(["ANY", "BCS", "MASTECTOMY", "NOT_PLANNED"]).default("ANY"),

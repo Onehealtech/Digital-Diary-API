@@ -165,5 +165,5 @@ export class BubbleScanResult extends Model {
         allowNull: true,
         defaultValue: {},
     })
-    questionReports?: Record<string, string[]>; // { "q1": ["url1", "url2"], "q3": ["url3"] }
+    questionReports?: Record<string, Array<{ url: string; name: string }>>; // { "q1": [{ url, name }] }
 }

@@ -71,20 +71,38 @@ const createReminder = async (req, res) => {
             reminderCount: 1,
             attachmentUrl,
         });
+        const isHindi = patient.language === "hi";
+        const formattedDate = new Date(reminderDate).toLocaleString();
+        const enAlertMessage = `You have a ${type} reminder scheduled on ${formattedDate}.`;
+        const enSmsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${formattedDate}\n${message}`;
+        let alertTitle = "New Appointment Reminder";
+        let alertMessage = enAlertMessage;
+        let smsContent = enSmsContent;
+        if (isHindi) {
+            const [hiTitle, hiAlertMessage, hiType, hiDoctorMessage] = await Promise.all([
+                (0, translations_1.translateText)("New Appointment Reminder", "hi"),
+                (0, translations_1.translateText)(enAlertMessage, "hi"),
+                (0, translations_1.translateText)(type, "hi"),
+                (0, translations_1.translateText)(message, "hi"),
+            ]);
+            alertTitle = `New Appointment Reminder / ${hiTitle}`;
+            alertMessage = `${enAlertMessage}\n\n${hiAlertMessage}`;
+            // eslint-disable-next-line no-useless-concat
+            smsContent = `${enSmsContent}\n\n---\n` + `OneHeal: ${hiType}\n${formattedDate}\n${hiDoctorMessage}`;
+        }
         await notification_service_1.notificationService.createNotification({
             senderId: req.user.id,
             recipientId: patient.id,
             recipientType: "patient",
             type: "reminder",
             severity: "medium",
-            title: "New Appointment Reminder",
-            message: `You have a ${type} reminder scheduled on ${new Date(reminderDate).toLocaleString()}.`,
+            title: alertTitle,
+            message: alertMessage,
             relatedTaskId: reminder.id,
             deliveryMethod: "in-app",
         });
         // Send SMS
         if (patient.phone) {
-            const smsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${new Date(reminderDate).toLocaleString()}\n${message}`;
             twilio_service_1.twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("SMS reminder err:", err));
         }
         res.status(201).json({
@@ -452,31 +470,44 @@ const resendReminder = async (req, res) => {
         reminder.reminderCount += 1;
         reminder.status = "PENDING"; // Reset so patient sees the new appointment with action buttons
         await reminder.save();
-        // 🔔 Create in-app notification
+        // Create in-app notification
         if (reminder.patient) {
+            const isHindi = reminder.patient.language === "hi";
+            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString();
+            const doctorMessage = reminder.newReminderMessage || reminder.message;
+            const enAlertMessage = `Your ${reminder.type} appointment has been rescheduled to ${rescheduledDate}.`;
+            const enSmsContent = `OneHeal Appointment Update\n\nType: ${reminder.type}\nNew Date: ${rescheduledDate}\n\n${doctorMessage}`;
+            let alertTitle = "Appointment Reminder Updated";
+            let alertMessage = enAlertMessage;
+            let smsContent = enSmsContent;
+            if (isHindi) {
+                const [hiTitle, hiAlertMessage, hiType, hiDoctorMessage] = await Promise.all([
+                    (0, translations_1.translateText)("Appointment Reminder Updated", "hi"),
+                    (0, translations_1.translateText)(enAlertMessage, "hi"),
+                    (0, translations_1.translateText)(reminder.type, "hi"),
+                    (0, translations_1.translateText)(doctorMessage, "hi"),
+                ]);
+                alertTitle = `Appointment Reminder Updated / ${hiTitle}`;
+                alertMessage = `${enAlertMessage}\n\n${hiAlertMessage}`;
+                // eslint-disable-next-line no-useless-concat
+                smsContent = `${enSmsContent}\n\n---\n` + `OneHeal: ${hiType}\n${rescheduledDate}\n${hiDoctorMessage}`;
+            }
             await notification_service_1.notificationService.createNotification({
                 senderId: userId,
                 recipientId: reminder.patient.id,
                 recipientType: "patient",
                 type: "reminder",
                 severity: "medium",
-                title: "Appointment Reminder Updated",
-                message: `Your ${reminder.type} appointment has been rescheduled to ${new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString()}.`,
+                title: alertTitle,
+                message: alertMessage,
                 relatedTaskId: reminder.id,
                 deliveryMethod: "in-app",
             });
-        }
-        // SMS
-        if (reminder.patient?.phone) {
-            const smsContent = `OneHeal Appointment Update
-
-Type: ${reminder.type}
-New Date: ${new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString()}
-
-${reminder.newReminderMessage || reminder.message}`;
-            twilio_service_1.twilioService
-                .sendSMS(reminder.patient.phone, smsContent)
-                .catch((err) => console.error("SMS resend err:", err));
+            if (reminder.patient.phone) {
+                twilio_service_1.twilioService
+                    .sendSMS(reminder.patient.phone, smsContent)
+                    .catch((err) => console.error("SMS resend err:", err));
+            }
         }
         res.status(200).json({
             success: true,

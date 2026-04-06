@@ -1,24 +1,26 @@
 export const DIARY_STATUS = {
-  PENDING: "PENDING",
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
+  PENDING: "pending",
+  APPROVED: "active",
+  REJECTED: "rejected",
 } as const;
 
 export type DiaryStatus = (typeof DIARY_STATUS)[keyof typeof DIARY_STATUS];
 
 /**
- * Normalizes legacy diary statuses to the new approval workflow.
- * This keeps old DB rows readable while we migrate to strict
- * PENDING / APPROVED / REJECTED semantics.
+ * Normalizes legacy diary statuses to the DB enum values.
  */
 export const normalizeDiaryStatus = (status?: string | null): DiaryStatus => {
-  if (status === DIARY_STATUS.APPROVED || status === "active") {
+  if (
+    status === "active" ||
+    status === "APPROVED" ||
+    status === DIARY_STATUS.APPROVED
+  ) {
     return DIARY_STATUS.APPROVED;
   }
   if (
-    status === DIARY_STATUS.REJECTED ||
     status === "rejected" ||
-    status === "available"
+    status === "REJECTED" ||
+    status === DIARY_STATUS.REJECTED
   ) {
     return DIARY_STATUS.REJECTED;
   }

@@ -2,22 +2,22 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeDiaryStatus = exports.DIARY_STATUS = void 0;
 exports.DIARY_STATUS = {
-    PENDING: "PENDING",
-    APPROVED: "APPROVED",
-    REJECTED: "REJECTED",
+    PENDING: "pending",
+    APPROVED: "active",
+    REJECTED: "rejected",
 };
 /**
- * Normalizes legacy diary statuses to the new approval workflow.
- * This keeps old DB rows readable while we migrate to strict
- * PENDING / APPROVED / REJECTED semantics.
+ * Normalizes legacy diary statuses to the DB enum values.
  */
 const normalizeDiaryStatus = (status) => {
-    if (status === exports.DIARY_STATUS.APPROVED || status === "active") {
+    if (status === "active" ||
+        status === "APPROVED" ||
+        status === exports.DIARY_STATUS.APPROVED) {
         return exports.DIARY_STATUS.APPROVED;
     }
-    if (status === exports.DIARY_STATUS.REJECTED ||
-        status === "rejected" ||
-        status === "available") {
+    if (status === "rejected" ||
+        status === "REJECTED" ||
+        status === exports.DIARY_STATUS.REJECTED) {
         return exports.DIARY_STATUS.REJECTED;
     }
     return exports.DIARY_STATUS.PENDING;
