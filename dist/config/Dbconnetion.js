@@ -94,7 +94,7 @@ exports.sequelize = new sequelize_typescript_1.Sequelize({
         DoctorPatientHistory_1.DoctorPatientHistory,
     ],
     // Logging configuration
-    logging: true,
+    logging: false,
     // Connection pool settings for better performance
     pool: {
         max: 5,

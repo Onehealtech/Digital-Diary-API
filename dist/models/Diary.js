@@ -53,12 +53,20 @@ __decorate([
     __metadata("design:type", Appuser_1.AppUser)
 ], Diary.prototype, "doctor", void 0);
 __decorate([
+    (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
         allowNull: true,
     }),
     __metadata("design:type", String)
 ], Diary.prototype, "vendorId", void 0);
+__decorate([
+    (0, sequelize_typescript_1.BelongsTo)(() => Appuser_1.AppUser, {
+        foreignKey: "vendorId",
+        as: "vendor",
+    }),
+    __metadata("design:type", Appuser_1.AppUser)
+], Diary.prototype, "vendor", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,

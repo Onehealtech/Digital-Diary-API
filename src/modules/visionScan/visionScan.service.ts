@@ -80,7 +80,7 @@ class VisionScanService {
                 },
             ],
             temperature: 0,
-            max_tokens: 100,
+            max_tokens: VISION_SCAN_CONFIG.MAX_TOKENS,
         };
 
         const response = await fetch(VISION_SCAN_CONFIG.OPENROUTER_API_URL, {
