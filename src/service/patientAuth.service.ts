@@ -26,10 +26,10 @@ export const patientLogin = async (
     }
 
     const diary = (patient as any).diary as Diary | undefined;
-    if (diary?.status === "pending") {
+    if (diary?.status === "PENDING") {
         throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
     }
-    if (diary?.status === "rejected") {
+    if (diary?.status === "REJECTED") {
         throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
 
@@ -76,10 +76,10 @@ export const verifyPatientOTP = async (
     }
 
     const diary = (patient as any).diary as Diary | undefined;
-    if (diary?.status === "pending") {
+    if (diary?.status === "PENDING") {
         throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
     }
-    if (diary?.status === "rejected") {
+    if (diary?.status === "REJECTED") {
         throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
 

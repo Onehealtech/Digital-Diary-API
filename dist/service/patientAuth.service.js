@@ -26,10 +26,10 @@ const patientLogin = async (diaryId) => {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
     const diary = patient.diary;
-    if (diary?.status === "pending") {
+    if (diary?.status === "PENDING") {
         throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
     }
-    if (diary?.status === "rejected") {
+    if (diary?.status === "REJECTED") {
         throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
     // Generate OTP locally and send via Twilio SMS
@@ -68,10 +68,10 @@ const verifyPatientOTP = async (diaryId, otp) => {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
     }
     const diary = patient.diary;
-    if (diary?.status === "pending") {
+    if (diary?.status === "PENDING") {
         throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
     }
-    if (diary?.status === "rejected") {
+    if (diary?.status === "REJECTED") {
         throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
     // Verify OTP from local store (keyed by diaryId)
