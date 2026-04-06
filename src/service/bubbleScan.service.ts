@@ -1180,7 +1180,7 @@ class BubbleScanService {
      * Attach report files to one or more questions in a single request.
      * pairs: [{ questionId, file }] — one entry per file.
      * Supports PDF, DOC, DOCX, and images.
-     * Stored in questionReports: { "Q1": ["url1"], "Q2": ["url2"], ... }
+     * Stored in questionReports: { "Q1": [{ url, name }], "Q2": [{ url, name }], ... }
      */
     async attachQuestionReports(
         scanId: string,
@@ -1195,13 +1195,14 @@ class BubbleScanService {
         if (!scan) throw new AppError(404, "Scan entry not found");
         if (pairs.length === 0) throw new AppError(400, "No question-file pairs provided");
 
-        const updated = { ...((scan.questionReports ?? {}) as Record<string, string[]>) };
+        const updated = { ...((scan.questionReports ?? {}) as Record<string, Array<{ url: string; name: string }>>) };
 
         for (const { questionId, file } of pairs) {
             const qid = questionId.trim();
             const key = buildQuestionReportS3Key(patientId, scanId, qid, file.originalname, file.mimetype);
             const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
-            updated[qid] = [...(Array.isArray(updated[qid]) ? updated[qid] : []), url];
+            const existing = Array.isArray(updated[qid]) ? updated[qid] : [];
+            updated[qid] = [...existing, { url, name: file.originalname }];
         }
 
         scan.questionReports = updated;
@@ -1227,19 +1228,19 @@ class BubbleScanService {
         });
         if (!scan) throw new AppError(404, "Scan entry not found");
 
-        const existing = (scan.questionReports ?? {}) as Record<string, string[]>;
+        const existing = (scan.questionReports ?? {}) as Record<string, Array<{ url: string; name: string } | string>>;
         const forQuestion = Array.isArray(existing[questionId]) ? existing[questionId] : [];
-        const updated = forQuestion.filter((u) => u !== reportUrl);
+        const updated = forQuestion.filter((u) => (typeof u === "string" ? u : u.url) !== reportUrl);
 
         if (updated.length === forQuestion.length) {
             throw new AppError(404, "Report URL not found for this question");
         }
 
-        const newMap = { ...existing };
+        const newMap = { ...existing } as Record<string, Array<{ url: string; name: string }>>;
         if (updated.length === 0) {
             delete newMap[questionId];
         } else {
-            newMap[questionId] = updated;
+            newMap[questionId] = updated as Array<{ url: string; name: string }>;
         }
 
         scan.questionReports = newMap;
