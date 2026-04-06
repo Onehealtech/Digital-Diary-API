@@ -18,6 +18,24 @@ app.get("/", (req, res) => {
   });
 });
 
+// JSON 404 handler for unknown routes.
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.originalUrl,
+  });
+});
+
+// Global error handler for unexpected runtime errors.
+app.use((err, req, res, next) => {
+  console.error("Unhandled server error:", err);
+  res.status(500).json({
+    success: false,
+    message: "Internal server error",
+  });
+});
+
 // Start Express server.
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

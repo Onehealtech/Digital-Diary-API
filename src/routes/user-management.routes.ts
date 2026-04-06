@@ -27,7 +27,7 @@ router.get(
 // Get user details by ID
 router.get(
   "/:id",
-  authCheck([UserRole.SUPER_ADMIN]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.getUserById
 );
 

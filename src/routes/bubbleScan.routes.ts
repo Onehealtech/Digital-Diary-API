@@ -1,5 +1,6 @@
 import express from "express";
 import { patientAuthCheck, authCheck } from "../middleware/authMiddleware";
+import { requireApprovedDiary } from "../middleware/diaryApproval.middleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
 import { visionScanUpload, reportUpload } from "../middleware/upload.middleware";
 import { UserRole } from "../utils/constants";
@@ -15,6 +16,7 @@ const router = express.Router();
 router.post(
     "/manual",
     patientAuthCheck,
+    requireApprovedDiary,
     reportUpload.array("reports", 10),
     bubbleScanController.manualSubmitBubbleScan
 );
@@ -23,6 +25,7 @@ router.post(
 router.post(
     "/upload",
     patientAuthCheck,
+    requireApprovedDiary,
     visionScanUpload.single("image"),
     bubbleScanController.uploadBubbleScan
 );
@@ -31,6 +34,7 @@ router.post(
 router.get(
     "/history",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.getBubbleScanHistory
 );
 
@@ -38,6 +42,7 @@ router.get(
 router.get(
     "/templates",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.getAvailableTemplates
 );
 
@@ -45,6 +50,7 @@ router.get(
 router.get(
     "/:id",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.getBubbleScanById
 );
 
@@ -52,6 +58,7 @@ router.get(
 router.put(
     "/:id/edit",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.editBubbleScan
 );
 
@@ -59,6 +66,7 @@ router.put(
 router.post(
     "/:id/retry",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.retryBubbleScan
 );
 
@@ -66,6 +74,7 @@ router.post(
 router.post(
     "/:id/reports",
     patientAuthCheck,
+    requireApprovedDiary,
     reportUpload.array("reports", 5),
     bubbleScanController.attachReportFiles
 );
@@ -74,6 +83,7 @@ router.post(
 router.delete(
     "/:id/reports",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.removeReportFile
 );
 
@@ -82,6 +92,7 @@ router.delete(
 router.post(
     "/:id/question-reports",
     patientAuthCheck,
+    requireApprovedDiary,
     reportUpload.array("reports", 5),
     bubbleScanController.attachQuestionReportFiles
 );
@@ -91,6 +102,7 @@ router.post(
 router.delete(
     "/:id/question-reports",
     patientAuthCheck,
+    requireApprovedDiary,
     bubbleScanController.removeQuestionReportFile
 );
 

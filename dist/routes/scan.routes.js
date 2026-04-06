@@ -29,11 +29,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const scanController = __importStar(require("../controllers/scan.controller"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const diaryApproval_middleware_1 = require("../middleware/diaryApproval.middleware");
 const upload_middleware_1 = require("../middleware/upload.middleware");
 const router = express_1.default.Router();
 // Patient routes (require patient authentication)
 // upload.single('image') allows an optional diary photo to be uploaded with the scan
-router.post("/submit", authMiddleware_1.patientAuthCheck, upload_middleware_1.upload.single("image"), scanController.submitScan);
-router.get("/history", authMiddleware_1.patientAuthCheck, scanController.getScanHistory);
+router.post("/submit", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, upload_middleware_1.upload.single("image"), scanController.submitScan);
+router.get("/history", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, scanController.getScanHistory);
 router.get("/history-admin/:patientId", scanController.getScanHistoryAdmin);
 exports.default = router;

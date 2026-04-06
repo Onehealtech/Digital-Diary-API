@@ -13,6 +13,7 @@ import {
   BUNDLE_PACKS,
   getDiaryTypeForCaseType,
 } from "../utils/constants";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 export interface PatientAccessInfo {
   accessLevel: "all_access" | "limited_access";
@@ -102,7 +103,7 @@ export async function getPatientAccessInfo(patientId: string): Promise<PatientAc
     if (diary) {
       diaryInfo = {
         id: diary.id,
-        status: diary.status,
+        status: normalizeDiaryStatus(diary.status),
         activationDate: diary.activationDate || null,
       };
     }
@@ -177,7 +178,7 @@ export async function getPatientAccessInfo(patientId: string): Promise<PatientAc
       endDate,
       daysRemaining,
       isExpired,
-      isActive: !!diaryInfo && diaryInfo.status === "active" && !isExpired,
+      isActive: !!diaryInfo && diaryInfo.status === DIARY_STATUS.APPROVED && !isExpired,
     };
   } else {
     // LIMITED ACCESS — Subscription model: features from plan

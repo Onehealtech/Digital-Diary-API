@@ -12,6 +12,7 @@ const Appuser_1 = require("../models/Appuser");
 const Notification_1 = require("../models/Notification");
 const sequelize_1 = require("sequelize");
 const qrcode_1 = __importDefault(require("qrcode"));
+const diaryStatus_1 = require("../utils/diaryStatus");
 class DiaryService {
     /**
      * Generate diary IDs in bulk with QR codes
@@ -179,9 +180,11 @@ class DiaryService {
             }
             return {
                 ...diary.toJSON(),
+                status: (0, diaryStatus_1.normalizeDiaryStatus)(diary.status),
                 vendor,
             };
         }));
+        console.info(`[DIARY_FETCH] scope=super_admin_inventory total=${diaries.count}`);
         return {
             data: rows,
             total: diaries.count,
@@ -198,17 +201,15 @@ class DiaryService {
         if (!diary) {
             throw new Error("Diary not found");
         }
-        if (diary.status !== "pending") {
+        if ((0, diaryStatus_1.normalizeDiaryStatus)(diary.status) !== diaryStatus_1.DIARY_STATUS.PENDING) {
             throw new Error("Diary is not pending approval");
         }
         // Update diary status
-        diary.status = "active";
+        diary.status = diaryStatus_1.DIARY_STATUS.APPROVED;
         diary.approvedBy = superAdminId;
         diary.approvedAt = new Date();
         diary.activationDate = new Date();
         await diary.save();
-        // Update generated diary
-        await GeneratedDiary_1.GeneratedDiary.update({ status: "active" }, { where: { id: diaryId } });
         // Credit vendor commission
         // const vendorProfile = await VendorProfile.findOne({
         //   where: { vendorId: diary.vendorId },
@@ -246,30 +247,54 @@ class DiaryService {
                 type: "info",
                 severity: "low",
                 title: "Diary Sale Approved",
-                message: `Your diary sale (${diaryId}) has been approved and activated.`,
+                message: `Your diary sale (${diaryId}) has been approved.`,
                 read: false,
                 delivered: true,
             });
         }
+        console.info(`[DIARY_APPROVAL] diaryId=${diaryId} approvedBy=${superAdminId} status=${diary.status}`);
         return diary;
     }
     /**
      * Reject diary sale
      */
     async rejectDiarySale(diaryId, superAdminId, reason) {
-        const diary = await Diary_1.Diary.findByPk(diaryId);
-        if (!diary) {
-            throw new Error("Diary not found");
+        const sequelize = Diary_1.Diary.sequelize;
+        if (!sequelize) {
+            throw new Error("Diary database connection is not available");
         }
-        if (diary.status !== "pending") {
-            throw new Error("Diary is not pending approval");
-        }
-        // Update diary status
-        diary.status = "rejected";
-        diary.rejectionReason = reason;
-        await diary.save();
-        // Reset generated diary to assigned status
-        await GeneratedDiary_1.GeneratedDiary.update({ status: "assigned", soldTo: undefined, soldDate: undefined }, { where: { id: diaryId } });
+        const diary = await sequelize.transaction(async (transaction) => {
+            const diaryRecord = await Diary_1.Diary.findByPk(diaryId, { transaction });
+            if (!diaryRecord) {
+                throw new Error("Diary not found");
+            }
+            if ((0, diaryStatus_1.normalizeDiaryStatus)(diaryRecord.status) !== diaryStatus_1.DIARY_STATUS.PENDING) {
+                throw new Error("Diary is not pending approval");
+            }
+            const linkedPatientId = diaryRecord.patientId;
+            // Rejected diaries must immediately lose all active links so no role can
+            // continue using the old assignment after Super Admin rejection.
+            diaryRecord.status = diaryStatus_1.DIARY_STATUS.REJECTED;
+            diaryRecord.patientId = null;
+            diaryRecord.doctorId = null;
+            diaryRecord.approvedBy = undefined;
+            diaryRecord.approvedAt = undefined;
+            diaryRecord.activationDate = undefined;
+            diaryRecord.rejectionReason = reason;
+            await diaryRecord.save({ transaction });
+            if (linkedPatientId) {
+                await Patient_1.Patient.update({ diaryId: null }, {
+                    where: {
+                        id: linkedPatientId,
+                        diaryId,
+                    },
+                    transaction,
+                });
+            }
+            // The physical diary goes back to seller inventory after rejection.
+            await GeneratedDiary_1.GeneratedDiary.update({ status: "assigned", soldTo: undefined, soldDate: undefined }, { where: { id: diaryId }, transaction });
+            return diaryRecord;
+        });
         // Create notification for the seller (soldBy or vendorId for backward compat)
         const rejectionRecipientId = diary.soldBy || diary.vendorId;
         if (rejectionRecipientId) {
@@ -285,6 +310,7 @@ class DiaryService {
                 delivered: true,
             });
         }
+        console.info(`[DIARY_REJECTION] diaryId=${diaryId} rejectedBy=${superAdminId} status=${diary.status}`);
         return diary;
     }
     /**

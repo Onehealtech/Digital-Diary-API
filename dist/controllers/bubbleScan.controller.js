@@ -133,7 +133,8 @@ const getBubbleScanHistory = async (req, res) => {
     }
     catch (error) {
         console.error("Bubble scan history error:", error);
-        (0, response_1.sendError)(res, 500, error.message || "Failed to get scan history");
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to get scan history");
     }
 };
 exports.getBubbleScanHistory = getBubbleScanHistory;
@@ -164,7 +165,7 @@ exports.getAvailableTemplates = getAvailableTemplates;
  */
 const getBubbleScanById = async (req, res) => {
     try {
-        const result = await bubbleScan_service_1.bubbleScanService.getScanById(req.params.id);
+        const result = await bubbleScan_service_1.bubbleScanService.getScanById(req.params.id, req.user?.id, req.user?.role);
         (0, response_1.sendResponse)(res, 200, "Bubble scan result retrieved", result);
     }
     catch (error) {
@@ -231,7 +232,7 @@ const reviewBubbleScan = async (req, res) => {
             return;
         }
         const { doctorNotes, flagged, overrides, questionMarks } = req.body;
-        const result = await bubbleScan_service_1.bubbleScanService.reviewBubbleScan(req.params.id, doctorId, { doctorNotes, flagged, overrides, questionMarks });
+        const result = await bubbleScan_service_1.bubbleScanService.reviewBubbleScan(req.params.id, doctorId, req.user?.role || "DOCTOR", { doctorNotes, flagged, overrides, questionMarks });
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
@@ -279,7 +280,8 @@ const getAllBubbleScans = async (req, res) => {
     }
     catch (error) {
         console.error("Get all bubble scans error:", error);
-        (0, response_1.sendError)(res, 500, error.message || "Failed to get bubble scans");
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to get bubble scans");
     }
 };
 exports.getAllBubbleScans = getAllBubbleScans;
@@ -501,7 +503,7 @@ const doctorFillReport = async (req, res) => {
             (0, response_1.sendError)(res, 400, "questionMarks (object) is required");
             return;
         }
-        const result = await bubbleScan_service_1.bubbleScanService.doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes, questionSelections);
+        const result = await bubbleScan_service_1.bubbleScanService.doctorFillReport(patientId, doctorId, req.user?.role || "DOCTOR", pageNumber, questionMarks, doctorNotes, questionSelections);
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,

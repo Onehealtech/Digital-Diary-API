@@ -177,6 +177,13 @@ export class Patient extends Model {
   })
   language!: "en" | "hi";
 
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  })
+  tokenVersion!: number;
+
   // 🔗 Foreign Key → Doctor (nullable for self-signup patients awaiting doctor acceptance)
   @ForeignKey(() => AppUser)
   @Column({

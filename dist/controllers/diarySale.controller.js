@@ -35,9 +35,7 @@ const sellDiary = async (req, res) => {
         });
         res.status(201).json({
             success: true,
-            message: sellerRole === "SUPER_ADMIN"
-                ? "Diary sold and activated successfully"
-                : "Diary sold successfully. Pending SuperAdmin approval.",
+            message: "Diary sold successfully. Pending Super Admin approval.",
             data: result,
         });
     }

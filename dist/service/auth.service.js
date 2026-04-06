@@ -60,6 +60,7 @@ class DoctorAuthService {
             role: doctor.role,
             fullName: doctor.fullName,
             email: doctor.email,
+            tokenVersion: doctor.tokenVersion ?? 0,
         }, process.env.JWT_SECRET, { expiresIn: "7d" });
         return { token, doctor };
     }
@@ -102,6 +103,7 @@ class DoctorAuthService {
                 role: user.role,
                 fullName: user.fullName,
                 email: user.email,
+                tokenVersion: user.tokenVersion ?? 0,
             }, process.env.JWT_SECRET, { expiresIn: "7d" });
             return { token: newToken, user };
         }

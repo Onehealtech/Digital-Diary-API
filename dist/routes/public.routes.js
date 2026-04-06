@@ -23,6 +23,27 @@ async function resolveSession(req, res) {
             res.status(401).json({ success: false, message: "Invalid session token" });
             return null;
         }
+        const patient = await Patient_1.Patient.findByPk(decoded.patientId, {
+            attributes: ["id", "status", "tokenVersion"],
+        }).catch(() => null);
+        if (!patient) {
+            res.status(404).json({ success: false, message: "Patient not found" });
+            return null;
+        }
+        if (patient.status === "INACTIVE") {
+            res.status(401).json({ success: false, message: "Account deactivated. Please login again." });
+            return null;
+        }
+        const decodedTokenVersion = Number.isInteger(decoded.tokenVersion)
+            ? decoded.tokenVersion
+            : 0;
+        const currentTokenVersion = Number.isInteger(patient.tokenVersion)
+            ? patient.tokenVersion
+            : 0;
+        if (decodedTokenVersion !== currentTokenVersion) {
+            res.status(401).json({ success: false, message: "Session expired. Please login again." });
+            return null;
+        }
         return decoded.patientId;
     }
     catch {
@@ -44,13 +65,21 @@ router.post("/patient-session", async (req, res) => {
     }
     const patient = await Patient_1.Patient.findOne({
         where: { diaryId: diaryId.trim() },
-        attributes: ["id", "language"],
+        attributes: ["id", "language", "status", "tokenVersion"],
     }).catch(() => null);
     if (!patient) {
         res.status(404).json({ success: false, message: "Patient not found" });
         return;
     }
-    const sessionToken = jsonwebtoken_1.default.sign({ type: "TEMP_SESSION", patientId: patient.id }, process.env.JWT_SECRET, { expiresIn: "10m" });
+    if (patient.status === "INACTIVE") {
+        res.status(401).json({ success: false, message: "Account deactivated. Please login again." });
+        return;
+    }
+    const sessionToken = jsonwebtoken_1.default.sign({
+        type: "TEMP_SESSION",
+        patientId: patient.id,
+        tokenVersion: patient.tokenVersion ?? 0,
+    }, process.env.JWT_SECRET, { expiresIn: "10m" });
     res.json({
         success: true,
         data: {

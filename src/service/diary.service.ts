@@ -8,6 +8,7 @@ import { Transaction } from "../models/Transaction";
 import { Notification } from "../models/Notification";
 import { Op } from "sequelize";
 import QRCode from "qrcode";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 export class DiaryService {
   /**
@@ -227,10 +228,13 @@ async getAllSoldDiaries(params: {
 
       return {
         ...diary.toJSON(),
+        status: normalizeDiaryStatus(diary.status),
         vendor,
       };
     })
   );
+
+  console.info(`[DIARY_FETCH] scope=super_admin_inventory total=${diaries.count}`);
 
   return {
     data: rows,
@@ -252,22 +256,16 @@ async getAllSoldDiaries(params: {
       throw new Error("Diary not found");
     }
 
-    if (diary.status !== "pending") {
+    if (normalizeDiaryStatus(diary.status) !== DIARY_STATUS.PENDING) {
       throw new Error("Diary is not pending approval");
     }
 
     // Update diary status
-    diary.status = "active";
+    diary.status = DIARY_STATUS.APPROVED;
     diary.approvedBy = superAdminId;
     diary.approvedAt = new Date();
     diary.activationDate = new Date();
     await diary.save();
-
-    // Update generated diary
-    await GeneratedDiary.update(
-      { status: "active" },
-      { where: { id: diaryId } }
-    );
 
     // Credit vendor commission
     // const vendorProfile = await VendorProfile.findOne({
@@ -311,11 +309,13 @@ async getAllSoldDiaries(params: {
         type: "info",
         severity: "low",
         title: "Diary Sale Approved",
-        message: `Your diary sale (${diaryId}) has been approved and activated.`,
+        message: `Your diary sale (${diaryId}) has been approved.`,
         read: false,
         delivered: true,
       });
     }
+
+    console.info(`[DIARY_APPROVAL] diaryId=${diaryId} approvedBy=${superAdminId} status=${diary.status}`);
 
     return diary;
   }
@@ -324,26 +324,56 @@ async getAllSoldDiaries(params: {
    * Reject diary sale
    */
   async rejectDiarySale(diaryId: string, superAdminId: string, reason: string) {
-    const diary = await Diary.findByPk(diaryId);
-
-    if (!diary) {
-      throw new Error("Diary not found");
+    const sequelize = Diary.sequelize;
+    if (!sequelize) {
+      throw new Error("Diary database connection is not available");
     }
 
-    if (diary.status !== "pending") {
-      throw new Error("Diary is not pending approval");
-    }
+    const diary = await sequelize.transaction(async (transaction) => {
+      const diaryRecord = await Diary.findByPk(diaryId, { transaction });
 
-    // Update diary status
-    diary.status = "rejected";
-    diary.rejectionReason = reason;
-    await diary.save();
+      if (!diaryRecord) {
+        throw new Error("Diary not found");
+      }
 
-    // Reset generated diary to assigned status
-    await GeneratedDiary.update(
-      { status: "assigned", soldTo: undefined, soldDate: undefined },
-      { where: { id: diaryId } }
-    );
+      if (normalizeDiaryStatus(diaryRecord.status) !== DIARY_STATUS.PENDING) {
+        throw new Error("Diary is not pending approval");
+      }
+
+      const linkedPatientId = diaryRecord.patientId;
+
+      // Rejected diaries must immediately lose all active links so no role can
+      // continue using the old assignment after Super Admin rejection.
+      diaryRecord.status = DIARY_STATUS.REJECTED;
+      diaryRecord.patientId = null;
+      diaryRecord.doctorId = null;
+      diaryRecord.approvedBy = undefined;
+      diaryRecord.approvedAt = undefined;
+      diaryRecord.activationDate = undefined;
+      diaryRecord.rejectionReason = reason;
+      await diaryRecord.save({ transaction });
+
+      if (linkedPatientId) {
+        await Patient.update(
+          { diaryId: null },
+          {
+            where: {
+              id: linkedPatientId,
+              diaryId,
+            },
+            transaction,
+          }
+        );
+      }
+
+      // The physical diary goes back to seller inventory after rejection.
+      await GeneratedDiary.update(
+        { status: "assigned", soldTo: undefined, soldDate: undefined },
+        { where: { id: diaryId }, transaction }
+      );
+
+      return diaryRecord;
+    });
 
     // Create notification for the seller (soldBy or vendorId for backward compat)
     const rejectionRecipientId = diary.soldBy || diary.vendorId;
@@ -360,6 +390,10 @@ async getAllSoldDiaries(params: {
         delivered: true,
       });
     }
+
+    console.info(
+      `[DIARY_REJECTION] diaryId=${diaryId} rejectedBy=${superAdminId} status=${diary.status}`
+    );
 
     return diary;
   }

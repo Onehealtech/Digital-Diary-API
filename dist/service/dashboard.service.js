@@ -9,6 +9,7 @@ const ScanLog_1 = require("../models/ScanLog");
 const BubbleScanResult_1 = require("../models/BubbleScanResult");
 const Task_1 = require("../models/Task");
 const sequelize_1 = require("sequelize");
+const diaryStatus_1 = require("../utils/diaryStatus");
 class DashboardService {
     /**
      * Super Admin Dashboard Statistics
@@ -28,17 +29,17 @@ class DashboardService {
         });
         // Active diaries (sold and approved)
         const activeDiaries = await Diary_1.Diary.count({
-            where: { status: "active" },
+            where: { status: diaryStatus_1.DIARY_STATUS.APPROVED },
         });
         // Pending diary approvals
         const pendingApprovals = await Diary_1.Diary.count({
-            where: { status: "pending" },
+            where: { status: diaryStatus_1.DIARY_STATUS.PENDING },
         });
         // Total patients
         const totalPatients = await Patient_1.Patient.count();
         // Total revenue (sum of all diary sales)
         const revenueData = await Diary_1.Diary.sum("saleAmount", {
-            where: { status: { [sequelize_1.Op.in]: ["active", "completed"] } },
+            where: { status: diaryStatus_1.DIARY_STATUS.APPROVED },
         });
         const totalRevenue = revenueData || 0;
         // Total commission paid to vendors
@@ -62,7 +63,7 @@ class DashboardService {
         const thisMonthRevenue = await Diary_1.Diary.sum("saleAmount", {
             where: {
                 createdAt: { [sequelize_1.Op.gte]: startOfMonth },
-                status: { [sequelize_1.Op.in]: ["active", "completed"] },
+                status: diaryStatus_1.DIARY_STATUS.APPROVED,
             },
         });
         return {
@@ -105,14 +106,14 @@ class DashboardService {
         const approvedSales = await Diary_1.Diary.count({
             where: {
                 vendorId,
-                status: { [sequelize_1.Op.in]: ["active", "completed"] },
+                status: diaryStatus_1.DIARY_STATUS.APPROVED,
             },
         });
         // Pending sales (awaiting approval)
         const pendingSales = await Diary_1.Diary.count({
             where: {
                 vendorId,
-                status: "pending",
+                status: diaryStatus_1.DIARY_STATUS.PENDING,
             },
         });
         // This month's sales

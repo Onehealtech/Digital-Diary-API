@@ -17,11 +17,42 @@ const sequelize_1 = require("sequelize");
 const constants_1 = require("../utils/constants");
 const AppError_1 = require("../utils/AppError");
 const s3Upload_1 = require("../utils/s3Upload");
+const diaryAccess_service_1 = require("./diaryAccess.service");
 const pythonPath = path_1.default.join(__dirname, "../../python/venv/bin/python3");
 class BubbleScanService {
     constructor() {
         this.pythonScriptPath = path_1.default.join(__dirname, "../../python/omr_scanner.py");
         this.templatesDir = path_1.default.join(__dirname, "../../python/templates");
+    }
+    async resolveDoctorId(requesterId, role) {
+        if (role === "ASSISTANT") {
+            const assistant = await Appuser_1.AppUser.findByPk(requesterId);
+            if (!assistant || !assistant.parentId) {
+                throw new AppError_1.AppError(400, "Assistant not linked to a doctor");
+            }
+            return assistant.parentId;
+        }
+        if (role !== "DOCTOR") {
+            throw new AppError_1.AppError(403, "Only doctors and assistants can access bubble scans");
+        }
+        return requesterId;
+    }
+    async getDoctorPatientCutoff(patientId, doctorId) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
+        const patient = await Patient_1.Patient.findByPk(patientId, {
+            attributes: ["doctorId"],
+        });
+        if (patient?.doctorId === doctorId) {
+            return null;
+        }
+        const history = await DoctorPatientHistory_1.DoctorPatientHistory.findOne({
+            where: { patientId, doctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
+            order: [["unassignedAt", "DESC"]],
+        });
+        if (!history?.unassignedAt) {
+            throw new AppError_1.AppError(403, "Bubble scan result not found or access denied");
+        }
+        return history.unassignedAt;
     }
     /**
      * Validate that a template exists
@@ -47,6 +78,7 @@ class BubbleScanService {
      * questionReportPairs: [{ questionId, file }] — one entry per uploaded file.
      */
     async manualSubmit(patientId, pageNumber, answers, diaryType, questionReportPairs = []) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         // Fetch the diary page from DB
         const diaryPage = await DiaryPage_1.DiaryPage.findOne({
             where: { pageNumber, diaryType, isActive: true },
@@ -104,6 +136,7 @@ class BubbleScanService {
      * templateName is optional — defaults to "auto" which uses OCR to detect the page type
      */
     async processBubbleScan(patientId, pageId, templateName = "auto", imagePath, pageType, diaryType) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         // Validate template exists (skip validation for "auto" mode — Python handles detection)
         if (templateName !== "auto" && !this.validateTemplate(templateName)) {
             throw new Error(`Template '${templateName}' not found. Available: ${this.getAvailableTemplates().join(", ")}`);
@@ -294,6 +327,7 @@ class BubbleScanService {
      * Get scan history for a patient (paginated)
      */
     async getPatientScanHistory(patientId, page = 1, limit = 20) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const offset = (page - 1) * limit;
         const { rows, count } = await BubbleScanResult_1.BubbleScanResult.findAndCountAll({
             where: { patientId },
@@ -315,7 +349,7 @@ class BubbleScanService {
      * Get a single scan result by ID.
      * When called with doctorId/role, enforces assignment period for old doctors.
      */
-    async getScanById(scanId, doctorId, role) {
+    async getScanById(scanId, requesterId, role) {
         const scan = await BubbleScanResult_1.BubbleScanResult.findByPk(scanId, {
             include: [
                 { model: Patient_1.Patient, as: "patient", attributes: ["id", "age", "gender", "stage", "doctorId"] },
@@ -324,27 +358,19 @@ class BubbleScanService {
         });
         if (!scan)
             throw new Error("Bubble scan result not found");
-        // If doctor context provided, enforce date cutoff for old doctors
-        if (doctorId && role) {
-            let resolvedDoctorId = doctorId;
-            if (role === "ASSISTANT") {
-                const assistant = await Appuser_1.AppUser.findByPk(doctorId);
-                if (!assistant || !assistant.parentId)
-                    throw new Error("Assistant not linked to a doctor");
-                resolvedDoctorId = assistant.parentId;
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(scan.patientId);
+        if (requesterId && role === "PATIENT") {
+            if (scan.patientId !== requesterId) {
+                throw new AppError_1.AppError(403, "Bubble scan result not found or access denied");
             }
-            const patient = scan.patient;
-            if (patient && patient.doctorId !== resolvedDoctorId) {
-                // Old doctor — check history cutoff
-                const history = await DoctorPatientHistory_1.DoctorPatientHistory.findOne({
-                    where: { patientId: scan.patientId, doctorId: resolvedDoctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
-                    order: [["unassignedAt", "DESC"]],
-                });
-                if (!history)
-                    throw new Error("Bubble scan result not found or access denied");
-                if (scan.scannedAt > history.unassignedAt) {
-                    throw new Error("Bubble scan result not found or access denied");
-                }
+            return scan;
+        }
+        // If doctor context provided, enforce date cutoff for old doctors
+        if (requesterId && role) {
+            const resolvedDoctorId = await this.resolveDoctorId(requesterId, role);
+            const cutoff = await this.getDoctorPatientCutoff(scan.patientId, resolvedDoctorId);
+            if (cutoff && scan.scannedAt > cutoff) {
+                throw new AppError_1.AppError(403, "Bubble scan result not found or access denied");
             }
         }
         return scan;
@@ -359,6 +385,7 @@ class BubbleScanService {
         if (existing.processingStatus !== "failed") {
             throw new Error("Can only retry failed scans");
         }
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(existing.patientId);
         // Look up patient to resolve diary type from caseType
         const patient = await Patient_1.Patient.findByPk(existing.patientId, {
             attributes: ["caseType"],
@@ -372,13 +399,20 @@ class BubbleScanService {
     /**
      * Doctor reviews a bubble scan result
      */
-    async reviewBubbleScan(scanId, doctorId, data) {
-        const scan = await BubbleScanResult_1.BubbleScanResult.findByPk(scanId);
+    async reviewBubbleScan(scanId, requesterId, role, data) {
+        const scan = await BubbleScanResult_1.BubbleScanResult.findByPk(scanId, {
+            include: [{ model: Patient_1.Patient, as: "patient", attributes: ["id", "doctorId"] }],
+        });
         if (!scan)
             throw new Error("Bubble scan result not found");
+        const resolvedDoctorId = await this.resolveDoctorId(requesterId, role);
+        const cutoff = await this.getDoctorPatientCutoff(scan.patientId, resolvedDoctorId);
+        if (cutoff && scan.scannedAt > cutoff) {
+            throw new AppError_1.AppError(403, "Bubble scan result not found or access denied");
+        }
         const updateData = {
             doctorReviewed: true,
-            reviewedBy: doctorId,
+            reviewedBy: resolvedDoctorId,
             reviewedAt: new Date(),
         };
         if (data.doctorNotes !== undefined)
@@ -415,29 +449,10 @@ class BubbleScanService {
     async getAllBubbleScans(doctorId, role, filters = {}) {
         const { page = 1, limit = 20, templateName, processingStatus, patientId, startDate, endDate, reviewed, flagged, } = filters;
         const offset = (page - 1) * limit;
-        // Get the doctor ID (if assistant, find their parent doctor)
-        let resolvedDoctorId = doctorId;
-        if (role === "ASSISTANT") {
-            const assistant = await Appuser_1.AppUser.findByPk(doctorId);
-            if (!assistant || !assistant.parentId) {
-                throw new Error("Assistant not linked to a doctor");
-            }
-            resolvedDoctorId = assistant.parentId;
-        }
+        const resolvedDoctorId = await this.resolveDoctorId(doctorId, role);
         // If filtering by specific patient, apply date cutoff for old doctors
         if (patientId) {
-            const patient = await Patient_1.Patient.findByPk(patientId, { attributes: ["doctorId"] });
-            let cutoff = null;
-            if (!patient || patient.doctorId !== resolvedDoctorId) {
-                // Check history for old doctor
-                const history = await DoctorPatientHistory_1.DoctorPatientHistory.findOne({
-                    where: { patientId, doctorId: resolvedDoctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
-                    order: [["unassignedAt", "DESC"]],
-                });
-                if (!history)
-                    throw new Error("Access denied");
-                cutoff = history.unassignedAt;
-            }
+            const cutoff = await this.getDoctorPatientCutoff(patientId, resolvedDoctorId);
             const whereClause = { patientId, submissionType: { [sequelize_1.Op.ne]: "doctor_manual" } };
             if (cutoff) {
                 whereClause.scannedAt = { [sequelize_1.Op.lte]: cutoff };
@@ -479,7 +494,10 @@ class BubbleScanService {
             attributes: ["id"],
             raw: true,
         });
-        const currentPatientIds = currentPatients.map((p) => p.id);
+        const approvedCurrentPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(currentPatients.map((p) => p.id));
+        const currentPatientIds = currentPatients
+            .map((p) => p.id)
+            .filter((patientId) => approvedCurrentPatientIds.has(patientId));
         const historyRecords = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
             where: { doctorId: resolvedDoctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
             attributes: ["patientId", "unassignedAt"],
@@ -494,12 +512,16 @@ class BubbleScanService {
                 }
             }
         }
+        const approvedHistoricalPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(Array.from(historicalMap.keys()));
         // Build OR conditions
         const patientConditions = [];
         if (currentPatientIds.length > 0) {
             patientConditions.push({ patientId: { [sequelize_1.Op.in]: currentPatientIds } });
         }
         for (const [hpId, cutoffDate] of historicalMap) {
+            if (!approvedHistoricalPatientIds.has(hpId)) {
+                continue;
+            }
             patientConditions.push({
                 patientId: hpId,
                 scannedAt: { [sequelize_1.Op.lte]: cutoffDate },
@@ -550,6 +572,7 @@ class BubbleScanService {
      * Updates scanResults with the new answers and marks it as edited.
      */
     async editScanEntry(scanId, patientId, answers) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { id: scanId, patientId },
         });
@@ -627,6 +650,7 @@ class BubbleScanService {
      * Returns the questionMarks from the latest doctor_manual record for this patient+page.
      */
     async getDoctorMarksForPage(patientId, pageNumber) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const record = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { patientId, pageNumber, doctorReviewed: true },
             attributes: ["questionMarks"],
@@ -639,17 +663,19 @@ class BubbleScanService {
      * Used for pages with layoutType "investigation_summary" (pages 05 & 06).
      * Creates a new BubbleScanResult if none exists, or updates the existing one.
      */
-    async doctorFillReport(patientId, doctorId, pageNumber, questionMarks, doctorNotes, questionSelections // select-type answers (e.g. surgery: "BCS")
+    async doctorFillReport(patientId, doctorId, role, pageNumber, questionMarks, doctorNotes, questionSelections // select-type answers (e.g. surgery: "BCS")
     ) {
+        const resolvedDoctorId = await this.resolveDoctorId(doctorId, role);
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         // Verify doctor has access to this patient
         const patient = await Patient_1.Patient.findByPk(patientId, { attributes: ["id", "doctorId", "caseType"] });
         if (!patient)
             throw new Error("Patient not found");
-        const isCurrentDoctor = patient.doctorId === doctorId;
+        const isCurrentDoctor = patient.doctorId === resolvedDoctorId;
         if (!isCurrentDoctor) {
             // Allow if old doctor (history check)
             const history = await DoctorPatientHistory_1.DoctorPatientHistory.findOne({
-                where: { patientId, doctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
+                where: { patientId, doctorId: resolvedDoctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
             });
             if (!history)
                 throw new Error("Access denied: patient not assigned to this doctor");
@@ -671,7 +697,7 @@ class BubbleScanService {
                 doctorNotes: doctorNotes ?? existing.doctorNotes,
                 doctorOverrides: questionSelections ?? existing.doctorOverrides ?? {},
                 doctorReviewed: true,
-                reviewedBy: doctorId,
+                reviewedBy: resolvedDoctorId,
                 reviewedAt: new Date(),
                 diaryPageId: diaryPage?.id ?? existing.diaryPageId,
             });
@@ -694,7 +720,7 @@ class BubbleScanService {
             doctorOverrides: questionSelections ?? {},
             doctorNotes,
             doctorReviewed: true,
-            reviewedBy: doctorId,
+            reviewedBy: resolvedDoctorId,
             reviewedAt: new Date(),
             scannedAt: new Date(),
         });
@@ -712,22 +738,16 @@ class BubbleScanService {
      */
     async getDiaryFilteredPatients(doctorId, role, options) {
         const { pageNumber, questionId, filter = "all" } = options;
-        // Resolve doctorId for assistants
-        let resolvedDoctorId = doctorId;
-        if (role === "ASSISTANT") {
-            const assistant = await Appuser_1.AppUser.findByPk(doctorId);
-            if (!assistant || !assistant.parentId) {
-                throw new AppError_1.AppError(400, "Assistant not linked to a doctor");
-            }
-            resolvedDoctorId = assistant.parentId;
-        }
+        const resolvedDoctorId = await this.resolveDoctorId(doctorId, role);
         // 1. Collect current patients
         const currentPatients = await Patient_1.Patient.findAll({
             where: { doctorId: resolvedDoctorId },
             attributes: ["id", "fullName", "age", "gender", "stage"],
             raw: true,
         });
-        const currentPatientIds = currentPatients.map((p) => p.id);
+        const approvedCurrentPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(currentPatients.map((patient) => patient.id));
+        const filteredCurrentPatients = currentPatients.filter((patient) => approvedCurrentPatientIds.has(patient.id));
+        const currentPatientIds = filteredCurrentPatients.map((p) => p.id);
         const currentSet = new Set(currentPatientIds);
         // 2. Collect historical patients
         const historyRecords = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
@@ -745,14 +765,15 @@ class BubbleScanService {
         }
         // Fetch historical patient details
         const historicalPatientIds = [...historicalMap.keys()];
+        const approvedHistoricalPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(historicalPatientIds);
         const historicalPatients = historicalPatientIds.length > 0
             ? await Patient_1.Patient.findAll({
-                where: { id: { [sequelize_1.Op.in]: historicalPatientIds } },
+                where: { id: { [sequelize_1.Op.in]: [...approvedHistoricalPatientIds] } },
                 attributes: ["id", "fullName", "age", "gender", "stage"],
                 raw: true,
             })
             : [];
-        const allPatients = [...currentPatients, ...historicalPatients];
+        const allPatients = [...filteredCurrentPatients, ...historicalPatients];
         if (allPatients.length === 0) {
             return {
                 pageNumber,
@@ -836,6 +857,7 @@ class BubbleScanService {
      * Can be called after both scan-type and manual-type submissions.
      */
     async attachReports(scanId, patientId, files) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { id: scanId, patientId },
         });
@@ -859,6 +881,7 @@ class BubbleScanService {
      * Remove a specific report URL from a scan entry (patient-initiated deletion).
      */
     async removeReport(scanId, patientId, reportUrl) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { id: scanId, patientId },
         });
@@ -881,6 +904,7 @@ class BubbleScanService {
      * Stored in questionReports: { "Q1": ["url1"], "Q2": ["url2"], ... }
      */
     async attachQuestionReports(scanId, patientId, pairs) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { id: scanId, patientId },
         });
@@ -904,6 +928,7 @@ class BubbleScanService {
      * Remove a specific report URL from a question in a scan entry.
      */
     async removeQuestionReport(scanId, patientId, questionId, reportUrl) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const scan = await BubbleScanResult_1.BubbleScanResult.findOne({
             where: { id: scanId, patientId },
         });

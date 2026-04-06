@@ -26,9 +26,9 @@ __decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Patient_1.Patient),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
     }),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], Diary.prototype, "patientId", void 0);
 __decorate([
     (0, sequelize_typescript_1.BelongsTo)(() => Patient_1.Patient, {
@@ -41,9 +41,9 @@ __decorate([
     (0, sequelize_typescript_1.ForeignKey)(() => Appuser_1.AppUser),
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.UUID,
-        allowNull: false,
+        allowNull: true,
     }),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], Diary.prototype, "doctorId", void 0);
 __decorate([
     (0, sequelize_typescript_1.BelongsTo)(() => Appuser_1.AppUser, {
@@ -83,8 +83,8 @@ __decorate([
 ], Diary.prototype, "soldByRole", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("pending", "active", "inactive", "rejected", "completed"),
-        defaultValue: "pending",
+        type: sequelize_typescript_1.DataType.ENUM("PENDING", "APPROVED", "REJECTED"),
+        defaultValue: "PENDING",
     }),
     __metadata("design:type", String)
 ], Diary.prototype, "status", void 0);

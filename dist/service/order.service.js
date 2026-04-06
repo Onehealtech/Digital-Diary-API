@@ -17,6 +17,7 @@ const Patient_1 = require("../models/Patient");
 const wallet_service_1 = require("./wallet.service");
 const Diary_1 = require("../models/Diary");
 const GeneratedDiary_1 = require("../models/GeneratedDiary");
+const diaryStatus_1 = require("../utils/diaryStatus");
 /**
  * Generate a unique order ID
  */
@@ -239,7 +240,7 @@ const createDiaryOrder = async (params) => {
             patientId,
             doctorId,
             vendorId,
-            status: "pending",
+            status: diaryStatus_1.DIARY_STATUS.PENDING,
             activationDate: null,
             approvedBy: null,
             approvedAt: null,

@@ -6,6 +6,7 @@ const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const sequelize_1 = require("sequelize");
+const diaryAccess_service_1 = require("./diaryAccess.service");
 class ScanService {
     /**
      * Resolve doctorId from requester based on role
@@ -30,6 +31,7 @@ class ScanService {
      * - No relationship: throws access denied
      */
     async getDateCutoff(patientId, doctorId) {
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
         const patient = await Patient_1.Patient.findByPk(patientId, { attributes: ["doctorId"] });
         if (patient && patient.doctorId === doctorId) {
             return null; // current doctor — full access
@@ -55,7 +57,10 @@ class ScanService {
             attributes: ["id"],
             raw: true,
         });
-        const currentPatientIds = currentPatients.map((p) => p.id);
+        const approvedCurrentPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(currentPatients.map((p) => p.id));
+        const currentPatientIds = currentPatients
+            .map((p) => p.id)
+            .filter((patientId) => approvedCurrentPatientIds.has(patientId));
         // Historical patients (transferred away)
         const historyRecords = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
             where: { doctorId, unassignedAt: { [sequelize_1.Op.ne]: null } },
@@ -72,7 +77,10 @@ class ScanService {
                 }
             }
         }
-        const historicalPatients = Array.from(historicalMap.entries()).map(([patientId, cutoffDate]) => ({ patientId, cutoffDate }));
+        const approvedHistoricalPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)(Array.from(historicalMap.keys()));
+        const historicalPatients = Array.from(historicalMap.entries())
+            .filter(([patientId]) => approvedHistoricalPatientIds.has(patientId))
+            .map(([patientId, cutoffDate]) => ({ patientId, cutoffDate }));
         return { currentPatientIds, historicalPatients };
     }
     /**
@@ -226,6 +234,7 @@ class ScanService {
         if (!entry) {
             throw new Error("Diary entry not found or access denied");
         }
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(entry.patientId);
         // Verify access and date cutoff
         const cutoff = await this.getDateCutoff(entry.patientId, doctorId);
         if (cutoff && entry.scannedAt > cutoff) {
@@ -253,6 +262,7 @@ class ScanService {
         if (!entry) {
             throw new Error("Diary entry not found or access denied");
         }
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(entry.patientId);
         await entry.update({
             doctorReviewed: true,
             reviewedBy: doctorId,
@@ -282,6 +292,7 @@ class ScanService {
         if (!entry) {
             throw new Error("Diary entry not found or access denied");
         }
+        await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(entry.patientId);
         await entry.update({ flagged });
         return entry;
     }
@@ -290,10 +301,22 @@ class ScanService {
      * Only shows entries from current patients (not historical).
      */
     async getEntriesNeedingReview(doctorId) {
+        const approvedPatientIds = await (0, diaryAccess_service_1.filterPatientsWithApprovedDiaries)((await Patient_1.Patient.findAll({
+            where: { doctorId },
+            attributes: ["id"],
+            raw: true,
+        })).map((patient) => patient.id));
+        const visiblePatientIds = [...approvedPatientIds];
+        if (visiblePatientIds.length === 0) {
+            return {
+                unreviewed: [],
+                flagged: [],
+            };
+        }
         const patientInclude = {
             model: Patient_1.Patient,
             as: "patient",
-            where: { doctorId },
+            where: { doctorId, id: { [sequelize_1.Op.in]: visiblePatientIds } },
             required: true,
             attributes: ["id", "fullName", "phone", "diaryId"],
         };
