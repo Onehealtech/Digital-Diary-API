@@ -3,8 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIME_TYPE_MAP = exports.VISION_SCAN_CONFIG = void 0;
 exports.VISION_SCAN_CONFIG = {
     OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
-    MODEL: "google/gemini-2.5-flash",
+    // MODEL: "google/gemini-2.5-flash",
     // MODEL: "google/gemini-2.5-pro",
+    MODEL: "anthropic/claude-opus-4-6",
     /** Must be large enough for the full JSON response.
      *  A page with 10 yes_no fields needs ~400 tokens; date/select fields need more.
      *  1024 handles pages with up to ~25 fields comfortably. */
