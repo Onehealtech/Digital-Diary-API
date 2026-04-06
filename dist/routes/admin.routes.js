@@ -29,10 +29,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const adminController = __importStar(require("../controllers/admin.controller"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const doctorValidation_middleware_1 = require("../middleware/doctorValidation.middleware");
 const validate_middleware_1 = require("../middleware/validate.middleware");
 const constants_1 = require("../utils/constants");
 const staff_schemas_1 = require("../schemas/staff.schemas");
 const router = express_1.default.Router();
 // Super Admin only routes
-router.post("/create-staff", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), (0, validate_middleware_1.validate)({ body: staff_schemas_1.createStaffSchema }), adminController.createStaff);
+router.post("/create-staff", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), doctorValidation_middleware_1.validateCreateDoctorInput, (0, validate_middleware_1.validate)({ body: staff_schemas_1.createStaffSchema }), adminController.createStaff);
 exports.default = router;

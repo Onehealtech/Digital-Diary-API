@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyPatientOTP = exports.patientLogin = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Patient_1 = require("../models/Patient");
+const Diary_1 = require("../models/Diary");
 const otpService_1 = require("./otpService");
 const twilio_service_1 = require("./twilio.service");
 /**
@@ -16,12 +17,20 @@ const patientLogin = async (diaryId) => {
     // Check if sticker exists
     const patient = await Patient_1.Patient.findOne({
         where: { diaryId },
+        include: [{ model: Diary_1.Diary, as: "diary", attributes: ["status"] }],
     });
     if (!patient) {
         throw new Error("Invalid sticker ID. Please check your diary.");
     }
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
+    }
+    const diary = patient.diary;
+    if (diary?.status === "PENDING") {
+        throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
+    }
+    if (diary?.status === "REJECTED") {
+        throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
     // Generate OTP locally and send via Twilio SMS
     const phone = patient.phone;
@@ -50,13 +59,20 @@ const verifyPatientOTP = async (diaryId, otp) => {
     // Get patient details
     const patient = await Patient_1.Patient.findOne({
         where: { diaryId },
-        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
+        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone", "tokenVersion"],
     });
     if (!patient) {
         throw new Error("Patient not found");
     }
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
+    }
+    const diary = patient.diary;
+    if (diary?.status === "PENDING") {
+        throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
+    }
+    if (diary?.status === "REJECTED") {
+        throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
     // Verify OTP from local store (keyed by diaryId)
     const isValid = (0, otpService_1.verifyOTP)(diaryId, otp);
@@ -70,6 +86,7 @@ const verifyPatientOTP = async (diaryId, otp) => {
         fullName: patient.fullName,
         caseType: patient.caseType,
         type: "PATIENT",
+        tokenVersion: patient.tokenVersion ?? 0,
     }, process.env.JWT_SECRET, { expiresIn: "30d" });
     return {
         token,

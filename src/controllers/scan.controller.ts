@@ -8,6 +8,7 @@ import { AuthRequest } from "../middleware/authMiddleware";
 import { logActivity } from "../utils/activityLogger";
 import { BubbleScanResult } from "../models/BubbleScanResult";
 import { DiaryPage } from "../models/DiaryPage";
+import { AppError } from "../utils/AppError";
 
 /**
  * POST /api/v1/scan/submit
@@ -387,7 +388,8 @@ export const getAllDiaryEntries = async (
 
         sendResponse(res, result, "Diary entries fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch diary entries");
     }
 };
 
@@ -413,7 +415,12 @@ export const getDiaryEntryById = async (
 
         sendResponse(res, entry, "Diary entry fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to fetch diary entry");
     }
 };
 
@@ -452,7 +459,12 @@ export const reviewDiaryEntry = async (
 
         sendResponse(res, entry, "Diary entry reviewed successfully");
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to review diary entry");
     }
 };
 
@@ -493,7 +505,12 @@ export const toggleFlag = async (
 
         sendResponse(res, entry, `Diary entry ${flagged ? "flagged" : "unflagged"} successfully`);
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to update diary entry flag");
     }
 };
 
@@ -518,7 +535,8 @@ export const getEntriesNeedingReview = async (
 
         sendResponse(res, entries, "Pending reviews fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch pending reviews");
     }
 };
 
@@ -543,6 +561,7 @@ export const getDiaryEntryStats = async (
 
         sendResponse(res, stats, "Diary stats fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch diary stats");
     }
 };

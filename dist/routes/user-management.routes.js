@@ -14,7 +14,7 @@ router.get("/archived", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SU
 // Self-registered doctors awaiting approval — must be before /:id
 router.get("/pending-registrations", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getPendingRegistrations);
 // Get user details by ID
-router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.getUserById);
+router.get("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR]), staff_controller_1.staffController.getUserById);
 // Update user details
 router.put("/:id", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), staff_controller_1.staffController.updateUser);
 // Toggle active/inactive status

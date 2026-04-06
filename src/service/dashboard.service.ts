@@ -8,6 +8,7 @@ import { ScanLog } from "../models/ScanLog";
 import { BubbleScanResult } from "../models/BubbleScanResult";
 import { Task } from "../models/Task";
 import { Op } from "sequelize";
+import { DIARY_STATUS } from "../utils/diaryStatus";
 
 class DashboardService {
   /**
@@ -31,12 +32,12 @@ class DashboardService {
 
     // Active diaries (sold and approved)
     const activeDiaries = await Diary.count({
-      where: { status: "active" },
+      where: { status: DIARY_STATUS.APPROVED },
     });
 
     // Pending diary approvals
     const pendingApprovals = await Diary.count({
-      where: { status: "pending" },
+      where: { status: DIARY_STATUS.PENDING },
     });
 
     // Total patients
@@ -44,7 +45,7 @@ class DashboardService {
 
     // Total revenue (sum of all diary sales)
     const revenueData = await Diary.sum("saleAmount", {
-      where: { status: { [Op.in]: ["active", "completed"] } },
+      where: { status: DIARY_STATUS.APPROVED },
     });
     const totalRevenue = revenueData || 0;
 
@@ -73,7 +74,7 @@ class DashboardService {
     const thisMonthRevenue = await Diary.sum("saleAmount", {
       where: {
         createdAt: { [Op.gte]: startOfMonth },
-        status: { [Op.in]: ["active", "completed"] },
+        status: DIARY_STATUS.APPROVED,
       },
     });
 
@@ -121,7 +122,7 @@ class DashboardService {
     const approvedSales = await Diary.count({
       where: {
         vendorId,
-        status: { [Op.in]: ["active", "completed"] },
+        status: DIARY_STATUS.APPROVED,
       },
     });
 
@@ -129,7 +130,7 @@ class DashboardService {
     const pendingSales = await Diary.count({
       where: {
         vendorId,
-        status: "pending",
+        status: DIARY_STATUS.PENDING,
       },
     });
 

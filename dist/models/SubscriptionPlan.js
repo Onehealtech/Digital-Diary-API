@@ -25,6 +25,9 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.STRING(100),
         allowNull: false,
+        validate: {
+            len: [1, 100],
+        },
     }),
     __metadata("design:type", String)
 ], SubscriptionPlan.prototype, "name", void 0);
@@ -32,6 +35,9 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.TEXT,
         allowNull: true,
+        validate: {
+            len: [0, 500],
+        },
     }),
     __metadata("design:type", String)
 ], SubscriptionPlan.prototype, "description", void 0);
@@ -39,6 +45,10 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.DECIMAL(10, 2),
         allowNull: false,
+        validate: {
+            min: 0,
+            max: 99999999.99,
+        },
     }),
     __metadata("design:type", Number)
 ], SubscriptionPlan.prototype, "monthlyPrice", void 0);
@@ -46,6 +56,13 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.INTEGER,
         allowNull: false,
+        validate: {
+            isValidMaxDiaryPages(value) {
+                if (!Number.isInteger(value) || (value !== -1 && value <= 0)) {
+                    throw new Error("maxDiaryPages must be -1 or a positive integer");
+                }
+            },
+        },
     }),
     __metadata("design:type", Number)
 ], SubscriptionPlan.prototype, "maxDiaryPages", void 0);

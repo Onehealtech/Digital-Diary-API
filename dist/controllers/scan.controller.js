@@ -8,6 +8,7 @@ const response_1 = require("../utils/response");
 const activityLogger_1 = require("../utils/activityLogger");
 const BubbleScanResult_1 = require("../models/BubbleScanResult");
 const DiaryPage_1 = require("../models/DiaryPage");
+const AppError_1 = require("../utils/AppError");
 /**
  * POST /api/v1/scan/submit
  * Patient submits scan data from daily diary page
@@ -323,7 +324,8 @@ const getAllDiaryEntries = async (req, res) => {
         (0, response_1.sendResponse)(res, result, "Diary entries fetched successfully");
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to fetch diary entries");
     }
 };
 exports.getAllDiaryEntries = getAllDiaryEntries;
@@ -344,7 +346,12 @@ const getDiaryEntryById = async (req, res) => {
         (0, response_1.sendResponse)(res, entry, "Diary entry fetched successfully");
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError_1.AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to fetch diary entry");
     }
 };
 exports.getDiaryEntryById = getDiaryEntryById;
@@ -376,7 +383,12 @@ const reviewDiaryEntry = async (req, res) => {
         (0, response_1.sendResponse)(res, entry, "Diary entry reviewed successfully");
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError_1.AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to review diary entry");
     }
 };
 exports.reviewDiaryEntry = reviewDiaryEntry;
@@ -409,7 +421,12 @@ const toggleFlag = async (req, res) => {
         (0, response_1.sendResponse)(res, entry, `Diary entry ${flagged ? "flagged" : "unflagged"} successfully`);
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError_1.AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to update diary entry flag");
     }
 };
 exports.toggleFlag = toggleFlag;
@@ -429,7 +446,8 @@ const getEntriesNeedingReview = async (req, res) => {
         (0, response_1.sendResponse)(res, entries, "Pending reviews fetched successfully");
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to fetch pending reviews");
     }
 };
 exports.getEntriesNeedingReview = getEntriesNeedingReview;
@@ -449,7 +467,8 @@ const getDiaryEntryStats = async (req, res) => {
         (0, response_1.sendResponse)(res, stats, "Diary stats fetched successfully");
     }
     catch (error) {
-        (0, response_1.sendError)(res, error.message);
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to fetch diary stats");
     }
 };
 exports.getDiaryEntryStats = getDiaryEntryStats;

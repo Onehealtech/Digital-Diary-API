@@ -6,6 +6,7 @@ const VendorProfile_1 = require("../models/VendorProfile");
 const Appuser_1 = require("../models/Appuser");
 const Diary_1 = require("../models/Diary");
 const sequelize_1 = require("sequelize");
+const diaryStatus_1 = require("../utils/diaryStatus");
 class FinancialService {
     /**
      * Get financial dashboard for Super Admin
@@ -14,7 +15,7 @@ class FinancialService {
     async getFinancialDashboard() {
         // Total revenue from diary sales
         const totalRevenue = await Diary_1.Diary.sum("saleAmount", {
-            where: { status: { [sequelize_1.Op.in]: ["active", "completed"] } },
+            where: { status: diaryStatus_1.DIARY_STATUS.APPROVED },
         });
         // Total commission paid
         const totalCommissionPaid = await Transaction_1.Transaction.sum("amount", {
@@ -27,7 +28,7 @@ class FinancialService {
         // Pending commission (approved sales but commission not paid)
         const pendingCommissionCount = await Diary_1.Diary.count({
             where: {
-                status: "active",
+                status: diaryStatus_1.DIARY_STATUS.APPROVED,
                 commissionPaid: false,
             },
         });
@@ -39,7 +40,7 @@ class FinancialService {
         const thisMonthRevenue = await Diary_1.Diary.sum("saleAmount", {
             where: {
                 createdAt: { [sequelize_1.Op.gte]: startOfMonth },
-                status: { [sequelize_1.Op.in]: ["active", "completed"] },
+                status: diaryStatus_1.DIARY_STATUS.APPROVED,
             },
         });
         const thisMonthCommission = await Transaction_1.Transaction.sum("amount", {

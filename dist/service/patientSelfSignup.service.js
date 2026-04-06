@@ -91,6 +91,7 @@ async function verifySignupOtp(sessionId, otp, profile) {
             caseType: existing.caseType,
             doctorId: existing.doctorId,
             type: "PATIENT",
+            tokenVersion: existing.tokenVersion ?? 0,
         }, process.env.JWT_SECRET, { expiresIn: "30d" });
         return {
             token,
@@ -128,6 +129,7 @@ async function verifySignupOtp(sessionId, otp, profile) {
         fullName: patient.fullName,
         caseType: patient.caseType,
         type: "PATIENT",
+        tokenVersion: patient.tokenVersion ?? 0,
     }, process.env.JWT_SECRET, { expiresIn: "30d" });
     return {
         token,

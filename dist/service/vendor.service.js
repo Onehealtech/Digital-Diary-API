@@ -8,6 +8,7 @@ const Diary_1 = require("../models/Diary");
 const Transaction_1 = require("../models/Transaction");
 const GeneratedDiary_1 = require("../models/GeneratedDiary");
 const sequelize_1 = require("sequelize");
+const diaryStatus_1 = require("../utils/diaryStatus");
 class VendorService {
     /**
      * Get all vendors with pagination and filters
@@ -212,7 +213,7 @@ class VendorService {
             };
         }
         if (params.status) {
-            whereClause.status = params.status;
+            whereClause.status = (0, diaryStatus_1.normalizeDiaryStatus)(params.status);
         }
         const sales = await Diary_1.Diary.findAndCountAll({
             where: whereClause,
@@ -261,6 +262,7 @@ class VendorService {
                 createdAt: { [sequelize_1.Op.gte]: thisMonth },
             },
         });
+        console.info(`[DIARY_FETCH] scope=vendor_sales vendorId=${vendorId} total=${sales.count}`);
         return {
             sales: salesWithType,
             total: sales.count,
@@ -350,7 +352,7 @@ class VendorService {
             patientId: patient.id,
             doctorId: data.doctorId,
             vendorId: data.vendorId,
-            status: "pending",
+            status: diaryStatus_1.DIARY_STATUS.PENDING,
             saleAmount: data.paymentAmount,
             commissionAmount: 50,
             commissionPaid: false,
@@ -360,6 +362,7 @@ class VendorService {
         generatedDiary.soldTo = patient.id;
         generatedDiary.soldDate = new Date();
         await generatedDiary.save();
+        console.info(`[DIARY_CREATE] scope=vendor_service vendorId=${data.vendorId} diaryId=${data.diaryId} status=${diary.status}`);
         return { patient, diary };
     }
     /**
@@ -406,11 +409,11 @@ class VendorService {
                 status: "assigned",
             },
         });
-        // Get active diaries count
+        // Get approved diaries count (kept variable name for response compatibility)
         const activeDiaries = await Diary_1.Diary.count({
             where: {
                 vendorId,
-                status: "active",
+                status: diaryStatus_1.DIARY_STATUS.APPROVED,
             },
         });
         // Get recent sales

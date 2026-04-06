@@ -28,17 +28,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const diaryApproval_middleware_1 = require("../middleware/diaryApproval.middleware");
 const constants_1 = require("../utils/constants");
 const diaryPageController = __importStar(require("../controllers/diaryPage.controller"));
 const router = express_1.default.Router();
 // Get all diary pages with questions (patient app uses this for manual entry)
-router.get("/", authMiddleware_1.patientAuthCheck, diaryPageController.getAllDiaryPages);
+router.get("/", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, diaryPageController.getAllDiaryPages);
 // Get all diary pages (doctor/assistant access for viewing patient submissions)
 router.get("/staff/all", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryPageController.getAllDiaryPagesStaff);
 // Get doctor-prefilled question marks for a page (patient app pre-fills checkboxes)
-router.get("/:pageNumber/doctor-marks", authMiddleware_1.patientAuthCheck, diaryPageController.getDoctorMarksForPage);
+router.get("/:pageNumber/doctor-marks", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, diaryPageController.getDoctorMarksForPage);
 // Get a single diary page by page number
-router.get("/:pageNumber", authMiddleware_1.patientAuthCheck, diaryPageController.getDiaryPageByNumber);
+router.get("/:pageNumber", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, diaryPageController.getDiaryPageByNumber);
 // Seed diary pages (super admin only)
 router.post("/seed", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryPageController.seedDiaryPages);
 exports.default = router;

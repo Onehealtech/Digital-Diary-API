@@ -25,9 +25,9 @@ export class Diary extends Model {
   @ForeignKey(() => Patient)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  patientId!: string;
+  patientId?: string | null;
 
   @BelongsTo(() => Patient, {
     foreignKey: "patientId",
@@ -39,9 +39,9 @@ export class Diary extends Model {
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  doctorId!: string;
+  doctorId?: string | null;
 
   @BelongsTo(() => AppUser, {
     foreignKey: "doctorId",
@@ -50,11 +50,18 @@ export class Diary extends Model {
   doctor!: AppUser;
 
   // ================== VENDOR ==================
+  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
     allowNull: true,
   })
   vendorId?: string;
+
+  @BelongsTo(() => AppUser, {
+    foreignKey: "vendorId",
+    as: "vendor",
+  })
+  vendor?: AppUser;
 
 
   // ================== SELLER TRACKING ==================
@@ -73,15 +80,13 @@ export class Diary extends Model {
   // ================== STATUS ==================
   @Column({
     type: DataType.ENUM(
-      "pending",
-      "active",
-      "inactive",
-      "rejected",
-      "completed"
+      "PENDING",
+      "APPROVED",
+      "REJECTED"
     ),
-    defaultValue: "pending",
+    defaultValue: "PENDING",
   })
-  status!: "pending" | "active" | "inactive" | "rejected" | "completed";
+  status!: "PENDING" | "APPROVED" | "REJECTED";
 
   @Column(DataType.DATE)
   activationDate?: Date;

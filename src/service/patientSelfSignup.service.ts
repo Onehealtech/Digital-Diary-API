@@ -107,6 +107,7 @@ export async function verifySignupOtp(
         caseType: existing.caseType,
         doctorId: existing.doctorId,
         type: "PATIENT",
+        tokenVersion: (existing as any).tokenVersion ?? 0,
       },
       process.env.JWT_SECRET!,
       { expiresIn: "30d" }
@@ -153,6 +154,7 @@ export async function verifySignupOtp(
       fullName: patient.fullName,
       caseType: patient.caseType,
       type: "PATIENT",
+      tokenVersion: (patient as any).tokenVersion ?? 0,
     },
     process.env.JWT_SECRET!,
     { expiresIn: "30d" }

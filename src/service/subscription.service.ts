@@ -12,6 +12,7 @@ import { GeneratedDiary } from "../models/GeneratedDiary";
 import { DoctorAssignmentRequest } from "../models/DoctorAssignmentRequest";
 import { Order } from "../models/Order";
 import { createPaymentOrder, getActiveGateway } from "./paymentGateway.service";
+import { DIARY_STATUS } from "../utils/diaryStatus";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN CRUD (Super Admin)
@@ -327,13 +328,14 @@ export const activateSubscriptionAfterPayment = async (
         id: generatedDiary.id,
         patientId: order.patientId,
         doctorId,
-        status: "active",
+        status: DIARY_STATUS.APPROVED,
         activationDate: new Date(),
         saleAmount: Number(plan.monthlyPrice),
         commissionAmount: 0,
       },
       { transaction: t }
     );
+    console.info(`[DIARY_CREATE] scope=subscription_checkout patientId=${order.patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
 
     // Update patient with diaryId
     patient.diaryId = generatedDiary.id;
@@ -453,13 +455,14 @@ export const subscribeToPlan = async (params: {
         id: generatedDiary.id,
         patientId,
         doctorId,
-        status: "active",
+        status: DIARY_STATUS.APPROVED,
         activationDate: new Date(),
         saleAmount: Number(plan.monthlyPrice),
         commissionAmount: 0,
       },
       { transaction: t }
     );
+    console.info(`[DIARY_CREATE] scope=subscription_direct patientId=${patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
 
     patient.diaryId = generatedDiary.id;
     await patient.save({ transaction: t });

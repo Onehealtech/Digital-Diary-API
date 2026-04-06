@@ -45,12 +45,18 @@ BUBBLE APPEARANCE:
 - EMPTY = thin PINK outline with WHITE/CLEAN interior. No ink or graphite inside. The interior is crisp and matches the page background.
 
 KEY DETECTION RULE:
-Compare bubble interiors RELATIVE TO EACH OTHER within the same row. The filled bubble — whether pen or pencil — will always have MORE visual material (darker, greyer, hazier) inside it than the empty bubbles in that same row. Even a faint pencil mark makes the bubble interior noticeably different from the clean, crisp empty bubbles nearby.
+A bubble is FILLED only when there is a clear, intentional mark inside it — pen ink, pencil shading, or any deliberate fill that is unmistakably different from a blank circle. The difference must be obvious and unambiguous, not a subtle shade or printing artifact.
 
-Do NOT require dark black ink to count as filled. ANY intentional mark — dark pen, light pencil, grey graphite — counts as a fill if the bubble interior looks different from empty bubbles in the same row.
+BLANK PAGE / UNANSWERED FIELD:
+- If ALL bubbles in a row look essentially the same — clean white circles with only their pink outline — then NONE are filled. Return null for that field.
+- Do NOT use relative comparison to pick a "more filled" bubble when the difference is tiny or caused by lighting, shadows, image compression, or printing variation.
+- The mark must be CLEARLY visible, not just slightly different. When in doubt, return null.
+
+Do NOT require dark black ink to count as filled. A clear pencil mark (visibly grey/shaded interior) also counts — but only when the mark is genuinely obvious, not marginal.
 
 RULES:
-- Submitted forms almost always have answers filled in. All-null is almost always wrong.
+- If a bubble row has NO clearly filled bubble, return null for that field with confidence 0.95 — do NOT guess or hallucinate a value.
+- Only return a non-null value when you can clearly and confidently see an intentional mark inside a bubble.
 - Return ONLY valid JSON. No markdown. No explanation. No code fences. Start with { end with }.`;
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2. PAGE DETECTION
@@ -82,7 +88,7 @@ function buildYesNoPrompt(diaryPage) {
     const example = {};
     questions.forEach(q => {
         example[q.id] = q.type === "yes_no"
-            ? { value: "yes", confidence: 0.95 }
+            ? { value: null, confidence: 0.95 }
             : q.type === "text"
                 ? { value: "", confidence: 0.90 }
                 : { value: null, confidence: 0.95 };
@@ -91,16 +97,20 @@ function buildYesNoPrompt(diaryPage) {
 
 ${questions.length} Yes/No questions. Each row has two bubbles:
 - LEFT = Yes(हाँ)   RIGHT = No(नहीं)
-One is FILLED (dark ink OR grey pencil shading — any mark inside the circle).
-The other is EMPTY (clean pink outline, white interior, no marks).
-Compare both bubbles: the one with MORE visual material inside is the answer.
+- A FILLED bubble has a visible mark inside it (pen ink, pencil shading, grey fill).
+- An EMPTY bubble has a clean white interior with only a pink outline — no marks at all.
+
+BLANK PAGE RULE: If BOTH bubbles in a row are empty (no marks in either), return null with confidence 0.95. Do NOT pick a side — null means the question was not answered.
 
 FIELDS:
 ${fieldList}
 
-Return this EXACT JSON (replace example values with actual readings):
+Return this EXACT JSON structure:
 ${JSON.stringify(example, null, 2)}
 
+- If a bubble IS filled, replace null with "yes" or "no" based on which side is filled.
+- If NEITHER bubble is filled, keep value as null with confidence 0.95.
+- Never copy example values — only return what you actually see in the image.
 JSON only. No markdown. No explanation.`;
 }
 // ─────────────────────── SCHEDULE PAGES ──────────────────────
@@ -124,7 +134,12 @@ function buildSchedulePrompt(diaryPage) {
     for (const yn of yesNoFields) {
         sections += `
 ═══ BOTTOM OF PAGE ═══
-"${yn.id}" — "${yn.text}": LEFT bubble = Yes(हाँ), RIGHT = No(नहीं). Which is dark?
+"${yn.id}" — "${yn.text}":
+  [○ Yes(हाँ)]  [○ No(नहीं)]
+  If the LEFT bubble has a clear mark inside it → value = "yes"
+  If the RIGHT bubble has a clear mark inside it → value = "no"
+  If NEITHER bubble has any mark → value = null, confidence = 0.95
+  Do NOT guess — only return "yes" or "no" when you clearly see a filled bubble.
 `;
     }
     // Text fields
@@ -134,74 +149,66 @@ function buildSchedulePrompt(diaryPage) {
     // ── Example output — UNIFORM { value, confidence } for ALL fields ──
     const example = {};
     if (dateFields[0]?.id)
-        example[dateFields[0].id] = { value: "20/Sep/2028", confidence: 0.92 };
+        example[dateFields[0].id] = { value: null, confidence: 0.95 };
     if (statusFields[0]?.id)
-        example[statusFields[0].id] = { value: "Completed", confidence: 0.93 };
+        example[statusFields[0].id] = { value: null, confidence: 0.95 };
     if (hasSecond) {
         if (dateFields[1]?.id)
-            example[dateFields[1].id] = { value: "29/Jun/2028", confidence: 0.90 };
+            example[dateFields[1].id] = { value: null, confidence: 0.95 };
         if (statusFields[1]?.id)
-            example[statusFields[1].id] = { value: "Missed", confidence: 0.91 };
+            example[statusFields[1].id] = { value: null, confidence: 0.95 };
     }
     for (const yn of yesNoFields)
-        example[yn.id] = { value: "no", confidence: 0.95 };
+        example[yn.id] = { value: null, confidence: 0.95 };
     for (const tf of textFields)
         example[tf.id] = { value: "", confidence: 0.90 };
     return `Page ${pageNum}: "${diaryPage.title}"
 
-This page has ${hasSecond ? "TWO appointment sections" : "ONE appointment section"}${yesNoFields.length ? " and a Yes/No question" : ""}.
+This is a CANTrac diary schedule page. Each row on the page has a set of options. The user fills in one option per row by marking the circle (bubble) next to their chosen option.
 
-═══ DATE READING RULE ═══
-Every bubble row is laid out as:  ○ Label  ○ Label  ○ Label
-The bubble (○) is BEFORE its label. To read a value:
-  1. Find the ONE bubble that is filled (dark ink OR grey pencil shading — any mark inside the circle)
-  2. Compare all bubbles in the row — the filled one has MORE visual material inside than the clean empty ones
-  3. Read the text printed IMMEDIATELY TO ITS RIGHT
-  4. That text is the value
+Your job: For each field below, look at the corresponding row on the page and identify which option the user has marked. A marked option has a visibly filled circle (dark ink or pencil shading). An unmarked option has an empty circle with a clean white interior.
 
-Example: ... ○ 19  ● 20  ○ 21 ...  (● = filled)
-→ The filled bubble is before "20" → value = 20
+If no option in a row is clearly marked → value = null, confidence = 0.95.
 
 ${sections}
 
-═══ REQUIRED OUTPUT ═══
+OUTPUT FORMAT — every field must be:
+{ "value": <selected option as a string, or null if nothing marked>, "confidence": <0.0–1.0> }
 
-CRITICAL: Every field MUST use this format: { "value": <answer>, "confidence": <score> }
-- For dates: "value" must be a string in "DD/Mon/YYYY" format, e.g. "22/Sep/2027"
-- For status: "value" must be one of "Scheduled", "Completed", "Missed", "Cancelled"
-- For yes/no: "value" must be "yes" or "no"
+- Date: combine day + month + year as "DD/Mon/YYYY" (e.g. "14/Apr/2027"). If any of the three rows (day/month/year) has no marked option → value = null.
+- Status: one of "Scheduled", "Completed", "Missed", "Cancelled", or null.
+- Yes/No: "yes", "no", or null.
 
-Return this EXACT JSON structure:
+Return ONLY this JSON (replace null with the actual selected value where something is clearly marked):
 ${JSON.stringify(example, null, 2)}
 
-Replace ALL example values with your actual readings from the image.
-JSON only. No markdown fences. No explanation. Start with { end with }.`;
+JSON only. No markdown. No explanation. Start with { end with }.`;
 }
 function buildAppointmentSection(sectionTitle, dateId, statusId) {
     return `
-═══ ${sectionTitle} ═══
+─── ${sectionTitle} ───
+${dateId ? `
+"${dateId}" — Look inside this section's box for three rows:
 
-${dateId ? `"${dateId}" — Read the date from three rows:` : ""}
+  DAY row (labeled "DD: दिन / Day"):
+    Options are the numbers 01 through 31 spread across two lines.
+    Which day number has its circle marked by the user?
 
-DD ROW ("DD: दिन"):
-  Two lines of bubbles:
-  Line 1: ○ 01  ○ 02  ○ 03  ○ 04  ○ 05  ○ 06  ○ 07  ○ 08  ○ 09  ○ 10  ○ 11  ○ 12  ○ 13  ○ 14  ○ 15  ○ 16
-  Line 2: ○ 17  ○ 18  ○ 19  ○ 20  ○ 21  ○ 22  ○ 23  ○ 24  ○ 25  ○ 26  ○ 27  ○ 28  ○ 29  ○ 30  ○ 31
-  Find the ONE dark bubble → number to its RIGHT = day
+  MONTH row (labeled "MM: माह / Month"):
+    Options are: Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec
+    Which month name has its circle marked by the user?
 
-MM ROW ("MM: माह"):
-  ○ Jan  ○ Feb  ○ Mar  ○ Apr  ○ May  ○ Jun  ○ Jul  ○ Aug  ○ Sep  ○ Oct  ○ Nov  ○ Dec
-  Find the ONE dark bubble → month name to its RIGHT = month (use 3-letter English: Jan, Feb, Mar...)
+  YEAR row (labeled "YY: साल / Year"):
+    Options are: 2026  2027  2028
+    Which year has its circle marked by the user?
 
-YY ROW ("YY: साल"):
-  ○ 2026  ○ 2027  ○ 2028
-  Find the ONE dark bubble → year to its RIGHT = year
-
-Combine as "DD/Mon/YYYY". Example: day=22, month=Sep, year=2027 → "22/Sep/2027"
-
-${statusId ? `"${statusId}" — Status row ("Status/स्थिति"):
-  ○ Scheduled  ○ Completed  ○ Missed  ○ Cancelled
-  Find the dark bubble → status word to its RIGHT` : ""}
+  Combine the three answers as "DD/Mon/YYYY" → e.g. "02/Apr/2026".
+  If none of the options in a row are marked → value = null.` : ""}
+${statusId ? `
+"${statusId}" — Look inside this same section's box for the row labeled "Status / स्थिति":
+    Options are: Scheduled  Completed  Missed  Cancelled
+    Which option has its circle marked by the user? → that is the status.
+    If none are marked → value = null.` : ""}
 `;
 }
 // ═══════════════════════════════════════════════════════════════════════════════

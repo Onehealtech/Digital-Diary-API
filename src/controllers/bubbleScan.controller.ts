@@ -182,7 +182,8 @@ export const getBubbleScanHistory = async (
         );
     } catch (error: any) {
         console.error("Bubble scan history error:", error);
-        sendError(res, 500, error.message || "Failed to get scan history");
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to get scan history");
     }
 };
 
@@ -218,7 +219,11 @@ export const getBubbleScanById = async (
     res: Response
 ): Promise<void> => {
     try {
-        const result = await bubbleScanService.getScanById(req.params.id as string);
+        const result = await bubbleScanService.getScanById(
+            req.params.id as string,
+            req.user?.id,
+            req.user?.role
+        );
         sendResponse(res, 200, "Bubble scan result retrieved", result);
     } catch (error: any) {
         const status = error instanceof AppError ? error.statusCode : 500;
@@ -305,6 +310,7 @@ export const reviewBubbleScan = async (
         const result = await bubbleScanService.reviewBubbleScan(
             req.params.id as string,
             doctorId,
+            req.user?.role || "DOCTOR",
             { doctorNotes, flagged, overrides, questionMarks }
         );
 
@@ -380,7 +386,8 @@ export const getAllBubbleScans = async (
         );
     } catch (error: any) {
         console.error("Get all bubble scans error:", error);
-        sendError(res, 500, error.message || "Failed to get bubble scans");
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to get bubble scans");
     }
 };
 
@@ -646,6 +653,7 @@ export const doctorFillReport = async (
         const result = await bubbleScanService.doctorFillReport(
             patientId,
             doctorId,
+            req.user?.role || "DOCTOR",
             pageNumber,
             questionMarks,
             doctorNotes,

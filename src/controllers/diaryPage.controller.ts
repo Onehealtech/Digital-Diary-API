@@ -3,6 +3,7 @@ import { AuthenticatedRequest, AuthRequest } from "../middleware/authMiddleware"
 import { diaryPageService } from "../service/diaryPage.service";
 import { sendResponse, sendError } from "../utils/response";
 import { getDiaryTypeForCaseType } from "../utils/constants";
+import { AppError } from "../utils/AppError";
 
 /**
  * GET /api/v1/diary-pages
@@ -86,7 +87,8 @@ export const getDoctorMarksForPage = async (
         const marks = await bubbleScanService.getDoctorMarksForPage(patientId, pageNumber);
         sendResponse(res, 200, "Doctor marks retrieved successfully", { questionMarks: marks });
     } catch (error: any) {
-        sendError(res, 500, error.message || "Failed to get doctor marks");
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to get doctor marks");
     }
 };
 

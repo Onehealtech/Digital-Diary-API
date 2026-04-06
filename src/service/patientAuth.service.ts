@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { Patient } from "../models/Patient";
+import { Diary } from "../models/Diary";
 import { generateOTP, verifyOTP } from "./otpService";
 import { twilioService } from "./twilio.service";
 
@@ -13,6 +14,7 @@ export const patientLogin = async (
     // Check if sticker exists
     const patient = await Patient.findOne({
         where: { diaryId },
+        include: [{ model: Diary, as: "diary", attributes: ["status"] }],
     });
 
     if (!patient) {
@@ -21,6 +23,14 @@ export const patientLogin = async (
 
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
+    }
+
+    const diary = (patient as any).diary as Diary | undefined;
+    if (diary?.status === "PENDING") {
+        throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
+    }
+    if (diary?.status === "REJECTED") {
+        throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
 
     // Generate OTP locally and send via Twilio SMS
@@ -54,7 +64,7 @@ export const verifyPatientOTP = async (
     // Get patient details
     const patient = await Patient.findOne({
         where: { diaryId },
-        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone"],
+        attributes: ["id", "diaryId", "fullName", "age", "status", "caseType", "doctorId", "phone", "tokenVersion"],
     });
 
     if (!patient) {
@@ -63,6 +73,14 @@ export const verifyPatientOTP = async (
 
     if (patient.status === "INACTIVE") {
         throw new Error("Your account has been deactivated. Please contact your doctor.");
+    }
+
+    const diary = (patient as any).diary as Diary | undefined;
+    if (diary?.status === "PENDING") {
+        throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
+    }
+    if (diary?.status === "REJECTED") {
+        throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
 
     // Verify OTP from local store (keyed by diaryId)
@@ -80,6 +98,7 @@ export const verifyPatientOTP = async (
             fullName: patient.fullName,
             caseType: patient.caseType,
             type: "PATIENT",
+            tokenVersion: (patient as any).tokenVersion ?? 0,
         },
         process.env.JWT_SECRET!,
         { expiresIn: "30d" }

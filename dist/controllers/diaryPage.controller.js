@@ -27,6 +27,7 @@ exports.seedDiaryPages = exports.getDoctorMarksForPage = exports.getAllDiaryPage
 const diaryPage_service_1 = require("../service/diaryPage.service");
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
+const AppError_1 = require("../utils/AppError");
 /**
  * GET /api/v1/diary-pages
  * Get all diary pages with questions (for app to render manual entry)
@@ -101,7 +102,8 @@ const getDoctorMarksForPage = async (req, res) => {
         (0, response_1.sendResponse)(res, 200, "Doctor marks retrieved successfully", { questionMarks: marks });
     }
     catch (error) {
-        (0, response_1.sendError)(res, 500, error.message || "Failed to get doctor marks");
+        const status = error instanceof AppError_1.AppError ? error.statusCode : 500;
+        (0, response_1.sendError)(res, status, error.message || "Failed to get doctor marks");
     }
 };
 exports.getDoctorMarksForPage = getDoctorMarksForPage;

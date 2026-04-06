@@ -11,14 +11,13 @@ const Patient_1 = require("../models/Patient");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
 const sequelize_1 = require("sequelize");
+const diaryStatus_1 = require("../utils/diaryStatus");
 class DiarySaleService {
     /**
      * Sell a diary — role-aware logic for all 4 roles.
      *
-     * - SUPER_ADMIN: any available diary, auto-approved
-     * - VENDOR: diary assigned to them, pending approval
-     * - DOCTOR: diary assigned to them, pending approval
-     * - ASSISTANT: diary assigned to parent doctor, pending approval (requires sellDiary permission)
+     * All seller roles create diary entries in PENDING state.
+     * Super Admin approval transitions the diary to APPROVED.
      */
     async sellDiary(params) {
         const { diaryId, sellerId, sellerRole } = params;
@@ -38,8 +37,6 @@ class DiarySaleService {
                 throw new Error("Diary already sold");
             }
             // 2️⃣ Status Logic
-            const diaryStatus = sellerRole === "SUPER_ADMIN" ? "active" : "pending";
-            const activationDate = sellerRole === "SUPER_ADMIN" ? new Date() : null;
             const vendorId = sellerRole === "VENDOR" ? sellerId : null;
             // 3️⃣ Create Patient
             const patient = await Patient_1.Patient.create({
@@ -64,10 +61,10 @@ class DiarySaleService {
                 vendorId,
                 soldBy: sellerId,
                 soldByRole: sellerRole,
-                status: diaryStatus,
-                activationDate: sellerRole === "SUPER_ADMIN" ? new Date() : null,
-                approvedBy: sellerRole === "SUPER_ADMIN" ? sellerId : null,
-                approvedAt: sellerRole === "SUPER_ADMIN" ? new Date() : null,
+                status: diaryStatus_1.DIARY_STATUS.PENDING,
+                activationDate: null,
+                approvedBy: null,
+                approvedAt: null,
                 saleAmount: params.paymentAmount || 0,
                 commissionAmount: 0,
                 commissionPaid: false,
@@ -78,13 +75,11 @@ class DiarySaleService {
             generatedDiary.soldDate = new Date();
             await generatedDiary.save({ transaction });
             await transaction.commit();
-            // 🔔 Notify Super Admin if approval needed
-            if (sellerRole !== "SUPER_ADMIN") {
-                this.notifySuperAdminsOfSale(sellerId, sellerRole, diaryId).catch((err) => {
-                    const message = err instanceof Error ? err.message : "Unknown error";
-                    console.error("Notification error:", message);
-                });
-            }
+            console.info(`[DIARY_CREATE] sellerRole=${sellerRole} sellerId=${sellerId} diaryId=${diaryId} status=${diary.status}`);
+            this.notifySuperAdminsOfSale(sellerId, sellerRole, diaryId).catch((err) => {
+                const message = err instanceof Error ? err.message : "Unknown error";
+                console.error("Notification error:", message);
+            });
             return {
                 patient: {
                     id: patient.id,
@@ -221,7 +216,6 @@ class DiarySaleService {
         const page = params.page || 1;
         const limit = params.limit || 20;
         const offset = (page - 1) * limit;
-        console.log(userId, role, "aaa");
         const where = {};
         if (role === "SUPER_ADMIN") {
             // SuperAdmin sees only their own sales (soldBy = self)
@@ -239,7 +233,7 @@ class DiarySaleService {
             where.soldByRole = "ASSISTANT";
         }
         if (params.status) {
-            where.status = params.status;
+            where.status = (0, diaryStatus_1.normalizeDiaryStatus)(params.status);
         }
         const diaries = await Diary_1.Diary.findAndCountAll({
             where,
@@ -252,8 +246,10 @@ class DiarySaleService {
             offset,
             order: [["createdAt", "DESC"]],
         });
+        console.info(`[DIARY_FETCH] scope=sales role=${role} userId=${userId} total=${diaries.count}`);
+        const rows = diaries.rows.map((diary) => diary.toJSON());
         return {
-            data: diaries.rows,
+            data: rows,
             total: diaries.count,
             page,
             limit,

@@ -83,7 +83,7 @@ const verifyStaffOTP = async (email, otp) => {
     // Get user to retrieve phone for multi-key verification
     const user = await Appuser_1.AppUser.findOne({
         where: { email: email.toLowerCase() },
-        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus", "isActive", "deletedAt"],
+        attributes: ["id", "fullName", "email", "phone", "role", "parentId", "isEmailVerified", "assistantStatus", "isActive", "deletedAt", "tokenVersion"],
         paranoid: false,
     });
     if (!user) {
@@ -126,6 +126,7 @@ const verifyStaffOTP = async (email, otp) => {
         role: user.role,
         fullName: user.fullName,
         parentId: user.parentId,
+        tokenVersion: user.tokenVersion ?? 0,
     }, process.env.JWT_SECRET, { expiresIn: "7d" });
     return {
         token,
