@@ -35,12 +35,12 @@ export const uploadVisionScan = async (
             return;
         }
 
-        sendResponse(
-            res,
-            202,
-            "Scan accepted and queued for processing",
-            result
-        );
+        const scanCount = (result as any).scanCount || 1;
+        const message = scanCount > 1
+            ? `Page re-scanned successfully (scan #${scanCount})`
+            : "Scan processed successfully";
+
+        sendResponse(res, 200, message, result);
     } catch (error: any) {
         console.error("Vision scan upload error:", error);
         const status = error instanceof AppError ? error.statusCode : 500;

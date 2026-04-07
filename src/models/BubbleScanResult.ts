@@ -118,6 +118,13 @@ export class BubbleScanResult extends Model {
     scannedAt!: Date;
 
     @Column({
+        type: DataType.INTEGER,
+        defaultValue: 1,
+        allowNull: false,
+    })
+    scanCount!: number;
+
+    @Column({
         type: DataType.BOOLEAN,
         defaultValue: false,
     })

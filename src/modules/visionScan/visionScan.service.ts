@@ -1,4 +1,6 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import axios from "axios";
+import FormData from "form-data";
 import { BubbleScanResult } from "../../models/BubbleScanResult";
 import { getDiaryTypeForCaseType } from "../../utils/constants";
 import { AppError } from "../../utils/AppError";
@@ -139,7 +141,10 @@ class VisionScanService {
     }
 
     /**
-     * Process scan: detect page, validate, create record, run extraction, return completed result.
+     * Process scan: detect page, validate, upsert record, run extraction, return completed result.
+     * - If the same page was scanned before, updates the existing record and increments scanCount.
+     * - Replaces null answers with "not answered" in the final results.
+     * - Returns an error immediately if the page/QR cannot be detected.
      */
     async processScan(
         patientId: string,
@@ -154,9 +159,23 @@ class VisionScanService {
         if (pageNumber) {
             detectedPageNumber = pageNumber;
         } else {
+            // Page detection — return error immediately if image is not a valid diary page
             const detection = await this.detectPageNumber(base64, mimeType);
-            if (!detection.valid) return detection;
+            if (!detection.valid) {
+                return {
+                    valid: false,
+                    reason: detection.reason || "Unable to detect page number or QR code. Please take a clear photo of the diary page.",
+                };
+            }
             detectedPageNumber = detection.pageNumber;
+        }
+
+        // Validate detected page number is reasonable
+        if (!detectedPageNumber || detectedPageNumber < 1 || detectedPageNumber > 50) {
+            return {
+                valid: false,
+                reason: `Invalid page number detected (${detectedPageNumber}). Please ensure the page number and QR code are clearly visible.`,
+            };
         }
 
         // Run DB lookup and S3 upload in parallel
@@ -171,7 +190,8 @@ class VisionScanService {
             );
         }
 
-        const scanRecord = await visionScanRepository.createScanRecord({
+        // Upsert: update existing record if same page was scanned before, else create new
+        const { record: scanRecord, isRescan } = await visionScanRepository.upsertScanRecord({
             patientId,
             pageNumber: detectedPageNumber,
             diaryPageId: diaryPage.id,
@@ -180,7 +200,10 @@ class VisionScanService {
             imageUrl: s3Url,
         });
 
-        // Try queue-based extraction; fall back to inline if queue unavailable
+        if (isRescan) {
+            console.log(`[VisionScan] Re-scan detected for patient ${patientId}, page ${detectedPageNumber} (scan #${scanRecord.scanCount})`);
+        }
+
         const jobData = {
             scanRecordId: scanRecord.id,
             base64,
@@ -190,29 +213,21 @@ class VisionScanService {
             patientId,
         };
 
-        let queued = false;
+        // Run extraction synchronously so the response includes scanResults
         try {
-            const { visionScanQueue } = require("./visionScan.queue");
-            await visionScanQueue.add("extract", jobData);
-            queued = true;
-        } catch {
-            // Queue unavailable — process inline in background
+            await this.processExtraction(jobData);
+        } catch (err: any) {
+            console.error("[VisionScan] Extraction failed:", err.message);
         }
 
-        if (!queued) {
-            // Fire-and-forget inline extraction
-            this.processExtraction(jobData).catch((err) =>
-                console.error("[VisionScan] Inline extraction failed:", err.message)
-            );
-        }
-
-        // Reload the scan record to get the updated data after extraction
+        // Reload to get the completed data (with scanResults populated)
         const completedRecord = await visionScanRepository.findScanById(scanRecord.id);
         return completedRecord || scanRecord;
     }
 
     /**
-     * Background worker: runs the actual AI extraction and updates the scan record.
+     * Background worker: runs extraction via Python OMR microservice (OpenCV + Gemini Flash fallback).
+     * Falls back to legacy full-AI extraction if the Python service is unavailable.
      */
     async processExtraction(data: {
         scanRecordId: string;
@@ -241,19 +256,56 @@ class VisionScanService {
         }
 
         try {
-            const prompt = buildExtractionPrompt(diaryPage);
             const startTime = Date.now();
-            const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+            let enrichedResults: Record<string, EnrichedResult>;
+            let rawConfidenceScores: Record<string, number> = {};
+            let lowConfidenceFields: string[] = [];
+            let modelUsed = "hybrid-omr";
+
+            // Try Python OMR microservice first
+            try {
+                const omrResult = await this.callOMRService(data.base64, data.mimeType, diaryPage);
+                enrichedResults = omrResult.extraction;
+                rawConfidenceScores = {};
+                lowConfidenceFields = [];
+
+                for (const [qid, result] of Object.entries(enrichedResults)) {
+                    rawConfidenceScores[qid] = result.confidence;
+                    if (result.confidence < VISION_SCAN_CONFIG.LOW_CONFIDENCE_THRESHOLD) {
+                        lowConfidenceFields.push(`${qid}: ${result.questionText} (${result.confidence})`);
+                    }
+                }
+
+                modelUsed = `hybrid-omr+${VISION_SCAN_CONFIG.MODEL}`;
+                console.log(`[VisionScan] OMR service: ${omrResult.metadata.omrAnswered} OMR + ${omrResult.metadata.aiAnswered} AI of ${omrResult.metadata.totalFields} fields`);
+            } catch (omrError: any) {
+                // Python service unavailable or failed — fall back to legacy full-AI extraction
+                console.warn(`[VisionScan] OMR service failed: ${omrError.message}${omrError.cause ? ` | cause: ${omrError.cause}` : ""}`);
+                console.warn(`[VisionScan] Falling back to full AI extraction`);
+                const prompt = buildExtractionPrompt(diaryPage);
+                const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+
+                const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+                enrichedResults = built.enrichedResults;
+                rawConfidenceScores = built.rawConfidenceScores;
+                lowConfidenceFields = built.lowConfidenceFields;
+                modelUsed = VISION_SCAN_CONFIG.MODEL;
+            }
+
             const processingTimeMs = Date.now() - startTime;
 
-            const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
-                this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+            // Replace null answers with "not answered"
+            for (const [qid, result] of Object.entries(enrichedResults)) {
+                if (result.answer === null || result.answer === undefined) {
+                    enrichedResults[qid] = { ...result, answer: "not answered" };
+                }
+            }
 
             const metadata: ProcessingMetadata = {
-                model: VISION_SCAN_CONFIG.MODEL,
-                promptTokens: aiResult.usage.prompt_tokens,
-                responseTokens: aiResult.usage.completion_tokens,
-                totalTokens: aiResult.usage.total_tokens,
+                model: modelUsed,
+                promptTokens: 0,
+                responseTokens: 0,
+                totalTokens: 0,
                 processingTimeMs,
                 lowConfidenceFields,
             };
@@ -280,6 +332,46 @@ class VisionScanService {
             );
             throw error; // Re-throw so BullMQ can retry
         }
+    }
+
+    /**
+     * Call the Python OMR microservice (OpenCV bubble detection + Gemini Flash AI fallback).
+     */
+    private async callOMRService(
+        base64: string,
+        mimeType: string,
+        diaryPage: { title: string; questions: any[] }
+    ): Promise<{
+        extraction: Record<string, EnrichedResult>;
+        metadata: { totalFields: number; omrAnswered: number; aiAnswered: number; processingTimeMs: number };
+    }> {
+        const imageBuffer = Buffer.from(base64, "base64");
+        const ext = mimeType.includes("png") ? "png" : "jpg";
+
+        const form = new FormData();
+        form.append("image", imageBuffer, { filename: `page.${ext}`, contentType: mimeType });
+        form.append("questions", JSON.stringify(diaryPage.questions));
+        form.append("page_title", diaryPage.title || "");
+
+        const url = `${VISION_SCAN_CONFIG.VISION_PROCESSOR_URL}/process-scan`;
+
+        const response = await axios.post(url, form, {
+            headers: form.getHeaders(),
+            timeout: 300_000, // 5 min — dual model extraction can take time
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        const result = response.data;
+
+        if (!result.success) {
+            throw new AppError(502, `OMR processing failed: ${result.error || result.message}`);
+        }
+
+        return {
+            extraction: result.extraction,
+            metadata: result.metadata,
+        };
     }
 
     async manualSubmit(
@@ -310,7 +402,7 @@ class VisionScanService {
         }
         console.log(enrichedResults,"enrichedResults");
         
-        const record = await visionScanRepository.createScanRecord({
+        const { record } = await visionScanRepository.upsertScanRecord({
             patientId,
             pageNumber,
             diaryPageId: diaryPage.id,

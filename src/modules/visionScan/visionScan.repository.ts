@@ -23,7 +23,25 @@ export class VisionScanRepository {
         });
     }
 
-    async createScanRecord(data: {
+    /**
+     * Find an existing scan for the same patient + page (latest one).
+     */
+    async findExistingScan(
+        patientId: string,
+        pageNumber: number
+    ): Promise<BubbleScanResult | null> {
+        return BubbleScanResult.findOne({
+            where: { patientId, pageNumber },
+            order: [["scannedAt", "DESC"]],
+        });
+    }
+
+    /**
+     * Create or update a scan record.
+     * If a record already exists for this patient + page, update it and increment scanCount.
+     * Otherwise create a new record.
+     */
+    async upsertScanRecord(data: {
         patientId: string;
         pageNumber: number;
         diaryPageId: string;
@@ -31,8 +49,27 @@ export class VisionScanRepository {
         processingStatus: ProcessingStatus;
         imageUrl?: string;
         scanResults?: Record<string, EnrichedResult>;
-    }): Promise<BubbleScanResult> {
-        return BubbleScanResult.create({
+    }): Promise<{ record: BubbleScanResult; isRescan: boolean }> {
+        const existing = await this.findExistingScan(data.patientId, data.pageNumber);
+
+        if (existing) {
+            await existing.update({
+                imageUrl: data.imageUrl,
+                submissionType: data.submissionType,
+                processingStatus: data.processingStatus,
+                scanResults: data.scanResults || null,
+                rawConfidenceScores: null,
+                processingMetadata: null,
+                errorMessage: null,
+                flagged: false,
+                doctorReviewed: false,
+                scannedAt: new Date(),
+                scanCount: existing.scanCount + 1,
+            });
+            return { record: existing, isRescan: true };
+        }
+
+        const record = await BubbleScanResult.create({
             patientId: data.patientId,
             pageId: `page-${data.pageNumber}`,
             pageNumber: data.pageNumber,
@@ -42,7 +79,9 @@ export class VisionScanRepository {
             processingStatus: data.processingStatus,
             scanResults: data.scanResults,
             scannedAt: new Date(),
+            scanCount: 1,
         });
+        return { record, isRescan: false };
     }
 
     async updateScanCompleted(
