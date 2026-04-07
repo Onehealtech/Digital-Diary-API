@@ -528,15 +528,8 @@ class StaffService {
             const patient = await Patient_1.Patient.findByPk(userId);
             if (patient) {
                 const newStatus = patient.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
-                // JWT is stateless and cannot be revoked directly.
-                // Incrementing tokenVersion invalidates all previously issued patient tokens.
-                const shouldRotateTokenVersion = newStatus === "INACTIVE";
-                await patient.update({
-                    status: newStatus,
-                    ...(shouldRotateTokenVersion
-                        ? { tokenVersion: (patient.tokenVersion ?? 0) + 1 }
-                        : {}),
-                });
+                // Don't bump tokenVersion — patient stays logged in regardless of status.
+                await patient.update({ status: newStatus });
                 try {
                     await AuditLog_1.AuditLog.create({
                         userId: toggledByUserId,

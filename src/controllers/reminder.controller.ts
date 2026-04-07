@@ -81,7 +81,7 @@ export const createReminder = async (
         });
         
         const isHindi = patient.language === "hi";
-        const formattedDate = new Date(reminderDate).toLocaleString();
+        const formattedDate = new Date(reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
         const enAlertMessage = `You have a ${type} reminder scheduled on ${formattedDate}.`;
         const enSmsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${formattedDate}\n${message}`;
 
@@ -170,6 +170,11 @@ export const getPatientReminders = async (
                 "type",
                 "status",
                 "createdAt",
+                "newReminderDate",
+                "newReminderMessage",
+                "reminderCount",
+                "rejectReason",
+                "attachmentUrl",
             ],
         });
 
@@ -442,7 +447,7 @@ export const respondToReminder = async (
                         creator.fullName,
                         reminder.patient?.fullName || "Unknown",
                         reminder.type,
-                        new Date(reminder.reminderDate).toLocaleString(),
+                        new Date(reminder.reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }),
                         rejectReason || "No reason given"
                     ).catch(err =>
                         console.error("Rejection Email Error:", err)
@@ -556,7 +561,7 @@ export const resendReminder = async (
         // Create in-app notification
         if (reminder.patient) {
             const isHindi = reminder.patient.language === "hi";
-            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString();
+            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
             const doctorMessage = reminder.newReminderMessage || reminder.message;
 
             const enAlertMessage = `Your ${reminder.type} appointment has been rescheduled to ${rescheduledDate}.`;

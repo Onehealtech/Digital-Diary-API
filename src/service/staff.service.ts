@@ -583,15 +583,8 @@ async getVendorDoctors(
       if (patient) {
         const newStatus = patient.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
 
-        // JWT is stateless and cannot be revoked directly.
-        // Incrementing tokenVersion invalidates all previously issued patient tokens.
-        const shouldRotateTokenVersion = newStatus === "INACTIVE";
-        await patient.update({
-          status: newStatus,
-          ...(shouldRotateTokenVersion
-            ? { tokenVersion: ((patient as any).tokenVersion ?? 0) + 1 }
-            : {}),
-        });
+        // Don't bump tokenVersion — patient stays logged in regardless of status.
+        await patient.update({ status: newStatus });
         try {
           await AuditLog.create({
             userId: toggledByUserId,

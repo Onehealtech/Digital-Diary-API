@@ -72,7 +72,7 @@ const createReminder = async (req, res) => {
             attachmentUrl,
         });
         const isHindi = patient.language === "hi";
-        const formattedDate = new Date(reminderDate).toLocaleString();
+        const formattedDate = new Date(reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
         const enAlertMessage = `You have a ${type} reminder scheduled on ${formattedDate}.`;
         const enSmsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${formattedDate}\n${message}`;
         let alertTitle = "New Appointment Reminder";
@@ -151,6 +151,11 @@ const getPatientReminders = async (req, res) => {
                 "type",
                 "status",
                 "createdAt",
+                "newReminderDate",
+                "newReminderMessage",
+                "reminderCount",
+                "rejectReason",
+                "attachmentUrl",
             ],
         });
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
@@ -378,7 +383,7 @@ const respondToReminder = async (req, res) => {
                 });
                 // Email Notification
                 if (creator.email) {
-                    await (0, emailService_1.sendAppointmentRejectionEmail)(creator.email, creator.fullName, reminder.patient?.fullName || "Unknown", reminder.type, new Date(reminder.reminderDate).toLocaleString(), rejectReason || "No reason given").catch(err => console.error("Rejection Email Error:", err));
+                    await (0, emailService_1.sendAppointmentRejectionEmail)(creator.email, creator.fullName, reminder.patient?.fullName || "Unknown", reminder.type, new Date(reminder.reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }), rejectReason || "No reason given").catch(err => console.error("Rejection Email Error:", err));
                 }
             }
         }
@@ -473,7 +478,7 @@ const resendReminder = async (req, res) => {
         // Create in-app notification
         if (reminder.patient) {
             const isHindi = reminder.patient.language === "hi";
-            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString();
+            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
             const doctorMessage = reminder.newReminderMessage || reminder.message;
             const enAlertMessage = `Your ${reminder.type} appointment has been rescheduled to ${rescheduledDate}.`;
             const enSmsContent = `OneHeal Appointment Update\n\nType: ${reminder.type}\nNew Date: ${rescheduledDate}\n\n${doctorMessage}`;

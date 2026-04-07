@@ -21,9 +21,8 @@ export const patientLogin = async (
         throw new Error("Invalid sticker ID. Please check your diary.");
     }
 
-    if (patient.status === "INACTIVE") {
-        throw new Error("Your account has been deactivated. Please contact your doctor.");
-    }
+    // Allow login regardless of patient status (INACTIVE / ON_HOLD / ACTIVE).
+    // The app will show status to the patient after login.
 
     const diary = (patient as any).diary as Diary | undefined;
     if (diary?.status === "pending") {
@@ -71,17 +70,7 @@ export const verifyPatientOTP = async (
         throw new Error("Patient not found");
     }
 
-    if (patient.status === "INACTIVE") {
-        throw new Error("Your account has been deactivated. Please contact your doctor.");
-    }
-
-    const diary = (patient as any).diary as Diary | undefined;
-    if (diary?.status === "pending") {
-        throw new Error("Your diary is not yet approved by the admin. Please wait for approval.");
-    }
-    if (diary?.status === "rejected") {
-        throw new Error("Your diary has been rejected. Please contact your doctor.");
-    }
+    // Allow login regardless of patient status — app shows status after login.
 
     // Verify OTP from local store (keyed by diaryId)
     const isValid = verifyOTP(diaryId, otp);

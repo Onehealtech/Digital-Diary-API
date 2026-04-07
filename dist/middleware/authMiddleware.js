@@ -113,10 +113,12 @@ const patientAuthCheck = async (req, res, next) => {
         const patient = await Patient_1.Patient.findByPk(decoded.id, {
             attributes: ['id', 'status', 'language', 'tokenVersion'],
         });
-        if (!patient || patient.status === 'INACTIVE') {
+        if (!patient) {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, ACCOUNT_DEACTIVATED_MESSAGE);
             return;
         }
+        // Allow INACTIVE / ON_HOLD patients to login and view data.
+        // Individual endpoints can check req.user.patientStatus to restrict writes.
         // JWT cannot be revoked directly because it is stateless.
         // tokenVersion mismatch is used to invalidate old sessions immediately.
         const decodedTokenVersion = Number.isInteger(decoded.tokenVersion)
@@ -129,7 +131,7 @@ const patientAuthCheck = async (req, res, next) => {
             (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.UNAUTHORIZED, SESSION_EXPIRED_MESSAGE);
             return;
         }
-        // Attach patient info to request (including language for translation middleware)
+        // Attach patient info to request (including language and status)
         req.user = {
             id: decoded.id,
             diaryId: decoded.diaryId,
@@ -138,6 +140,7 @@ const patientAuthCheck = async (req, res, next) => {
             type: decoded.type,
             language: patient.language || 'en',
             tokenVersion: patient.tokenVersion ?? 0,
+            patientStatus: patient.status,
         };
         next();
     }

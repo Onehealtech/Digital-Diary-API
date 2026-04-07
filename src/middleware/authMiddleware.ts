@@ -155,10 +155,13 @@ export const patientAuthCheck = async (
       attributes: ['id', 'status', 'language', 'tokenVersion'],
     });
 
-    if (!patient || patient.status === 'INACTIVE') {
+    if (!patient) {
       responseMiddleware(res, HTTP_STATUS.UNAUTHORIZED, ACCOUNT_DEACTIVATED_MESSAGE);
       return;
     }
+
+    // Allow INACTIVE / ON_HOLD patients to login and view data.
+    // Individual endpoints can check req.user.patientStatus to restrict writes.
 
     // JWT cannot be revoked directly because it is stateless.
     // tokenVersion mismatch is used to invalidate old sessions immediately.
@@ -174,7 +177,7 @@ export const patientAuthCheck = async (
       return;
     }
 
-    // Attach patient info to request (including language for translation middleware)
+    // Attach patient info to request (including language and status)
     req.user = {
       id: decoded.id,
       diaryId: decoded.diaryId,
@@ -183,6 +186,7 @@ export const patientAuthCheck = async (
       type: decoded.type,
       language: patient.language || 'en',
       tokenVersion: (patient as any).tokenVersion ?? 0,
+      patientStatus: patient.status,
     } as any;
 
     next();
