@@ -18,6 +18,13 @@ router.post(
   diaryController.generateDiaries.bind(diaryController)
 );
 
+// GET /api/v1/generated-diaries/download-doc - Download diaries as DOCX
+router.get(
+  "/generated-diaries/download-doc",
+  authCheck([UserRole.SUPER_ADMIN]),
+  diaryController.downloadDiariesDoc.bind(diaryController)
+);
+
 // GET /api/v1/generated-diaries - List generated diaries
 router.get(
   "/generated-diaries",

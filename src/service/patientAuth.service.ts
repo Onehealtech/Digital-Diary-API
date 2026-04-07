@@ -3,6 +3,7 @@ import { Patient } from "../models/Patient";
 import { Diary } from "../models/Diary";
 import { generateOTP, verifyOTP } from "./otpService";
 import { twilioService } from "./twilio.service";
+import { sendLoginOTP } from "./smsfortius.service";
 
 /**
  * Patient Login - Step 1: Validate sticker and send OTP via SMS (Twilio)
@@ -33,14 +34,21 @@ export const patientLogin = async (
         throw new Error("Your diary has been rejected. Please contact your doctor.");
     }
 
-    // Generate OTP locally and send via Twilio SMS
+    // Generate OTP and send via Fortius SMS (primary) + Twilio (fallback)
     const phone = patient.phone;
     if (phone) {
         const otp = generateOTP(diaryId);
-        const sent = await twilioService.sendOTP(phone, otp);
-        if (!sent) {
-            console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
-        }
+        const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+        const sent = await sendLoginOTP(phone, otp, expiryMinutes);
+        console.log(sent ? `OTP sent via Fortius to ${phone}` : `Failed to send OTP via Fortius to ${phone}`);
+        
+        // if (!sent) {
+        //     // Fallback to Twilio if Fortius fails
+        //     const twilioSent = await twilioService.sendOTP(phone, otp);
+        //     if (!twilioSent) {
+        //         console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
+        //     }
+        // }
     } else {
         console.warn(`No phone number recorded for patient ${diaryId}. OTP not sent via SMS.`);
     }

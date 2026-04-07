@@ -107,22 +107,22 @@ const generateOrderId = (): string => {
 };
 
 /**
- * Generate a new CANTrac diary ID in the format CANTrac-A###.
+ * Generate a new CanTRAC diary ID in the format CanTRAC-A###.
  * Finds the highest existing sequence number and increments by 1.
  */
 const generateCanTracId = async (): Promise<string> => {
   const lastDiary = await GeneratedDiary.findOne({
-    where: { id: { [Op.like]: "CANTrac-A%" } },
+    where: { id: { [Op.like]: "CanTRAC-A%" } },
     order: [["createdAt", "DESC"]],
   });
 
   let sequence = 1;
   if (lastDiary) {
-    const lastSeq = parseInt(lastDiary.id.replace("CANTrac-A", ""), 10);
+    const lastSeq = parseInt(lastDiary.id.replace("CanTRAC-A", ""), 10);
     if (!isNaN(lastSeq)) sequence = lastSeq + 1;
   }
 
-  return `CANTrac-A${String(sequence).padStart(3, "0")}`;
+  return `CanTRAC-A${String(sequence).padStart(3, "0")}`;
 };
 
 /**
