@@ -503,9 +503,10 @@ class StaffService {
             throw new Error("Assistant is not archived");
         }
         await assistant.restore();
-        await assistant.update({ assistantStatus: "ACTIVE" });
+        // Restore to ON_HOLD — doctor must explicitly reactivate.
+        await assistant.update({ assistantStatus: "ON_HOLD" });
         return {
-            message: "Assistant restored successfully.",
+            message: "Assistant restored successfully. Please reactivate to allow login.",
             assistant: assistant.toJSON(),
         };
     }
@@ -701,9 +702,10 @@ class StaffService {
             throw new Error("User is not archived");
         }
         await user.restore();
-        await user.update({ isActive: true });
+        // Force isActive = false — admin must explicitly activate after restore.
+        await user.update({ isActive: false });
         return {
-            message: `${user.role} user restored successfully.`,
+            message: `${user.role} user restored successfully. Please activate the account to allow login.`,
             user: user.toJSON(),
         };
     }
