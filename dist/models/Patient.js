@@ -171,7 +171,7 @@ __decorate([
     (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
         defaultValue: "VENDOR_ASSIGNED",
-        allowNull: false,
+        allowNull: true,
     }),
     __metadata("design:type", String)
 ], Patient.prototype, "registrationSource", void 0);

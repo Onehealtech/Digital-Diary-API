@@ -115,7 +115,23 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
 
-    await sequelize.sync({ alter: true }); // Add new columns to existing tables
+    // Fix registrationSource column: drop the VARCHAR default before sync
+    // converts it to ENUM (PostgreSQL cannot auto-cast defaults across types)
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'patients' AND column_name = 'registrationSource'
+            AND data_type NOT LIKE '%enum%'
+        ) THEN
+          ALTER TABLE "patients" ALTER COLUMN "registrationSource" DROP DEFAULT;
+          ALTER TABLE "patients" ALTER COLUMN "registrationSource" TYPE VARCHAR(20);
+        END IF;
+      END $$;
+    `).catch(() => { /* table may not exist yet on fresh DB */ });
+
+    // await sequelize.sync({ alter: true }); // Add new columns to existing tables
 
     // ── Targeted migrations (idempotent) ──────────────────────────────────
     // Add patient deactivation columns and INACTIVE status

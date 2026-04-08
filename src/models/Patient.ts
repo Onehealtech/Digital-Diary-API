@@ -166,7 +166,7 @@ export class Patient extends Model {
   @Column({
     type: DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
     defaultValue: "VENDOR_ASSIGNED",
-    allowNull: false,
+    allowNull: true,
   })
   registrationSource!: "VENDOR_ASSIGNED" | "SELF_SIGNUP";
 
