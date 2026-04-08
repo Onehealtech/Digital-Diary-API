@@ -1,11 +1,25 @@
-import dotenv from 'dotenv';
-dotenv.config();
-console.log('DB HOST:', process.env.DATABASE_HOST);
+import dotenv from "dotenv";
+import path from "path";
 
+// ─── Environment Loading ────────────────────────────────────────────────
+// NODE_ENV is set by PM2 (ecosystem.config.js) or the deploy script.
+// Mapping: "production" → .env.production, anything else → .env.staging
+const NODE_ENV = process.env.NODE_ENV || "staging";
+const envFile = NODE_ENV === "production" ? ".env.production" : ".env.staging";
+const envPath = path.resolve(process.cwd(), envFile);
+
+const result = dotenv.config({ path: envPath });
+if (result.error) {
+  console.error(`[ENV] Failed to load ${envFile}:`, result.error.message);
+  process.exit(1);
+}
+
+console.log(`[ENV] Environment: ${NODE_ENV}`);
+console.log(`[ENV] Loaded: ${envFile}`);
+console.log(`[ENV] Port: ${process.env.PORT}`);
 import 'reflect-metadata';
 import express, { Application, Request, Response, NextFunction } from 'express';
 
-import path from 'path';
 import cors from 'cors';
 import routes from './routes';
 

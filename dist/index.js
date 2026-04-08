@@ -4,11 +4,23 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
-console.log('DB HOST:', process.env.DATABASE_HOST);
+const path_1 = __importDefault(require("path"));
+// ─── Environment Loading ────────────────────────────────────────────────
+// NODE_ENV is set by PM2 (ecosystem.config.js) or the deploy script.
+// Mapping: "production" → .env.production, anything else → .env.staging
+const NODE_ENV = process.env.NODE_ENV || "staging";
+const envFile = NODE_ENV === "production" ? ".env.production" : ".env.staging";
+const envPath = path_1.default.resolve(process.cwd(), envFile);
+const result = dotenv_1.default.config({ path: envPath });
+if (result.error) {
+    console.error(`[ENV] Failed to load ${envFile}:`, result.error.message);
+    process.exit(1);
+}
+console.log(`[ENV] Environment: ${NODE_ENV}`);
+console.log(`[ENV] Loaded: ${envFile}`);
+console.log(`[ENV] Port: ${process.env.PORT}`);
 require("reflect-metadata");
 const express_1 = __importDefault(require("express"));
-const path_1 = __importDefault(require("path"));
 const cors_1 = __importDefault(require("cors"));
 const routes_1 = __importDefault(require("./routes"));
 const Dbconnetion_1 = require("./config/Dbconnetion");
