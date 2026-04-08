@@ -12,6 +12,8 @@ const diaryController = new diary_controller_1.DiaryController();
  */
 // POST /api/v1/generated-diaries/generate - Generate diaries (SUPER_ADMIN only)
 router.post("/generated-diaries/generate", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.generateDiaries.bind(diaryController));
+// GET /api/v1/generated-diaries/download-doc - Download diaries as DOCX
+router.get("/generated-diaries/download-doc", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN]), diaryController.downloadDiariesDoc.bind(diaryController));
 // GET /api/v1/generated-diaries - List generated diaries
 router.get("/generated-diaries", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.VENDOR, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), diaryController.getAllGeneratedDiaries.bind(diaryController));
 // GET /api/v1/generated-diaries/:id - Get diary by ID

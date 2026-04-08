@@ -9,7 +9,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Appuser_1 = require("../models/Appuser");
 const otpService_1 = require("./otpService");
 const emailService_1 = require("./emailService");
-const twilio_service_1 = require("./twilio.service");
+const smsfortius_service_1 = require("./smsfortius.service");
 /**
  * Staff Login - Step 1: Validate credentials and send OTP via Email + SMS
  * Roles: Super Admin, Doctor, Assistant, Vendor
@@ -65,9 +65,9 @@ const staffLogin = async (email, password) => {
     }
     // Send the same OTP via SMS (Twilio)
     if (user.phone) {
-        twilio_service_1.twilioService.sendOTP(user.phone, otp).catch((err) => {
-            console.error("Failed to send OTP SMS:", err);
-        });
+        const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+        const sent = await (0, smsfortius_service_1.sendLoginOTP)(user.phone, otp, expiryMinutes);
+        console.log(sent ? `OTP sent via Fortius to ${user.phone}` : `Failed to send OTP via Fortius to ${user.phone}`);
     }
     return {
         message: "OTP sent to your email and phone",

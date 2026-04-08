@@ -8,6 +8,7 @@ const sequelize_1 = require("sequelize");
 const twilio_service_1 = require("../service/twilio.service");
 const emailService_1 = require("../service/emailService");
 const notification_service_1 = require("../service/notification.service");
+const smsfortius_service_1 = require("../service/smsfortius.service");
 const translations_1 = require("../utils/translations");
 /**
  * POST /api/v1/clinic/create-reminder
@@ -101,9 +102,24 @@ const createReminder = async (req, res) => {
             relatedTaskId: reminder.id,
             deliveryMethod: "in-app",
         });
-        // Send SMS
+        // Send SMS via Fortius (DLT-approved templates) + Twilio fallback
         if (patient.phone) {
-            twilio_service_1.twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("SMS reminder err:", err));
+            const dateObj = new Date(reminderDate);
+            const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+            const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+            // Get doctor name for Fortius template
+            const doctor = await Appuser_1.AppUser.findByPk(req.user.role === "ASSISTANT" ? req.user.parentId : req.user.id, { attributes: ["fullName", "phone"] });
+            const doctorName = doctor?.fullName || "your Doctor";
+            // Template 2: Appointment SMS to patient
+            (0, smsfortius_service_1.sendDoctorAppointmentSMS)(patient.phone, doctorName, dateStr, timeStr)
+                .catch(err => console.error("Fortius appointment SMS err:", err));
+            // Template 3: Consultation alert to doctor/staff
+            if (doctor?.phone) {
+                (0, smsfortius_service_1.sendConsultationAlert)(doctor.phone, patient.fullName || "A patient", dateStr, timeStr)
+                    .catch(err => console.error("Fortius consultation alert err:", err));
+            }
+            // Twilio fallback with full content
+            twilio_service_1.twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS err:", err));
         }
         res.status(201).json({
             success: true,
@@ -360,9 +376,22 @@ const respondToReminder = async (req, res) => {
             reminder.rejectReason = rejectReason || null;
         }
         await reminder.save();
+        const creator = reminder.getDataValue("creator");
+        const patientName = reminder.patient?.fullName || "A patient";
+        const dateObj = new Date(reminder.reminderDate);
+        const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+        // If accepted → send consultation alert to doctor
+        if (status === "ACCEPTED" && creator) {
+            // Fetch doctor phone for SMS
+            const doctorUser = await Appuser_1.AppUser.findByPk(creator.id, { attributes: ["phone"] });
+            if (doctorUser?.phone) {
+                (0, smsfortius_service_1.sendConsultationAlert)(doctorUser.phone, patientName, dateStr, timeStr)
+                    .catch(err => console.error("Fortius consultation alert err:", err));
+            }
+        }
         // If rejected → notify doctor/assistant
         if (status === "REJECTED") {
-            const creator = reminder.getDataValue("creator");
             if (creator) {
                 // In-app Notification
                 await notification_service_1.notificationService.createNotification({
@@ -372,13 +401,19 @@ const respondToReminder = async (req, res) => {
                     type: "alert",
                     severity: "medium",
                     title: "Appointment Rejected",
-                    message: `Patient ${reminder.patient?.fullName || "A patient"} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
+                    message: `Patient ${patientName} rejected the ${reminder.type} appointment. Reason: ${rejectReason || "None"}`,
                     relatedTaskId: reminder.id,
                     deliveryMethod: "in-app",
                 });
+                // SMS alert to doctor about rejection
+                const doctorUser = await Appuser_1.AppUser.findByPk(creator.id, { attributes: ["phone"] });
+                if (doctorUser?.phone) {
+                    (0, smsfortius_service_1.sendConsultationAlert)(doctorUser.phone, `${patientName} (REJECTED)`, dateStr, timeStr)
+                        .catch(err => console.error("Fortius rejection alert err:", err));
+                }
                 // Email Notification
                 if (creator.email) {
-                    await (0, emailService_1.sendAppointmentRejectionEmail)(creator.email, creator.fullName, reminder.patient?.fullName || "Unknown", reminder.type, new Date(reminder.reminderDate).toLocaleString(), rejectReason || "No reason given").catch(err => console.error("Rejection Email Error:", err));
+                    await (0, emailService_1.sendAppointmentRejectionEmail)(creator.email, creator.fullName, patientName, reminder.type, new Date(reminder.reminderDate).toLocaleString(), rejectReason || "No reason given").catch(err => console.error("Rejection Email Error:", err));
                 }
             }
         }
@@ -504,9 +539,19 @@ const resendReminder = async (req, res) => {
                 deliveryMethod: "in-app",
             });
             if (reminder.patient.phone) {
+                const reschedDateObj = new Date(reminder.newReminderDate || reminder.reminderDate);
+                const reschedDateStr = reschedDateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+                const reschedTimeStr = reschedDateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+                // Get doctor name for Fortius template
+                const doctor = await Appuser_1.AppUser.findByPk(userId, { attributes: ["fullName"] });
+                const doctorName = doctor?.fullName || "your Doctor";
+                // Fortius: appointment SMS to patient
+                (0, smsfortius_service_1.sendDoctorAppointmentSMS)(reminder.patient.phone, doctorName, reschedDateStr, reschedTimeStr)
+                    .catch((err) => console.error("Fortius resend SMS err:", err));
+                // Twilio fallback
                 twilio_service_1.twilioService
                     .sendSMS(reminder.patient.phone, smsContent)
-                    .catch((err) => console.error("SMS resend err:", err));
+                    .catch((err) => console.error("Twilio resend SMS err:", err));
             }
         }
         res.status(200).json({

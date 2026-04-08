@@ -11,8 +11,11 @@ const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const Notification_1 = require("../models/Notification");
 const sequelize_1 = require("sequelize");
+const path_1 = __importDefault(require("path"));
 const qrcode_1 = __importDefault(require("qrcode"));
+const sharp_1 = __importDefault(require("sharp"));
 const diaryStatus_1 = require("../utils/diaryStatus");
+const docx_1 = require("docx");
 class DiaryService {
     /**
      * Generate diary IDs in bulk with QR codes
@@ -22,24 +25,24 @@ class DiaryService {
             throw new Error("Quantity must be between 1 and 500");
         }
         const diaries = [];
-        // Get last sequence number across all CANTrac diaries
+        // Get last sequence number across all CanTRAC diaries
         const lastDiary = await GeneratedDiary_1.GeneratedDiary.findOne({
             where: {
                 id: {
-                    [sequelize_1.Op.like]: `CANTrac-A%`,
+                    [sequelize_1.Op.like]: `CanTRAC-A%`,
                 },
             },
             order: [["createdAt", "DESC"]],
         });
         let sequence = 1;
         if (lastDiary) {
-            const lastSequence = parseInt(lastDiary.id.replace("CANTrac-A", ""), 10);
+            const lastSequence = parseInt(lastDiary.id.replace("CanTRAC-A", ""), 10);
             if (!isNaN(lastSequence))
                 sequence = lastSequence + 1;
         }
         // Generate diaries
         for (let i = 0; i < quantity; i++) {
-            const diaryId = `CANTrac-A${String(sequence).padStart(3, "0")}`;
+            const diaryId = `CanTRAC-A${String(sequence).padStart(3, "0")}`;
             // Generate QR code as base64 string (in real app, upload to S3/GCP)
             const qrCodeUrl = await qrcode_1.default.toDataURL(diaryId);
             const diary = await GeneratedDiary_1.GeneratedDiary.create({
@@ -523,6 +526,170 @@ class DiaryService {
         request.status = "cancelled";
         await request.save();
         return request;
+    }
+    /**
+     * Generate a DOCX file containing all generated diary IDs with their QR codes
+     */
+    async generateDiariesDoc(diaryIds) {
+        const whereClause = {};
+        if (diaryIds && diaryIds.length > 0) {
+            whereClause.id = { [sequelize_1.Op.in]: diaryIds };
+        }
+        const diaries = await GeneratedDiary_1.GeneratedDiary.findAll({
+            where: whereClause,
+            order: [["createdAt", "ASC"]],
+        });
+        if (diaries.length === 0) {
+            throw new Error("No diaries found");
+        }
+        const tableBorder = {
+            style: docx_1.BorderStyle.SINGLE,
+            size: 1,
+            color: "000000",
+        };
+        const borders = {
+            top: tableBorder,
+            bottom: tableBorder,
+            left: tableBorder,
+            right: tableBorder,
+        };
+        // Build table rows
+        const headerRow = new docx_1.TableRow({
+            tableHeader: true,
+            children: [
+                new docx_1.TableCell({
+                    width: { size: 3000, type: docx_1.WidthType.DXA },
+                    borders,
+                    verticalAlign: docx_1.VerticalAlign.CENTER,
+                    children: [
+                        new docx_1.Paragraph({
+                            alignment: docx_1.AlignmentType.CENTER,
+                            children: [new docx_1.TextRun({ text: "Diary ID", bold: true, size: 24 })],
+                        }),
+                    ],
+                }),
+                new docx_1.TableCell({
+                    width: { size: 6000, type: docx_1.WidthType.DXA },
+                    borders,
+                    verticalAlign: docx_1.VerticalAlign.CENTER,
+                    children: [
+                        new docx_1.Paragraph({
+                            alignment: docx_1.AlignmentType.CENTER,
+                            children: [new docx_1.TextRun({ text: "QR Code Image", bold: true, size: 24 })],
+                        }),
+                    ],
+                }),
+            ],
+        });
+        // Load the logo once for compositing onto all QR codes
+        const logoPath = path_1.default.resolve(process.cwd(), "src/assets/QR-logo.png");
+        const logoBuffer = await (0, sharp_1.default)(logoPath)
+            .flatten({ background: { r: 255, g: 255, b: 255 } })
+            .extend({
+            top: 2,
+            bottom: 2,
+            left: 2,
+            right: 2,
+            background: { r: 255, g: 255, b: 255, alpha: 1 },
+        })
+            .png()
+            .toBuffer();
+        const dataRows = [];
+        for (const diary of diaries) {
+            // Generate a high-resolution QR code
+            const qrSize = 640;
+            const qrPngBuffer = await qrcode_1.default.toBuffer(diary.id, {
+                errorCorrectionLevel: "H",
+                width: qrSize,
+                margin: 2,
+                color: { dark: "#000000", light: "#ffffff" },
+            });
+            // Resize logo to ~18% of QR and add a white padding around it
+            const logoSize = Math.round(qrSize * 0.18);
+            const logoPad = 6;
+            const logoResized = await (0, sharp_1.default)(logoBuffer)
+                .resize(logoSize, logoSize, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+                .extend({
+                top: logoPad,
+                bottom: logoPad,
+                left: logoPad,
+                right: logoPad,
+                background: { r: 255, g: 255, b: 255, alpha: 1 },
+            })
+                .png()
+                .toBuffer();
+            // Composite logo at center of QR code
+            const logoWithPadSize = logoSize + logoPad * 2;
+            const logoLeft = Math.round((qrSize - logoWithPadSize) / 2);
+            const logoTop = Math.round((qrSize - logoWithPadSize) / 2);
+            const qrImageData = await (0, sharp_1.default)(qrPngBuffer)
+                .composite([{ input: logoResized, left: logoLeft, top: logoTop }])
+                .png()
+                .toBuffer();
+            dataRows.push(new docx_1.TableRow({
+                children: [
+                    new docx_1.TableCell({
+                        width: { size: 3000, type: docx_1.WidthType.DXA },
+                        borders,
+                        verticalAlign: docx_1.VerticalAlign.CENTER,
+                        children: [
+                            new docx_1.Paragraph({
+                                alignment: docx_1.AlignmentType.LEFT,
+                                children: [new docx_1.TextRun({ text: diary.id, size: 24 })],
+                            }),
+                        ],
+                    }),
+                    new docx_1.TableCell({
+                        width: { size: 6000, type: docx_1.WidthType.DXA },
+                        borders,
+                        verticalAlign: docx_1.VerticalAlign.CENTER,
+                        children: [
+                            new docx_1.Paragraph({
+                                alignment: docx_1.AlignmentType.CENTER,
+                                children: [
+                                    new docx_1.ImageRun({
+                                        data: qrImageData,
+                                        transformation: { width: 250, height: 250 },
+                                        type: "png",
+                                    }),
+                                ],
+                            }),
+                        ],
+                    }),
+                ],
+            }));
+        }
+        const doc = new docx_1.Document({
+            sections: [
+                {
+                    children: [
+                        new docx_1.Paragraph({
+                            heading: docx_1.HeadingLevel.HEADING_1,
+                            children: [new docx_1.TextRun({ text: "Diary ID and QR Code List", bold: true })],
+                        }),
+                        new docx_1.Paragraph({
+                            spacing: { after: 300 },
+                            children: [
+                                new docx_1.TextRun({
+                                    text: `This document is for organising ${diaries.length} Diary IDs and their corresponding QR code images. Each Diary ID will be listed, followed by its associated QR code image.`,
+                                    size: 22,
+                                }),
+                            ],
+                        }),
+                        new docx_1.Paragraph({
+                            heading: docx_1.HeadingLevel.HEADING_2,
+                            spacing: { after: 200 },
+                            children: [new docx_1.TextRun({ text: "List of Diary IDs and QR Codes", bold: true })],
+                        }),
+                        new docx_1.Table({
+                            width: { size: 9000, type: docx_1.WidthType.DXA },
+                            rows: [headerRow, ...dataRows],
+                        }),
+                    ],
+                },
+            ],
+        });
+        return await docx_1.Packer.toBuffer(doc);
     }
 }
 exports.DiaryService = DiaryService;
