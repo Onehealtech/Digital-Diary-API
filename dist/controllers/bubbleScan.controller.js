@@ -109,8 +109,11 @@ const uploadBubbleScan = async (req, res) => {
         if (result.processingStatus === "completed") {
             (0, response_1.sendResponse)(res, 200, "Scan completed successfully", result);
         }
+        else if (result.processingStatus === "failed") {
+            (0, response_1.sendResponse)(res, 200, "Scan processing failed", result);
+        }
         else {
-            (0, response_1.sendResponse)(res, 202, "Scan processing did not complete successfully", result);
+            (0, response_1.sendResponse)(res, 202, "Scan uploaded and processing in background", result);
         }
     }
     catch (error) {

@@ -143,11 +143,13 @@ export const uploadBubbleScan = async (
 
         if (result.processingStatus === "completed") {
             sendResponse(res, 200, "Scan completed successfully", result);
+        } else if (result.processingStatus === "failed") {
+            sendResponse(res, 200, "Scan processing failed", result);
         } else {
             sendResponse(
                 res,
                 202,
-                "Scan processing did not complete successfully",
+                "Scan uploaded and processing in background",
                 result
             );
         }
