@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import { AppUser } from "../models/Appuser";
 import { generateOTP, storeOTP, verifyOTPMultiKey } from "./otpService";
 import { sendOTPEmail } from "./emailService";
-import { twilioService } from "./twilio.service";
 import { sendLoginOTP } from "./smsfortius.service";
 
 /**

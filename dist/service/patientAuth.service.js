@@ -39,13 +39,6 @@ const patientLogin = async (diaryId) => {
         const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
         const sent = await (0, smsfortius_service_1.sendLoginOTP)(phone, otp, expiryMinutes);
         console.log(sent ? `OTP sent via Fortius to ${phone}` : `Failed to send OTP via Fortius to ${phone}`);
-        // if (!sent) {
-        //     // Fallback to Twilio if Fortius fails
-        //     const twilioSent = await twilioService.sendOTP(phone, otp);
-        //     if (!twilioSent) {
-        //         console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
-        //     }
-        // }
     }
     else {
         console.warn(`No phone number recorded for patient ${diaryId}. OTP not sent via SMS.`);

@@ -31,7 +31,7 @@ const constants_1 = require("../utils/constants");
 const AppError_1 = require("../utils/AppError");
 const Patient_1 = require("../models/Patient");
 const otpService_1 = require("../service/otpService");
-const twilio_service_1 = require("../service/twilio.service");
+const smsfortius_service_1 = require("../service/smsfortius.service");
 const accountDeletionService = __importStar(require("../service/accountDeletion.service"));
 const deleteAccountSchema = zod_1.z.object({
     reason: zod_1.z.string().max(500).optional(),
@@ -64,7 +64,7 @@ const requestDeleteOTP = async (req, res) => {
         const otpKey = `delete:${patientId}`;
         const otp = (0, otpService_1.generateOTP)(otpKey);
         // Send OTP via SMS
-        await twilio_service_1.twilioService.sendOTP(patient.phone, otp);
+        await (0, smsfortius_service_1.sendOTP)(patient.phone, otp);
         console.log(`Account deletion OTP for patient ${patientId}: ${otp}`);
         (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "OTP sent to your registered phone number. Please verify to proceed with account deletion.");
     }

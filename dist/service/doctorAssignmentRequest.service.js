@@ -10,7 +10,7 @@ const Diary_1 = require("../models/Diary");
 const UserSubscription_1 = require("../models/UserSubscription");
 const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const AppError_1 = require("../utils/AppError");
-const twilio_service_1 = require("./twilio.service");
+const smsfortius_service_1 = require("./smsfortius.service");
 const emailService_1 = require("./emailService");
 const translations_1 = require("../utils/translations");
 const MAX_ATTEMPTS_PER_DOCTOR = 2;
@@ -162,8 +162,7 @@ async function acceptRequest(requestId, doctorId) {
                     ? `Good news! Dr. ${doctor.fullName} has accepted your request. Your care has been transferred and all your diary history is now available to your new doctor. - Elvantia`
                     : `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`;
             }
-            twilio_service_1.twilioService
-                .sendSMS(patient.phone, smsMessage)
+            (0, smsfortius_service_1.sendSMS)(patient.phone, smsMessage)
                 .catch((err) => console.error("Failed to send acceptance SMS:", err));
         }
         return request;
@@ -215,8 +214,7 @@ async function rejectRequest(requestId, doctorId, rejectionReason) {
                     : " You have used both attempts with this doctor. Please choose a different doctor.";
                 smsMessage = `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`;
             }
-            twilio_service_1.twilioService
-                .sendSMS(patient.phone, smsMessage)
+            (0, smsfortius_service_1.sendSMS)(patient.phone, smsMessage)
                 .catch((err) => console.error("Failed to send rejection SMS:", err));
         }
     }
@@ -276,7 +274,7 @@ async function notifyDoctorOfRequest(doctor, patient, request) {
         : "not specified";
     // SMS notification
     if (doctor.phone) {
-        await twilio_service_1.twilioService.sendSMS(doctor.phone, `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`);
+        await (0, smsfortius_service_1.sendSMS)(doctor.phone, `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`);
     }
     // Email notification
     if (doctor.email) {

@@ -4,7 +4,7 @@ exports.verifyPhoneOtp = exports.sendPhoneOtp = exports.markFundTransferred = ex
 const AppError_1 = require("../utils/AppError");
 const diarySale_service_1 = require("../service/diarySale.service");
 const diarySale_schemas_1 = require("../schemas/diarySale.schemas");
-const twilio_service_1 = require("../service/twilio.service");
+const smsfortius_service_1 = require("../service/smsfortius.service");
 const otpService_1 = require("../service/otpService");
 const zod_1 = require("zod");
 /**
@@ -213,7 +213,7 @@ const verifyPhoneOtpSchema = zod_1.z.object({
 //     const { phone } = parsed.data;
 //     const key = `sell-phone-${phone}`;
 //     const otp = generateOTP(key);
-//     const sent = await twilioService.sendOTP(phone, otp);
+//     const sent = await sendOTP(phone, otp);
 //     if (!sent) {
 //       res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
 //       return;
@@ -244,7 +244,7 @@ const sendPhoneOtp = async (req, res) => {
         }
         const key = `sell-phone-${phone}`;
         const otp = (0, otpService_1.generateOTP)(key);
-        const sent = await twilio_service_1.twilioService.sendOTP(phone, otp);
+        const sent = await (0, smsfortius_service_1.sendOTP)(phone, otp);
         if (!sent) {
             res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
             return;

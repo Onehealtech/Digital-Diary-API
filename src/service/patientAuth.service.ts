@@ -2,7 +2,6 @@ import jwt from "jsonwebtoken";
 import { Patient } from "../models/Patient";
 import { Diary } from "../models/Diary";
 import { generateOTP, verifyOTP } from "./otpService";
-import { twilioService } from "./twilio.service";
 import { sendLoginOTP } from "./smsfortius.service";
 
 /**
@@ -41,14 +40,6 @@ export const patientLogin = async (
         const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
         const sent = await sendLoginOTP(phone, otp, expiryMinutes);
         console.log(sent ? `OTP sent via Fortius to ${phone}` : `Failed to send OTP via Fortius to ${phone}`);
-        
-        // if (!sent) {
-        //     // Fallback to Twilio if Fortius fails
-        //     const twilioSent = await twilioService.sendOTP(phone, otp);
-        //     if (!twilioSent) {
-        //         console.warn(`Failed to send OTP SMS to ${phone} for diary ${diaryId}`);
-        //     }
-        // }
     } else {
         console.warn(`No phone number recorded for patient ${diaryId}. OTP not sent via SMS.`);
     }

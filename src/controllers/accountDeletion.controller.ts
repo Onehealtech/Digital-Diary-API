@@ -8,7 +8,7 @@ import { HTTP_STATUS } from "../utils/constants";
 import { AppError } from "../utils/AppError";
 import { Patient } from "../models/Patient";
 import { generateOTP, verifyOTP } from "../service/otpService";
-import { twilioService } from "../service/twilio.service";
+import { sendOTP } from "../service/smsfortius.service";
 import * as accountDeletionService from "../service/accountDeletion.service";
 
 const deleteAccountSchema = z.object({
@@ -48,7 +48,7 @@ export const requestDeleteOTP = async (req: AuthenticatedRequest, res: Response)
     const otp = generateOTP(otpKey);
 
     // Send OTP via SMS
-    await twilioService.sendOTP(patient.phone, otp);
+    await sendOTP(patient.phone, otp);
 
     console.log(`Account deletion OTP for patient ${patientId}: ${otp}`);
 

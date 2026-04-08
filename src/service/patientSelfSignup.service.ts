@@ -5,7 +5,7 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { AppError } from "../utils/AppError";
 import { generateOTP, verifyOTP } from "./otpService";
-import { twilioService } from "./twilio.service";
+import { sendOTP } from "./smsfortius.service";
 
 // In-memory session store mapping sessionId → phone (use Redis in production)
 const otpSessionStore = new Map<string, { phone: string; expiresAt: Date }>();
@@ -30,7 +30,7 @@ export async function sendSignupOtp(
   const key = `self-otp-${phone}`;
   const otp = generateOTP(key);
 
-  const sent = await twilioService.sendOTP(phone, otp);
+  const sent = await sendOTP(phone, otp);
   if (!sent) {
     console.warn(`Failed to send OTP to ${phone}`);
   }

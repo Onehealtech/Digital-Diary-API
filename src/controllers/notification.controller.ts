@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
+import path from "path";
 import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { AppUser } from "../models/Appuser";
+import { uploadBufferToS3 } from "../utils/s3Upload";
 import {
   patientNotificationHistoryParamsSchema,
   patientNotificationHistoryQuerySchema,
@@ -124,9 +126,15 @@ class NotificationController {
         return sendError(res, "recipientId, type, title, and message are required", 400);
       }
 
-      const attachmentUrl = (req as any).file
-        ? `/uploads/notification_attachments/${(req as any).file.filename}`
-        : (req.body.attachmentUrl as string | undefined) || undefined;
+      let attachmentUrl: string | undefined =
+        (req.body.attachmentUrl as string | undefined) || undefined;
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (file) {
+        const ext = path.extname(file.originalname).toLowerCase() || ".bin";
+        const s3Key = `notifications/attachments/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+        attachmentUrl = await uploadBufferToS3(file.buffer, file.mimetype, s3Key);
+      }
 
       const notification = await notificationService.createNotification({
         senderId,

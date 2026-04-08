@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { AppError } from "../utils/AppError";
 import { diarySaleService } from "../service/diarySale.service";
 import { sellDiarySchema, requestDiariesSchema } from "../schemas/diarySale.schemas";
-import { twilioService } from "../service/twilio.service";
+import { sendOTP } from "../service/smsfortius.service";
 import { generateOTP, verifyOTP } from "../service/otpService";
 import { z } from "zod";
 
@@ -234,7 +234,7 @@ const verifyPhoneOtpSchema = z.object({
 //     const key = `sell-phone-${phone}`;
 //     const otp = generateOTP(key);
 
-//     const sent = await twilioService.sendOTP(phone, otp);
+//     const sent = await sendOTP(phone, otp);
 //     if (!sent) {
 //       res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
 //       return;
@@ -270,7 +270,7 @@ export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Pr
     const key = `sell-phone-${phone}`;
     const otp = generateOTP(key);
 
-    const sent = await twilioService.sendOTP(phone, otp);
+    const sent = await sendOTP(phone, otp);
     if (!sent) {
       res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
       return;

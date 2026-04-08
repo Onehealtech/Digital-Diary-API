@@ -24,7 +24,7 @@ function formatPhone(phone: string): string {
 /**
  * Send SMS via Fortius API.
  */
-async function sendSMS(
+async function sendTemplateSMS(
     phone: string,
     templateId: string,
     message: string
@@ -49,8 +49,12 @@ async function sendSMS(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function sendLoginOTP(phone: string, otp: string, expiryMinutes: string = "5"): Promise<boolean> {
+    if (process.env.FALLBACK_OTP === "true") {
+        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+        return true;
+    }
     const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
-    return sendSMS(phone, "1207177519219296859", message);
+    return sendTemplateSMS(phone, "1207177519219296859", message);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -65,7 +69,7 @@ export async function sendDoctorAppointmentSMS(
     time: string
 ): Promise<boolean> {
     const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac`;
-    return sendSMS(patientPhone, "1207177519385352008", message);
+    return sendTemplateSMS(patientPhone, "1207177519385352008", message);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -80,5 +84,31 @@ export async function sendConsultationAlert(
     time: string
 ): Promise<boolean> {
     const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac`;
-    return sendSMS(staffPhone, "1207177519626797564", message);
+    return sendTemplateSMS(staffPhone, "1207177519626797564", message);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// General-purpose wrappers (replace Twilio usage)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Send OTP via SMS — uses the Login OTP template.
+ * When FALLBACK_OTP is true (staging/testing), skips the actual SMS.
+ */
+export async function sendOTP(phone: string, otp: string): Promise<boolean> {
+    if (process.env.FALLBACK_OTP === "true") {
+        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+        return true;
+    }
+    const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+    return sendLoginOTP(phone, otp, expiryMinutes);
+}
+
+/**
+ * Send a general SMS message.
+ * Uses the consultation alert template format.
+ * Drop-in replacement for twilioService.sendSMS(phone, message).
+ */
+export async function sendSMS(phone: string, message: string): Promise<boolean> {
+    return sendTemplateSMS(phone, "1207177519626797564", message);
 }

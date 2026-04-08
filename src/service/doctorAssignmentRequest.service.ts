@@ -7,7 +7,7 @@ import { Diary } from "../models/Diary";
 import { UserSubscription } from "../models/UserSubscription";
 import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { AppError } from "../utils/AppError";
-import { twilioService } from "./twilio.service";
+import { sendSMS } from "./smsfortius.service";
 import { sendDoctorRequestEmail } from "./emailService";
 import { transliterateName, SupportedLanguage } from "../utils/translations";
 
@@ -210,8 +210,7 @@ export async function acceptRequest(
           : `Good news! Dr. ${doctor.fullName} has accepted your request. You can now purchase a subscription to start using your Elvantia diary. - Elvantia`;
       }
 
-      twilioService
-        .sendSMS(patient.phone, smsMessage)
+      sendSMS(patient.phone, smsMessage)
         .catch((err) => console.error("Failed to send acceptance SMS:", err));
     }
 
@@ -271,8 +270,7 @@ export async function rejectRequest(
         smsMessage = `Your doctor assignment request was not accepted.${retryMsg} - Elvantia`;
       }
 
-      twilioService
-        .sendSMS(patient.phone, smsMessage)
+      sendSMS(patient.phone, smsMessage)
         .catch((err) => console.error("Failed to send rejection SMS:", err));
     }
   }
@@ -345,7 +343,7 @@ async function notifyDoctorOfRequest(
 
   // SMS notification
   if (doctor.phone) {
-    await twilioService.sendSMS(
+    await sendSMS(
       doctor.phone,
       `New patient request: ${patient.fullName} (${caseLabel}) has chosen you as their doctor on Elvantia. Please log in to your dashboard to accept or decline. - Elvantia`
     );

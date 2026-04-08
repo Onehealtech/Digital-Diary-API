@@ -1,9 +1,14 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.notificationController = void 0;
+const path_1 = __importDefault(require("path"));
 const notification_service_1 = require("../service/notification.service");
 const response_1 = require("../utils/response");
 const Appuser_1 = require("../models/Appuser");
+const s3Upload_1 = require("../utils/s3Upload");
 const notification_schemas_1 = require("../schemas/notification.schemas");
 class NotificationController {
     /**
@@ -86,9 +91,13 @@ class NotificationController {
             if (!recipientId || !type || !title || !message) {
                 return (0, response_1.sendError)(res, "recipientId, type, title, and message are required", 400);
             }
-            const attachmentUrl = req.file
-                ? `/uploads/notification_attachments/${req.file.filename}`
-                : req.body.attachmentUrl || undefined;
+            let attachmentUrl = req.body.attachmentUrl || undefined;
+            const file = req.file;
+            if (file) {
+                const ext = path_1.default.extname(file.originalname).toLowerCase() || ".bin";
+                const s3Key = `notifications/attachments/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+                attachmentUrl = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, s3Key);
+            }
             const notification = await notification_service_1.notificationService.createNotification({
                 senderId,
                 recipientId,
