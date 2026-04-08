@@ -4,6 +4,7 @@ import { AppUser } from "../models/Appuser";
 import { generateOTP, storeOTP, verifyOTPMultiKey } from "./otpService";
 import { sendOTPEmail } from "./emailService";
 import { twilioService } from "./twilio.service";
+import { sendLoginOTP } from "./smsfortius.service";
 
 /**
  * Staff Login - Step 1: Validate credentials and send OTP via Email + SMS
@@ -83,10 +84,11 @@ export const staffLogin = async (
 
     // Send the same OTP via SMS (Twilio)
     if (user.phone) {
-        twilioService.sendOTP(user.phone, otp).catch((err) => {
-            console.error("Failed to send OTP SMS:", err);
-        });
-    }
+
+        const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+        const sent = await sendLoginOTP(user.phone, otp, expiryMinutes);
+            console.log(sent ? `OTP sent via Fortius to ${user.phone}` : `Failed to send OTP via Fortius to ${user.phone}`);
+    }   
 
     return {
         message: "OTP sent to your email and phone",

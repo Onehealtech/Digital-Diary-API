@@ -273,4 +273,22 @@ export class DiaryController {
       return sendError(res, error.message?.includes("not found") ? 404 : 400, error.message || "Failed to cancel diary request");
     }
   }
+
+  /**
+   * GET /api/v1/generated-diaries/download-doc - Download diaries as DOCX
+   */
+  async downloadDiariesDoc(req: Request, res: Response) {
+    try {
+      const { diaryIds } = req.query;
+      const ids = diaryIds ? (diaryIds as string).split(",") : undefined;
+
+      const buffer = await diaryService.generateDiariesDoc(ids);
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", "attachment; filename=Diary-QR-Codes.docx");
+      return res.send(buffer);
+    } catch (error: any) {
+      return sendError(res, 500, "Failed to generate document", error.message);
+    }
+  }
 }

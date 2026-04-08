@@ -7,8 +7,25 @@ import { VendorProfile } from "../models/VendorProfile";
 import { Transaction } from "../models/Transaction";
 import { Notification } from "../models/Notification";
 import { Op } from "sequelize";
+import path from "path";
 import QRCode from "qrcode";
+import sharp from "sharp";
 import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
+import {
+  Document,
+  Packer,
+  Paragraph,
+  Table as DocxTable,
+  TableRow,
+  TableCell,
+  WidthType,
+  ImageRun,
+  TextRun,
+  AlignmentType,
+  HeadingLevel,
+  BorderStyle,
+  VerticalAlign,
+} from "docx";
 
 export class DiaryService {
   /**
@@ -21,11 +38,11 @@ export class DiaryService {
 
     const diaries: GeneratedDiary[] = [];
 
-    // Get last sequence number across all CANTrac diaries
+    // Get last sequence number across all CanTRAC diaries
     const lastDiary = await GeneratedDiary.findOne({
       where: {
         id: {
-          [Op.like]: `CANTrac-A%`,
+          [Op.like]: `CanTRAC-A%`,
         },
       },
       order: [["createdAt", "DESC"]],
@@ -33,13 +50,13 @@ export class DiaryService {
 
     let sequence = 1;
     if (lastDiary) {
-      const lastSequence = parseInt(lastDiary.id.replace("CANTrac-A", ""), 10);
+      const lastSequence = parseInt(lastDiary.id.replace("CanTRAC-A", ""), 10);
       if (!isNaN(lastSequence)) sequence = lastSequence + 1;
     }
 
     // Generate diaries
     for (let i = 0; i < quantity; i++) {
-      const diaryId = `CANTrac-A${String(sequence).padStart(3, "0")}`;
+      const diaryId = `CanTRAC-A${String(sequence).padStart(3, "0")}`;
 
       // Generate QR code as base64 string (in real app, upload to S3/GCP)
       const qrCodeUrl = await QRCode.toDataURL(diaryId);
@@ -661,5 +678,184 @@ async getAllSoldDiaries(params: {
     await request.save();
 
     return request;
+  }
+
+  /**
+   * Generate a DOCX file containing all generated diary IDs with their QR codes
+   */
+  async generateDiariesDoc(diaryIds?: string[]): Promise<Buffer> {
+    const whereClause: any = {};
+    if (diaryIds && diaryIds.length > 0) {
+      whereClause.id = { [Op.in]: diaryIds };
+    }
+
+    const diaries = await GeneratedDiary.findAll({
+      where: whereClause,
+      order: [["createdAt", "ASC"]],
+    });
+
+    if (diaries.length === 0) {
+      throw new Error("No diaries found");
+    }
+
+    const tableBorder = {
+      style: BorderStyle.SINGLE,
+      size: 1,
+      color: "000000",
+    };
+    const borders = {
+      top: tableBorder,
+      bottom: tableBorder,
+      left: tableBorder,
+      right: tableBorder,
+    };
+
+    // Build table rows
+    const headerRow = new TableRow({
+      tableHeader: true,
+      children: [
+        new TableCell({
+          width: { size: 3000, type: WidthType.DXA },
+          borders,
+          verticalAlign: VerticalAlign.CENTER,
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: "Diary ID", bold: true, size: 24 })],
+            }),
+          ],
+        }),
+        new TableCell({
+          width: { size: 6000, type: WidthType.DXA },
+          borders,
+          verticalAlign: VerticalAlign.CENTER,
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: "QR Code Image", bold: true, size: 24 })],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    // Load the logo once for compositing onto all QR codes
+    const logoPath = path.resolve(process.cwd(), "src/assets/QR-logo.png");
+    const logoBuffer = await sharp(logoPath)
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .extend({
+        top: 2,
+        bottom: 2,
+        left: 2,
+        right: 2,
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .png()
+      .toBuffer();
+
+    const dataRows: TableRow[] = [];
+    for (const diary of diaries) {
+      // Generate a high-resolution QR code
+      const qrSize = 640;
+      const qrPngBuffer = await QRCode.toBuffer(diary.id, {
+        errorCorrectionLevel: "H",
+        width: qrSize,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+
+      // Resize logo to ~18% of QR and add a white padding around it
+      const logoSize = Math.round(qrSize * 0.18);
+      const logoPad = 6;
+      const logoResized = await sharp(logoBuffer)
+        .resize(logoSize, logoSize, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .extend({
+          top: logoPad,
+          bottom: logoPad,
+          left: logoPad,
+          right: logoPad,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        })
+        .png()
+        .toBuffer();
+
+      // Composite logo at center of QR code
+      const logoWithPadSize = logoSize + logoPad * 2;
+      const logoLeft = Math.round((qrSize - logoWithPadSize) / 2);
+      const logoTop = Math.round((qrSize - logoWithPadSize) / 2);
+
+      const qrImageData = await sharp(qrPngBuffer)
+        .composite([{ input: logoResized, left: logoLeft, top: logoTop }])
+        .png()
+        .toBuffer();
+
+      dataRows.push(
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 3000, type: WidthType.DXA },
+              borders,
+              verticalAlign: VerticalAlign.CENTER,
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.LEFT,
+                  children: [new TextRun({ text: diary.id, size: 24 })],
+                }),
+              ],
+            }),
+            new TableCell({
+              width: { size: 6000, type: WidthType.DXA },
+              borders,
+              verticalAlign: VerticalAlign.CENTER,
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  children: [
+                    new ImageRun({
+                      data: qrImageData,
+                      transformation: { width: 250, height: 250 },
+                      type: "png",
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        })
+      );
+    }
+
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              heading: HeadingLevel.HEADING_1,
+              children: [new TextRun({ text: "Diary ID and QR Code List", bold: true })],
+            }),
+            new Paragraph({
+              spacing: { after: 300 },
+              children: [
+                new TextRun({
+                  text: `This document is for organising ${diaries.length} Diary IDs and their corresponding QR code images. Each Diary ID will be listed, followed by its associated QR code image.`,
+                  size: 22,
+                }),
+              ],
+            }),
+            new Paragraph({
+              heading: HeadingLevel.HEADING_2,
+              spacing: { after: 200 },
+              children: [new TextRun({ text: "List of Diary IDs and QR Codes", bold: true })],
+            }),
+            new DocxTable({
+              width: { size: 9000, type: WidthType.DXA },
+              rows: [headerRow, ...dataRows],
+            }),
+          ],
+        },
+      ],
+    });
+
+    return await Packer.toBuffer(doc);
   }
 }
