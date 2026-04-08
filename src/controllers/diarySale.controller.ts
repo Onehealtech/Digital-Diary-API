@@ -257,12 +257,12 @@ export const sendPhoneOtp = async (req: AuthenticatedRequest, res: Response): Pr
 
     const { phone } = parsed.data;
 
-    // ✅ FALLBACK MODE
-    if (process.env.FALLBACK_OTP === "true") {
+    // ✅ STAGING MODE — skip real SMS, return static OTP
+    if (process.env.NODE_ENV !== 'production') {
        res.status(200).json({
         success: true,
-        message: "OTP sent successfully (DEV MODE)",
-        otp: "123456", // optional (for testing)
+        message: "OTP sent successfully (STAGING MODE)",
+        otp: "123456",
       });
       return;
     }
@@ -325,8 +325,8 @@ export const verifyPhoneOtp = async (req: AuthenticatedRequest, res: Response): 
 
     let valid = false;
 
-    // ✅ FALLBACK MODE (STATIC OTP)
-    if (process.env.FALLBACK_OTP === "true") {
+    // ✅ STAGING MODE — accept static OTP 123456
+    if (process.env.NODE_ENV !== 'production') {
       valid = otp === "123456";
     } else {
       valid = verifyOTP(key, otp);

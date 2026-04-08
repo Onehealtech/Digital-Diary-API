@@ -49,8 +49,8 @@ async function sendTemplateSMS(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function sendLoginOTP(phone: string, otp: string, expiryMinutes: string = "5"): Promise<boolean> {
-    if (process.env.FALLBACK_OTP === "true") {
-        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
     const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
@@ -93,11 +93,11 @@ export async function sendConsultationAlert(
 
 /**
  * Send OTP via SMS — uses the Login OTP template.
- * When FALLBACK_OTP is true (staging/testing), skips the actual SMS.
+ * In staging/non-production, skips actual SMS sending (OTP is always 123456).
  */
 export async function sendOTP(phone: string, otp: string): Promise<boolean> {
-    if (process.env.FALLBACK_OTP === "true") {
-        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Fortius SMS] Staging mode — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
     const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
