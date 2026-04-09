@@ -4,7 +4,7 @@ import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
 import { notificationRepository } from "../repositories/notification.repository";
-import { twilioService } from "./twilio.service";
+import { sendSMS } from "./smsfortius.service";
 import { transliterateName } from "../utils/translations";
 
 interface NotificationFilters {
@@ -250,7 +250,7 @@ class NotificationService {
     // Send SMS individually to the patient via Twilio
     if (data.recipientType === "patient" && patientPhone) {
       const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-      twilioService.sendSMS(patientPhone, smsContent).catch((err) =>
+      sendSMS(patientPhone, smsContent).catch((err) =>
         console.error(`SMS error for patient ${data.recipientId}:`, err)
       );
     }
@@ -347,7 +347,7 @@ class NotificationService {
         // Send individual SMS via Twilio
         if (patient.phone) {
           const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-          twilioService.sendSMS(patient.phone, smsContent).catch((err) =>
+          sendSMS(patient.phone, smsContent).catch((err) =>
             console.error(`SMS error for patient ${patient.id}:`, err)
           );
         }
@@ -581,10 +581,9 @@ class NotificationService {
       message: responseText,
     });
 
-    // Send SMS to the specific staff member via Twilio
+    // Send SMS to the specific staff member
     if (staff.phone) {
-      twilioService
-        .sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
+      sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
         .catch((err: unknown) => console.error("SMS error:", err));
     }
 

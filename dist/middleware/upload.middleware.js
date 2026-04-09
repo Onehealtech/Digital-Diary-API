@@ -49,22 +49,9 @@ exports.bubbleScanUpload = (0, multer_1.default)({
         }
     },
 });
-// Notification attachment upload (images + PDFs, 10MB)
-const notificationAttachmentPath = path_1.default.join(__dirname, "../../uploads/notification_attachments");
-if (!fs_1.default.existsSync(notificationAttachmentPath)) {
-    fs_1.default.mkdirSync(notificationAttachmentPath, { recursive: true });
-}
-const notificationAttachmentStorage = multer_1.default.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, notificationAttachmentPath);
-    },
-    filename: function (req, file, cb) {
-        const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        cb(null, uniqueName + path_1.default.extname(file.originalname));
-    },
-});
+// Notification attachment upload (images + PDFs, 10MB) — memory storage for S3 upload
 exports.notificationAttachmentUpload = (0, multer_1.default)({
-    storage: notificationAttachmentStorage,
+    storage: multer_1.default.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "application/pdf", "image/gif", "image/webp"];

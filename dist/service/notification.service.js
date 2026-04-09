@@ -7,7 +7,7 @@ const Appuser_1 = require("../models/Appuser");
 const sequelize_1 = require("sequelize");
 const fcm_service_1 = require("./fcm.service");
 const notification_repository_1 = require("../repositories/notification.repository");
-const twilio_service_1 = require("./twilio.service");
+const smsfortius_service_1 = require("./smsfortius.service");
 const translations_1 = require("../utils/translations");
 class NotificationService {
     /**
@@ -177,7 +177,7 @@ class NotificationService {
         // Send SMS individually to the patient via Twilio
         if (data.recipientType === "patient" && patientPhone) {
             const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-            twilio_service_1.twilioService.sendSMS(patientPhone, smsContent).catch((err) => console.error(`SMS error for patient ${data.recipientId}:`, err));
+            (0, smsfortius_service_1.sendSMS)(patientPhone, smsContent).catch((err) => console.error(`SMS error for patient ${data.recipientId}:`, err));
         }
         return notification;
     }
@@ -250,7 +250,7 @@ class NotificationService {
                 // Send individual SMS via Twilio
                 if (patient.phone) {
                     const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
-                    twilio_service_1.twilioService.sendSMS(patient.phone, smsContent).catch((err) => console.error(`SMS error for patient ${patient.id}:`, err));
+                    (0, smsfortius_service_1.sendSMS)(patient.phone, smsContent).catch((err) => console.error(`SMS error for patient ${patient.id}:`, err));
                 }
             }
             catch (err) {
@@ -437,10 +437,9 @@ class NotificationService {
             title: "Patient Response",
             message: responseText,
         });
-        // Send SMS to the specific staff member via Twilio
+        // Send SMS to the specific staff member
         if (staff.phone) {
-            twilio_service_1.twilioService
-                .sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
+            (0, smsfortius_service_1.sendSMS)(staff.phone, `OneHeal Alert: ${responseText}`)
                 .catch((err) => console.error("SMS error:", err));
         }
         return {

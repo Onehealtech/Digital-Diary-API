@@ -1,13 +1,14 @@
 import { Response } from "express";
+import path from "path";
 import { Reminder } from "../models/Reminder";
 import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
-import { twilioService } from "../service/twilio.service";
 import { sendAppointmentRejectionEmail } from "../service/emailService";
 import { notificationService } from "../service/notification.service";
-import { sendDoctorAppointmentSMS, sendConsultationAlert } from "../service/smsfortius.service";
+import { sendDoctorAppointmentSMS, sendConsultationAlert, sendSMS } from "../service/smsfortius.service";
+import { uploadBufferToS3 } from "../utils/s3Upload";
 import { t, translateReminderType, translateReminderStatus, getPatientLanguage, translateArrayFields, translateText } from "../utils/translations";
 
 /**
@@ -20,9 +21,15 @@ export const createReminder = async (
 ): Promise<void> => {
     try {
         const { patientId, message, reminderDate, type } = req.body;
-        const attachmentUrl = (req as any).file
-            ? `/uploads/notification_attachments/${(req as any).file.filename}`
-            : (req.body.attachmentUrl as string | undefined) || undefined;
+        let attachmentUrl: string | undefined =
+            (req.body.attachmentUrl as string | undefined) || undefined;
+
+        const file = (req as any).file as Express.Multer.File | undefined;
+        if (file) {
+            const ext = path.extname(file.originalname).toLowerCase() || ".bin";
+            const s3Key = `reminders/attachments/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+            attachmentUrl = await uploadBufferToS3(file.buffer, file.mimetype, s3Key);
+        }
 
         // Validate required fields
         if (!patientId || !message || !reminderDate || !type) {
@@ -138,8 +145,8 @@ export const createReminder = async (
                     .catch(err => console.error("Fortius consultation alert err:", err));
             }
 
-            // Twilio fallback with full content
-            twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS err:", err));
+            // General SMS with full content
+            sendSMS(patient.phone, smsContent).catch(err => console.error("Fortius SMS err:", err));
         }
 
         res.status(201).json({
@@ -646,10 +653,9 @@ export const resendReminder = async (
                 sendDoctorAppointmentSMS(reminder.patient.phone, doctorName, reschedDateStr, reschedTimeStr)
                     .catch((err: unknown) => console.error("Fortius resend SMS err:", err));
 
-                // Twilio fallback
-                twilioService
-                    .sendSMS(reminder.patient.phone, smsContent)
-                    .catch((err: unknown) => console.error("Twilio resend SMS err:", err));
+                // General SMS with full content
+                sendSMS(reminder.patient.phone, smsContent)
+                    .catch((err: unknown) => console.error("Fortius resend SMS err:", err));
             }
         }
 

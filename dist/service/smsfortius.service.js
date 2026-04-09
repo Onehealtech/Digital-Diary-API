@@ -8,7 +8,7 @@
  *  3. Patient Consultation Alert (templateid: 1207177519626797564) — sent to doctor/staff
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendConsultationAlert = exports.sendDoctorAppointmentSMS = exports.sendLoginOTP = void 0;
+exports.sendSMS = exports.sendOTP = exports.sendConsultationAlert = exports.sendDoctorAppointmentSMS = exports.sendLoginOTP = void 0;
 const API_BASE = "https://smsfortius.org/V2/apikey.php";
 const API_KEY = process.env.SMSFORTIUS_API_KEY || "w7GMJx4munLTTLYf";
 const SENDER_ID = "ONEH";
@@ -26,7 +26,7 @@ function formatPhone(phone) {
 /**
  * Send SMS via Fortius API.
  */
-async function sendSMS(phone, templateId, message) {
+async function sendTemplateSMS(phone, templateId, message) {
     const formattedPhone = formatPhone(phone);
     const url = `${API_BASE}?apikey=${encodeURIComponent(API_KEY)}&senderid=${SENDER_ID}&templateid=${templateId}&number=${formattedPhone}&message=${encodeURIComponent(message)}`;
     try {
@@ -45,8 +45,12 @@ async function sendSMS(phone, templateId, message) {
 // Message: CANtrac: Your Login OTP is {otp}. Valid for {minutes}. Do not share this code with anyone.
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendLoginOTP(phone, otp, expiryMinutes = "5") {
+    if (process.env.FALLBACK_OTP === "true") {
+        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+        return true;
+    }
     const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
-    return sendSMS(phone, "1207177519219296859", message);
+    return sendTemplateSMS(phone, "1207177519219296859", message);
 }
 exports.sendLoginOTP = sendLoginOTP;
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +59,7 @@ exports.sendLoginOTP = sendLoginOTP;
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendDoctorAppointmentSMS(patientPhone, doctorName, date, time) {
     const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac`;
-    return sendSMS(patientPhone, "1207177519385352008", message);
+    return sendTemplateSMS(patientPhone, "1207177519385352008", message);
 }
 exports.sendDoctorAppointmentSMS = sendDoctorAppointmentSMS;
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -64,6 +68,31 @@ exports.sendDoctorAppointmentSMS = sendDoctorAppointmentSMS;
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendConsultationAlert(staffPhone, patientName, date, time) {
     const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac`;
-    return sendSMS(staffPhone, "1207177519626797564", message);
+    return sendTemplateSMS(staffPhone, "1207177519626797564", message);
 }
 exports.sendConsultationAlert = sendConsultationAlert;
+// ═══════════════════════════════════════════════════════════════════════════════
+// General-purpose wrappers (replace Twilio usage)
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Send OTP via SMS — uses the Login OTP template.
+ * When FALLBACK_OTP is true (staging/testing), skips the actual SMS.
+ */
+async function sendOTP(phone, otp) {
+    if (process.env.FALLBACK_OTP === "true") {
+        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+        return true;
+    }
+    const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+    return sendLoginOTP(phone, otp, expiryMinutes);
+}
+exports.sendOTP = sendOTP;
+/**
+ * Send a general SMS message.
+ * Uses the consultation alert template format.
+ * Drop-in replacement for twilioService.sendSMS(phone, message).
+ */
+async function sendSMS(phone, message) {
+    return sendTemplateSMS(phone, "1207177519626797564", message);
+}
+exports.sendSMS = sendSMS;

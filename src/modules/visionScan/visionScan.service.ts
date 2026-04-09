@@ -5,6 +5,7 @@ import { AppError } from "../../utils/AppError";
 import { visionScanRepository } from "./visionScan.repository";
 import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT } from "./visionScan.prompts";
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
+import { extractWithDocumentAI, isDocumentAIConfigured } from "./documentAI.service";
 import {
     AIExtractionResult,
     DiaryQuestion,
@@ -226,22 +227,58 @@ class VisionScanService {
         }
 
         try {
-            const prompt = buildExtractionPrompt(diaryPage);
-            const startTime = Date.now();
-            const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
-            const processingTimeMs = Date.now() - startTime;
+            const useDocAI = process.env.USE_DOCUMENT_AI === "true" && isDocumentAIConfigured();
 
-            const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
-                this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+            let enrichedResults: Record<string, EnrichedResult>;
+            let rawConfidenceScores: Record<string, number>;
+            let lowConfidenceFields: string[];
+            let metadata: ProcessingMetadata;
 
-            const metadata: ProcessingMetadata = {
-                model: VISION_SCAN_CONFIG.MODEL,
-                promptTokens: aiResult.usage.prompt_tokens,
-                responseTokens: aiResult.usage.completion_tokens,
-                totalTokens: aiResult.usage.total_tokens,
-                processingTimeMs,
-                lowConfidenceFields,
-            };
+            if (useDocAI) {
+                // ─── Google Document AI (trained custom extractor) ───────────
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                const docResult = await extractWithDocumentAI(
+                    imageBuffer,
+                    data.mimeType,
+                    diaryPage.questions
+                );
+
+                const built = this.buildEnrichedResults(diaryPage.questions, docResult.extraction);
+                enrichedResults = built.enrichedResults;
+                rawConfidenceScores = built.rawConfidenceScores;
+                lowConfidenceFields = built.lowConfidenceFields;
+
+                metadata = {
+                    model: "google-document-ai-custom",
+                    promptTokens: 0,
+                    responseTokens: 0,
+                    totalTokens: 0,
+                    processingTimeMs: docResult.usage.processingTimeMs,
+                    lowConfidenceFields,
+                };
+
+                console.log(`[VisionScan] Document AI extraction complete — ${docResult.usage.entityCount} entities, ${docResult.usage.processingTimeMs}ms`);
+            } else {
+                // ─── OpenRouter LLM (prompt-based fallback) ─────────────────
+                const prompt = buildExtractionPrompt(diaryPage);
+                const startTime = Date.now();
+                const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+                const processingTimeMs = Date.now() - startTime;
+
+                const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+                enrichedResults = built.enrichedResults;
+                rawConfidenceScores = built.rawConfidenceScores;
+                lowConfidenceFields = built.lowConfidenceFields;
+
+                metadata = {
+                    model: VISION_SCAN_CONFIG.MODEL,
+                    promptTokens: aiResult.usage.prompt_tokens,
+                    responseTokens: aiResult.usage.completion_tokens,
+                    totalTokens: aiResult.usage.total_tokens,
+                    processingTimeMs,
+                    lowConfidenceFields,
+                };
+            }
 
             await Promise.all([
                 visionScanRepository.updateScanCompleted(scanRecord, {
@@ -263,7 +300,7 @@ class VisionScanService {
                 scanRecord,
                 error.message || "Unexpected processing error"
             );
-            throw error; // Re-throw so BullMQ can retry
+            throw error;
         }
     }
 

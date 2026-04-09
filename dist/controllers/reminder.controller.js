@@ -1,14 +1,18 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resendReminder = exports.respondToReminder = exports.getDashboardReminders = exports.markReminderAsRead = exports.getPatientRemindersforadmin = exports.getPatientReminders = exports.createReminder = void 0;
+const path_1 = __importDefault(require("path"));
 const Reminder_1 = require("../models/Reminder");
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const sequelize_1 = require("sequelize");
-const twilio_service_1 = require("../service/twilio.service");
 const emailService_1 = require("../service/emailService");
 const notification_service_1 = require("../service/notification.service");
 const smsfortius_service_1 = require("../service/smsfortius.service");
+const s3Upload_1 = require("../utils/s3Upload");
 const translations_1 = require("../utils/translations");
 /**
  * POST /api/v1/clinic/create-reminder
@@ -17,9 +21,13 @@ const translations_1 = require("../utils/translations");
 const createReminder = async (req, res) => {
     try {
         const { patientId, message, reminderDate, type } = req.body;
-        const attachmentUrl = req.file
-            ? `/uploads/notification_attachments/${req.file.filename}`
-            : req.body.attachmentUrl || undefined;
+        let attachmentUrl = req.body.attachmentUrl || undefined;
+        const file = req.file;
+        if (file) {
+            const ext = path_1.default.extname(file.originalname).toLowerCase() || ".bin";
+            const s3Key = `reminders/attachments/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+            attachmentUrl = await (0, s3Upload_1.uploadBufferToS3)(file.buffer, file.mimetype, s3Key);
+        }
         // Validate required fields
         if (!patientId || !message || !reminderDate || !type) {
             res.status(400).json({
@@ -118,8 +126,8 @@ const createReminder = async (req, res) => {
                 (0, smsfortius_service_1.sendConsultationAlert)(doctor.phone, patient.fullName || "A patient", dateStr, timeStr)
                     .catch(err => console.error("Fortius consultation alert err:", err));
             }
-            // Twilio fallback with full content
-            twilio_service_1.twilioService.sendSMS(patient.phone, smsContent).catch(err => console.error("Twilio SMS err:", err));
+            // General SMS with full content
+            (0, smsfortius_service_1.sendSMS)(patient.phone, smsContent).catch(err => console.error("Fortius SMS err:", err));
         }
         res.status(201).json({
             success: true,
@@ -548,10 +556,9 @@ const resendReminder = async (req, res) => {
                 // Fortius: appointment SMS to patient
                 (0, smsfortius_service_1.sendDoctorAppointmentSMS)(reminder.patient.phone, doctorName, reschedDateStr, reschedTimeStr)
                     .catch((err) => console.error("Fortius resend SMS err:", err));
-                // Twilio fallback
-                twilio_service_1.twilioService
-                    .sendSMS(reminder.patient.phone, smsContent)
-                    .catch((err) => console.error("Twilio resend SMS err:", err));
+                // General SMS with full content
+                (0, smsfortius_service_1.sendSMS)(reminder.patient.phone, smsContent)
+                    .catch((err) => console.error("Fortius resend SMS err:", err));
             }
         }
         res.status(200).json({

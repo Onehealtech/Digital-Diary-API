@@ -11,7 +11,7 @@ const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const AppError_1 = require("../utils/AppError");
 const otpService_1 = require("./otpService");
-const twilio_service_1 = require("./twilio.service");
+const smsfortius_service_1 = require("./smsfortius.service");
 // In-memory session store mapping sessionId → phone (use Redis in production)
 const otpSessionStore = new Map();
 /**
@@ -29,7 +29,7 @@ async function sendSignupOtp(phone) {
     }
     const key = `self-otp-${phone}`;
     const otp = (0, otpService_1.generateOTP)(key);
-    const sent = await twilio_service_1.twilioService.sendOTP(phone, otp);
+    const sent = await (0, smsfortius_service_1.sendOTP)(phone, otp);
     if (!sent) {
         console.warn(`Failed to send OTP to ${phone}`);
     }
