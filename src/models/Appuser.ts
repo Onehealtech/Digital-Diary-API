@@ -182,6 +182,7 @@ export class AppUser extends Model {
     manageOnboardingRequests?: boolean;
     advancedAnalysis?: boolean;
     sellDiary?: boolean;
+    fillReport?: boolean;
   };
 
   // Assistant status: ACTIVE (working), ON_HOLD (temporarily inactive), DELETED (soft-deleted)

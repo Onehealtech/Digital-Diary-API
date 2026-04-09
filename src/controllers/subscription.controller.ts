@@ -268,6 +268,73 @@ export const upgradePlan = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE PAYMENT FLOW
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /subscriptions/upgrade/initiate
+ * Creates a PENDING payment order for upgrading to a new plan.
+ */
+export const initiateUpgrade = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const patientId = req.user.id;
+    const { newPlanId } = req.body;
+
+    if (!newPlanId) {
+      return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "newPlanId is required");
+    }
+
+    const result = await subscriptionService.initiateUpgradePayment({ patientId, newPlanId });
+    return responseMiddleware(res, HTTP_STATUS.CREATED, "Upgrade payment order created", result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to initiate upgrade";
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, message);
+  }
+};
+
+/**
+ * POST /subscriptions/upgrade/verify
+ * Verifies payment and activates the upgraded subscription.
+ */
+export const verifyUpgradePayment = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { orderId, gateway, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+
+    if (!orderId) {
+      return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "orderId is required");
+    }
+
+    if (gateway === "RAZORPAY") {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "razorpayOrderId, razorpayPaymentId, and razorpaySignature are required");
+      }
+      const isValid = verifyRazorpayPaymentSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature });
+      if (!isValid) {
+        return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "Payment verification failed: invalid signature");
+      }
+      const result = await subscriptionService.activateUpgradeAfterPayment(orderId, "RAZORPAY", razorpayPaymentId);
+      if (result.alreadyProcessed) {
+        return responseMiddleware(res, HTTP_STATUS.OK, "Subscription already upgraded", result.subscription);
+      }
+      return responseMiddleware(res, HTTP_STATUS.OK, "Payment verified and plan upgraded", { subscription: result.subscription, plan: result.plan });
+    }
+
+    if (gateway === "CASHFREE") {
+      const result = await subscriptionService.activateUpgradeAfterPayment(orderId, "CASHFREE");
+      if (result.alreadyProcessed) {
+        return responseMiddleware(res, HTTP_STATUS.OK, "Subscription already upgraded", result.subscription);
+      }
+      return responseMiddleware(res, HTTP_STATUS.OK, "Plan upgraded successfully", { subscription: result.subscription, plan: result.plan });
+    }
+
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, "Invalid gateway specified");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Upgrade payment verification failed";
+    return responseMiddleware(res, HTTP_STATUS.BAD_REQUEST, message);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PERMISSION CHECK ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
 

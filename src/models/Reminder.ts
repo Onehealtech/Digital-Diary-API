@@ -48,12 +48,13 @@ export class Reminder extends Model {
             "APPOINTMENT",
             "CHEMOTHERAPY",
             "RADIOLOGY",
+            "SURGERY",
             "FOLLOW_UP",
             "OTHER"
         ),
         allowNull: false,
     })
-    type!: "APPOINTMENT" | "CHEMOTHERAPY" | "RADIOLOGY" | "FOLLOW_UP" | "OTHER";
+    type!: "APPOINTMENT" | "CHEMOTHERAPY" | "RADIOLOGY" | "SURGERY" | "FOLLOW_UP" | "OTHER";
 
     @Column({
         type: DataType.ENUM("PENDING", "READ", "EXPIRED", "ACCEPTED", "REJECTED", "CLOSED"),
