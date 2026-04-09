@@ -131,9 +131,11 @@ router.get(
 );
 
 // Doctor manually fills / pre-fills an investigation report for a patient
+// Assistants need the 'fillReport' permission granted by the doctor
 router.post(
     "/doctor/fill-report",
     authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('fillReport'),
     bubbleScanController.doctorFillReport
 );
 

@@ -20,7 +20,8 @@ export const createReminder = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { patientId, message, reminderDate, type } = req.body;
+        const { patientId, message, reminderDate, type, force } = req.body;
+        const forceCreate = force === true || force === "true";
         let attachmentUrl: string | undefined =
             (req.body.attachmentUrl as string | undefined) || undefined;
 
@@ -74,6 +75,28 @@ export const createReminder = async (
                 message: "You don't have access to this patient",
             });
             return;
+        }
+
+        // Check for existing PENDING reminder at the same time (unless force flag is set)
+        if (!forceCreate) {
+            const requestedTime = new Date(reminderDate);
+            const windowStart = new Date(requestedTime.getTime() - 30 * 60 * 1000); // -30 min
+            const windowEnd   = new Date(requestedTime.getTime() + 30 * 60 * 1000); // +30 min
+            const existing = await Reminder.findOne({
+                where: {
+                    patientId: patient.id,
+                    status: "PENDING",
+                    reminderDate: { [Op.between]: [windowStart, windowEnd] },
+                },
+            });
+            if (existing) {
+                res.status(409).json({
+                    success: false,
+                    isDuplicate: true,
+                    message: `An appointment is already scheduled near this time (${new Date(existing.reminderDate).toLocaleString()}). Send with force=true to create anyway.`,
+                });
+                return;
+            }
         }
 
         // Create reminder

@@ -23,6 +23,8 @@ import {
   getMySubscription,
   getAllSubscriptions,
   upgradePlan,
+  initiateUpgrade,
+  verifyUpgradePayment,
   checkPageLimit,
   checkFeatureAccess,
 } from "../controllers/subscription.controller";
@@ -112,10 +114,25 @@ router.get(
   getMySubscription
 );
 
+// Legacy direct upgrade (no payment)
 router.post(
   "/upgrade",
   patientAuthCheck,
   upgradePlan
+);
+
+// Upgrade with payment — Step 1: create order
+router.post(
+  "/upgrade/initiate",
+  patientAuthCheck,
+  initiateUpgrade
+);
+
+// Upgrade with payment — Step 2: verify & activate
+router.post(
+  "/upgrade/verify",
+  patientAuthCheck,
+  verifyUpgradePayment
 );
 
 // ── Permission Check Endpoints (Patient) ─────────────────────────────────
