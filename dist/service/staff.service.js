@@ -387,6 +387,13 @@ class StaffService {
                 updateData[key] = updates[key];
             }
         }
+        // Sync isActive with assistantStatus for Super Admin visibility
+        if (updateData.assistantStatus === "ON_HOLD") {
+            updateData.isActive = false; // Doctor Hold → Super Admin sees Inactive
+        }
+        else if (updateData.assistantStatus === "ACTIVE") {
+            updateData.isActive = true; // Doctor Reactivate → Super Admin sees Active
+        }
         await assistant.update(updateData);
         return assistant;
     }
@@ -568,9 +575,13 @@ class StaffService {
             throw new Error("User not found");
         }
         const newStatus = !user.isActive;
-        // Rotate token version on deactivation so old JWTs stop working immediately.
+        // Sync assistantStatus with isActive for Doctor visibility
+        const assistantStatusSync = user.role === "ASSISTANT"
+            ? { assistantStatus: newStatus ? "ACTIVE" : "ON_HOLD" }
+            : {};
         await user.update({
             isActive: newStatus,
+            ...assistantStatusSync,
             ...(newStatus === false
                 ? { tokenVersion: (user.tokenVersion ?? 0) + 1 }
                 : {}),
@@ -726,8 +737,9 @@ class StaffService {
                 "address", "city", "state",
                 "commissionType", "commissionRate", "cashfreeVendorId",
                 "isActive", "isEmailVerified", "createdAt", "updatedAt",
-                "parentId", "assistantStatus",
+                "parentId", "assistantStatus", "deletedAt",
             ],
+            paranoid: false, // include archived (soft-deleted) users
         });
         if (user) {
             const result = { ...user.toJSON() };
