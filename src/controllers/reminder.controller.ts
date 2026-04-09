@@ -93,7 +93,7 @@ export const createReminder = async (
                 res.status(409).json({
                     success: false,
                     isDuplicate: true,
-                    message: `An appointment is already scheduled near this time (${new Date(existing.reminderDate).toLocaleString()}). Send with force=true to create anyway.`,
+                    message: `An appointment is already scheduled near this time (${new Date(existing.reminderDate).toLocaleString()}).`,
                 });
                 return;
             }
