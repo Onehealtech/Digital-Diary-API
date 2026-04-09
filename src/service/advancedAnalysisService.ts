@@ -74,7 +74,8 @@ const repo = new AdvancedAnalysisRepository();
 export class AdvancedAnalysisService {
   async getPatients(
     doctorId: string,
-    filter: AdvancedAnalysisFilter
+    filter: AdvancedAnalysisFilter,
+    patientIds?: string[] | null
   ): Promise<{
     patients: PatientAnalysisRow[];
     total: number;
@@ -85,7 +86,7 @@ export class AdvancedAnalysisService {
       throw new AppError(400, "Doctor ID is required");
     }
 
-    const allPatients = await repo.findPatientsForDoctor(doctorId);
+    const allPatients = await repo.findPatientsForDoctor(doctorId, patientIds);
 
     // Pre-filter by submission date range: keep patients who have at least one
     // scan submitted within the requested window.
@@ -109,11 +110,12 @@ export class AdvancedAnalysisService {
   async getAnalytics(
     doctorId: string,
     dateRange: "7d" | "30d" | "90d" | "all" = "30d",
-    filter?: AdvancedAnalysisFilter
+    filter?: AdvancedAnalysisFilter,
+    patientIds?: string[] | null
   ): Promise<AnalyticsResponse> {
     if (!doctorId) throw new AppError(400, "Doctor ID is required");
 
-    const patientsWithScans = await repo.findPatientsForDoctor(doctorId);
+    const patientsWithScans = await repo.findPatientsForDoctor(doctorId, patientIds);
 
     // Map all patients to rows, then apply filter if provided
     let rows: PatientAnalysisRow[] = patientsWithScans.map(({ patient, scans }) =>
@@ -482,12 +484,16 @@ export class AdvancedAnalysisService {
     };
   }
 
-  async getCount(doctorId: string, filter: AdvancedAnalysisFilter): Promise<number> {
+  async getCount(
+    doctorId: string,
+    filter: AdvancedAnalysisFilter,
+    patientIds?: string[] | null
+  ): Promise<number> {
     if (!doctorId) {
       throw new AppError(400, "Doctor ID is required");
     }
 
-    const allPatients = await repo.findPatientsForDoctor(doctorId);
+    const allPatients = await repo.findPatientsForDoctor(doctorId, patientIds ?? filter.patientIds);
     const dateFilteredPatients = applySubmissionDateFilter(allPatients, filter);
     const rows = dateFilteredPatients.map(({ patient, scans }) =>
       repo.mapToPatientAnalysisRow(patient, scans)

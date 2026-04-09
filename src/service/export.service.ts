@@ -3,6 +3,7 @@ import { Patient } from "../models/Patient";
 import { ScanLog } from "../models/ScanLog";
 import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
+import { resolveAssistantPatientScope } from "./patientAccess.service";
 
 interface ExportPatientDataRequest {
   userId: string;
@@ -274,11 +275,11 @@ class ExportService {
     if (role === "DOCTOR") {
       whereClause.doctorId = requesterId;
     } else if (role === "ASSISTANT") {
-      const assistant = await AppUser.findByPk(requesterId);
-      if (!assistant || !assistant.parentId) {
-        throw new Error("Assistant not linked to a doctor");
+      const scope = await resolveAssistantPatientScope({ id: requesterId, role });
+      if (scope.allowedPatientIds && !scope.allowedPatientIds.includes(patientId)) {
+        throw new Error("Patient not found or access denied");
       }
-      whereClause.doctorId = assistant.parentId;
+      whereClause.doctorId = scope.doctorId;
     } else {
       throw new Error("Unauthorized to view analytics");
     }

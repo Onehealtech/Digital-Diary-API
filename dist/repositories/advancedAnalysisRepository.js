@@ -216,22 +216,30 @@ class AdvancedAnalysisRepository {
     /**
      * Fetch all active patients for a doctor along with their BubbleScanResult records.
      */
-    async findPatientsForDoctor(doctorId) {
+    async findPatientsForDoctor(doctorId, patientIds) {
         // Step 1: fetch patients for this doctor
+        const whereClause = {
+            doctorId,
+            status: { [sequelize_1.Op.in]: ["ACTIVE", "CRITICAL", "ON_HOLD", "COMPLETED"] },
+        };
+        const normalizedPatientIds = (patientIds ?? []).filter((id) => typeof id === "string" && id.trim() !== "");
+        if (patientIds !== undefined) {
+            if (normalizedPatientIds.length === 0) {
+                return [];
+            }
+            whereClause.id = { [sequelize_1.Op.in]: normalizedPatientIds };
+        }
         const patients = await Patient_1.Patient.findAll({
-            where: {
-                doctorId,
-                status: { [sequelize_1.Op.in]: ["ACTIVE", "CRITICAL", "ON_HOLD", "COMPLETED"] },
-            },
+            where: whereClause,
             order: [["createdAt", "ASC"]],
         });
         if (patients.length === 0)
             return [];
         // Step 2: fetch all completed bubble scans for these patients in one query
-        const patientIds = patients.map((p) => p.id);
+        const patientIdsInScope = patients.map((p) => p.id);
         const allScans = await BubbleScanResult_1.BubbleScanResult.findAll({
             where: {
-                patientId: { [sequelize_1.Op.in]: patientIds },
+                patientId: { [sequelize_1.Op.in]: patientIdsInScope },
                 processingStatus: "completed",
             },
             order: [["pageNumber", "ASC"]],

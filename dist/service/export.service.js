@@ -6,6 +6,7 @@ const Patient_1 = require("../models/Patient");
 const ScanLog_1 = require("../models/ScanLog");
 const Appuser_1 = require("../models/Appuser");
 const sequelize_1 = require("sequelize");
+const patientAccess_service_1 = require("./patientAccess.service");
 class ExportService {
     /**
      * Generate export for patient data
@@ -227,11 +228,11 @@ class ExportService {
             whereClause.doctorId = requesterId;
         }
         else if (role === "ASSISTANT") {
-            const assistant = await Appuser_1.AppUser.findByPk(requesterId);
-            if (!assistant || !assistant.parentId) {
-                throw new Error("Assistant not linked to a doctor");
+            const scope = await (0, patientAccess_service_1.resolveAssistantPatientScope)({ id: requesterId, role });
+            if (scope.allowedPatientIds && !scope.allowedPatientIds.includes(patientId)) {
+                throw new Error("Patient not found or access denied");
             }
-            whereClause.doctorId = assistant.parentId;
+            whereClause.doctorId = scope.doctorId;
         }
         else {
             throw new Error("Unauthorized to view analytics");

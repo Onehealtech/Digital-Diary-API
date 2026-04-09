@@ -6,41 +6,30 @@ const advancedAnalysisService_1 = require("../service/advancedAnalysisService");
 const advancedAnalysisTypes_1 = require("../service/advancedAnalysisTypes");
 const googleSheets_service_1 = require("../service/googleSheets.service");
 const AppError_1 = require("../utils/AppError");
-const Appuser_1 = require("../models/Appuser");
 const response_1 = require("../utils/response");
 const activityLogger_1 = require("../utils/activityLogger");
+const patientAccess_service_1 = require("../service/patientAccess.service");
 /**
- * Resolves the effective doctor ID.
- * For assistants, looks up parentId directly from DB to avoid raw-query mapping issues.
- * For doctors, returns their own ID.
+ * Resolves the effective doctor scope.
+ * Assistants are restricted to assigned patients when patient access is set to
+ * "selected".
  */
-async function resolveDoctorId(authReq) {
+async function resolveDoctorScope(authReq) {
     const user = authReq.user;
-    if (user.role === "ASSISTANT") {
-        // Always fetch fresh from DB — the auth middleware uses raw:true which can
-        // miss camelCase FK columns on self-referencing associations.
-        const assistant = await Appuser_1.AppUser.findByPk(user.id, {
-            attributes: ["id", "parentId"],
-        });
-        const parentId = assistant?.parentId;
-        if (!parentId)
-            throw new AppError_1.AppError(403, "Assistant is not linked to a doctor");
-        return parentId;
-    }
-    return user.id;
+    return (0, patientAccess_service_1.resolveAssistantPatientScope)({ id: user.id, role: user.role });
 }
 const DateRangeSchema = zod_1.z.enum(["7d", "30d", "90d", "all"]).default("30d");
 const getAdvancedAnalyticsDashboard = async (req, res) => {
     try {
         const authReq = req;
-        const doctorId = await resolveDoctorId(authReq);
+        const { doctorId, allowedPatientIds } = await resolveDoctorScope(authReq);
         const userRole = authReq.user.role;
         const parsedRange = DateRangeSchema.safeParse(req.query.dateRange ?? req.body?.dateRange);
         const dateRange = parsedRange.success ? parsedRange.data : "30d";
-        // Parse optional filter (same schema as patient list) — applies to analytics too
+        // Parse optional filter (same schema as patient list) - applies to analytics too
         const parsedFilter = advancedAnalysisTypes_1.AdvancedAnalysisFilterSchema.safeParse(req.body?.filter ?? {});
         const filter = parsedFilter.success ? parsedFilter.data : undefined;
-        const data = await advancedAnalysisService_1.advancedAnalysisService.getAnalytics(doctorId, dateRange, filter);
+        const data = await advancedAnalysisService_1.advancedAnalysisService.getAnalytics(doctorId, dateRange, filter, allowedPatientIds);
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
@@ -65,7 +54,7 @@ exports.getAdvancedAnalyticsDashboard = getAdvancedAnalyticsDashboard;
 const getAdvancedAnalysisPatients = async (req, res) => {
     try {
         const authReq = req;
-        const doctorId = await resolveDoctorId(authReq);
+        const { doctorId, allowedPatientIds } = await resolveDoctorScope(authReq);
         const userRole = authReq.user.role;
         const parsed = advancedAnalysisTypes_1.AdvancedAnalysisFilterSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -73,7 +62,7 @@ const getAdvancedAnalysisPatients = async (req, res) => {
             return;
         }
         const filter = parsed.data;
-        const result = await advancedAnalysisService_1.advancedAnalysisService.getPatients(doctorId, filter);
+        const result = await advancedAnalysisService_1.advancedAnalysisService.getPatients(doctorId, filter, allowedPatientIds);
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
@@ -102,14 +91,14 @@ const SyncSheetBodySchema = zod_1.z.object({
 const syncAnalyticsGoogleSheet = async (req, res) => {
     try {
         const authReq = req;
-        const doctorId = authReq.user.id;
+        const { doctorId, allowedPatientIds } = await resolveDoctorScope(authReq);
         const parsed = SyncSheetBodySchema.safeParse(req.body);
         if (!parsed.success) {
             (0, response_1.sendError)(res, parsed.error.issues[0].message, 400);
             return;
         }
         const { filter, sheetId } = parsed.data;
-        const result = await googleSheets_service_1.googleSheetsService.syncAnalyticsSheet(doctorId, filter, sheetId);
+        const result = await googleSheets_service_1.googleSheetsService.syncAnalyticsSheet(doctorId, filter, sheetId, allowedPatientIds);
         (0, activityLogger_1.logActivity)({
             req,
             userId: doctorId,
@@ -134,13 +123,13 @@ exports.syncAnalyticsGoogleSheet = syncAnalyticsGoogleSheet;
 const getAdvancedAnalysisCount = async (req, res) => {
     try {
         const authReq = req;
-        const doctorId = await resolveDoctorId(authReq);
+        const { doctorId, allowedPatientIds } = await resolveDoctorScope(authReq);
         const parsed = advancedAnalysisTypes_1.AdvancedAnalysisFilterSchema.safeParse(req.body);
         if (!parsed.success) {
             (0, response_1.sendError)(res, parsed.error.issues[0].message, 400);
             return;
         }
-        const count = await advancedAnalysisService_1.advancedAnalysisService.getCount(doctorId, parsed.data);
+        const count = await advancedAnalysisService_1.advancedAnalysisService.getCount(doctorId, parsed.data, allowedPatientIds);
         (0, response_1.sendResponse)(res, { total: count }, "Count fetched successfully");
     }
     catch (error) {
