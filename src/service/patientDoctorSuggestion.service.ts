@@ -205,26 +205,26 @@ export async function approveSuggestion(
     });
 
     // Create wallet
-    try {
-      await createWallet(newUser.id, "DOCTOR");
-    } catch (err: any) {
-      warnings.push(`Wallet creation failed: ${err.message}`);
-    }
+    // try {
+    //   await createWallet(newUser.id, "DOCTOR");
+    // } catch (err: any) {
+    //   warnings.push(`Wallet creation failed: ${err.message}`);
+    // }
 
     // Register on Cashfree
-    try {
-      const cfResult = await createCashfreeVendor({
-        vendorId: newUser.id,
-        name: newDoctor.fullName,
-        email: newDoctor.email.toLowerCase(),
-        phone: newDoctor.phone,
-        role: "DOCTOR",
-        bank: newDoctor.bank,
-      });
-      await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
-    } catch (err: any) {
-      warnings.push(`Cashfree registration failed: ${err.message}`);
-    }
+    // try {
+    //   const cfResult = await createCashfreeVendor({
+    //     vendorId: newUser.id,
+    //     name: newDoctor.fullName,
+    //     email: newDoctor.email.toLowerCase(),
+    //     phone: newDoctor.phone,
+    //     role: "DOCTOR",
+    //     bank: newDoctor.bank,
+    //   });
+    //   await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
+    // } catch (err: any) {
+    //   warnings.push(`Cashfree registration failed: ${err.message}`);
+    // }
 
     // Send credentials email
     try {

@@ -8,8 +8,6 @@ const Appuser_1 = require("../models/Appuser");
 const AppError_1 = require("../utils/AppError");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const emailService_1 = require("./emailService");
-const wallet_service_1 = require("./wallet.service");
-const cashfree_vendor_service_1 = require("./cashfree-vendor.service");
 // ═══════════════════════════════════════════════════════════════════════════
 // PATIENT-FACING
 // ═══════════════════════════════════════════════════════════════════════════
@@ -149,27 +147,25 @@ async function approveSuggestion(id, reviewerId, onboardedDoctorId, newDoctor) {
             commissionRate: newDoctor.commissionRate,
         });
         // Create wallet
-        try {
-            await (0, wallet_service_1.createWallet)(newUser.id, "DOCTOR");
-        }
-        catch (err) {
-            warnings.push(`Wallet creation failed: ${err.message}`);
-        }
+        // try {
+        //   await createWallet(newUser.id, "DOCTOR");
+        // } catch (err: any) {
+        //   warnings.push(`Wallet creation failed: ${err.message}`);
+        // }
         // Register on Cashfree
-        try {
-            const cfResult = await (0, cashfree_vendor_service_1.createCashfreeVendor)({
-                vendorId: newUser.id,
-                name: newDoctor.fullName,
-                email: newDoctor.email.toLowerCase(),
-                phone: newDoctor.phone,
-                role: "DOCTOR",
-                bank: newDoctor.bank,
-            });
-            await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
-        }
-        catch (err) {
-            warnings.push(`Cashfree registration failed: ${err.message}`);
-        }
+        // try {
+        //   const cfResult = await createCashfreeVendor({
+        //     vendorId: newUser.id,
+        //     name: newDoctor.fullName,
+        //     email: newDoctor.email.toLowerCase(),
+        //     phone: newDoctor.phone,
+        //     role: "DOCTOR",
+        //     bank: newDoctor.bank,
+        //   });
+        //   await newUser.update({ cashfreeVendorId: cfResult.vendor_id });
+        // } catch (err: any) {
+        //   warnings.push(`Cashfree registration failed: ${err.message}`);
+        // }
         // Send credentials email
         try {
             await (0, emailService_1.sendPasswordEmail)(newDoctor.email, plainPassword, "DOCTOR", newDoctor.fullName);

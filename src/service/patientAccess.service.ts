@@ -219,6 +219,7 @@ export async function getPatientAccessInfo(patientId: string) {
           endDate: subscription.endDate,
         }
       : null,
+    doctorAssigned: !!patient.doctorId,
     accessLevel: activeSubscription ? AccessLevel.ALL_ACCESS : AccessLevel.LIMITED_ACCESS,
     validity: {
       startDate: subscription?.startDate ?? null,
