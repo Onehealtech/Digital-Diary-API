@@ -58,11 +58,25 @@ const handleCashfreeWebhook = async (req, res) => {
                 return res.status(200).json({ status: "missing_order_id" });
             }
             const paymentMethod = payload?.data?.payment?.payment_group || "UNKNOWN";
-            // Check if this is a subscription order
+            // Check if this is a subscription or upgrade order
             const order = await Order_1.Order.findOne({ where: { orderId } });
             if (order?.subscriptionPlanId) {
-                // Subscription payment — activate subscription
-                const result = await (0, subscription_service_1.activateSubscriptionAfterPayment)(orderId, paymentMethod, payload?.data?.payment?.cf_payment_id?.toString());
+                const cfPaymentId = payload?.data?.payment?.cf_payment_id?.toString();
+                const isUpgrade = order.orderId.startsWith("UPG-");
+                if (isUpgrade) {
+                    // Upgrade payment — mark old sub as UPGRADED, create new ACTIVE sub
+                    const result = await (0, subscription_service_1.activateUpgradeAfterPayment)(orderId, paymentMethod, cfPaymentId);
+                    webhookLog.isProcessed = true;
+                    await webhookLog.save();
+                    if (result.alreadyProcessed) {
+                        console.log(`ℹ️ Upgrade for order ${orderId} already processed (idempotent)`);
+                        return res.status(200).json({ status: "already_processed" });
+                    }
+                    console.log(`✅ Plan upgraded via webhook for order ${orderId}`);
+                    return res.status(200).json({ status: "upgrade_activated" });
+                }
+                // New subscription payment
+                const result = await (0, subscription_service_1.activateSubscriptionAfterPayment)(orderId, paymentMethod, cfPaymentId);
                 webhookLog.isProcessed = true;
                 await webhookLog.save();
                 if (result.alreadyProcessed) {
@@ -152,7 +166,18 @@ const handleRazorpayWebhook = async (req, res) => {
                 return res.status(200).json({ status: "order_not_found" });
             }
             if (order.subscriptionPlanId) {
-                // Subscription payment
+                const isUpgrade = order.orderId.startsWith("UPG-");
+                if (isUpgrade) {
+                    const result = await (0, subscription_service_1.activateUpgradeAfterPayment)(order.orderId, paymentMethod, razorpayPaymentId);
+                    webhookLog.isProcessed = true;
+                    await webhookLog.save();
+                    if (result.alreadyProcessed) {
+                        console.log(`ℹ️ Razorpay upgrade for order ${order.orderId} already processed`);
+                        return res.status(200).json({ status: "already_processed" });
+                    }
+                    console.log(`✅ Razorpay plan upgraded for order ${order.orderId}`);
+                    return res.status(200).json({ status: "upgrade_activated" });
+                }
                 const result = await (0, subscription_service_1.activateSubscriptionAfterPayment)(order.orderId, paymentMethod, razorpayPaymentId);
                 webhookLog.isProcessed = true;
                 await webhookLog.save();

@@ -370,14 +370,12 @@ class DashboardService {
             const doctor = await Appuser_1.AppUser.findByPk(doctorId, {
                 attributes: ["id", "fullName", "email"],
             });
-            // Normalize statuses (IMPORTANT)
-            const STATUS = {
-                INACTIVE: "INACTIVE",
-                ON_HOLD: "ON_HOLD",
-                DOCTOR_REASSIGNED: "DOCTOR_REASSIGNED",
-            };
             // ─────────────────────────────────────────────────────────────
             // Patient Counts
+            // "ongoing"  = ACTIVE + CRITICAL (actively monitored)
+            // "dormant"  = ON_HOLD
+            // "closed"   = INACTIVE + COMPLETED
+            // "reassigned" = DOCTOR_REASSIGNED
             // ─────────────────────────────────────────────────────────────
             const totalPatients = await Patient_1.Patient.count({ where: { doctorId } });
             let ongoingPatients = 0;
@@ -392,28 +390,18 @@ class DashboardService {
                     doctorReassignedPatients,
                 ] = await Promise.all([
                     Patient_1.Patient.count({
-                        where: {
-                            doctorId,
-                            status: {
-                                [sequelize_1.Op.notIn]: [
-                                    STATUS.INACTIVE,
-                                    STATUS.ON_HOLD,
-                                    STATUS.DOCTOR_REASSIGNED,
-                                ],
-                            },
-                        },
+                        where: { doctorId, status: { [sequelize_1.Op.in]: ["ACTIVE", "CRITICAL"] } },
                     }),
-                    Patient_1.Patient.count({ where: { doctorId, status: STATUS.ON_HOLD } }),
-                    Patient_1.Patient.count({ where: { doctorId, status: STATUS.INACTIVE } }),
+                    Patient_1.Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
                     Patient_1.Patient.count({
-                        where: { doctorId, status: STATUS.DOCTOR_REASSIGNED },
+                        where: { doctorId, status: { [sequelize_1.Op.in]: ["INACTIVE", "COMPLETED"] } },
                     }),
+                    Patient_1.Patient.count({ where: { doctorId, status: "DOCTOR_REASSIGNED" } }),
                 ]);
             }
             catch (err) {
                 console.error("Patient status query failed:", err);
             }
-            const activeCases = ongoingPatients;
             // ─────────────────────────────────────────────────────────────
             // Get Patient IDs
             // ─────────────────────────────────────────────────────────────
@@ -423,9 +411,13 @@ class DashboardService {
                 raw: true,
             });
             const doctorPatientIds = doctorPatients.map((p) => p.id);
-            // Debug (remove later)
             // ─────────────────────────────────────────────────────────────
             // Diary Stats
+            // BubbleScanResult is the primary table (processed entries).
+            // ScanLog is the fallback for patients with no BubbleScanResult data.
+            // Never combine both — they track the same logical scans.
+            // pendingReviews only counts BubbleScanResult entries that are
+            // fully processed (processingStatus = 'completed') and unreviewed.
             // ─────────────────────────────────────────────────────────────
             let totalEntries = 0;
             let pendingReviews = 0;
@@ -436,50 +428,57 @@ class DashboardService {
             if (doctorPatientIds.length > 0) {
                 const oneWeekAgo = new Date();
                 oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                const patientWhere = {
-                    patientId: { [sequelize_1.Op.in]: doctorPatientIds },
-                };
+                const patientWhere = { patientId: { [sequelize_1.Op.in]: doctorPatientIds } };
                 try {
-                    const [bsPending, bsTotal, bsFlagged, bsWeek, bsScanType, slPending, slTotal, slFlagged, slWeek,] = await Promise.all([
-                        BubbleScanResult_1.BubbleScanResult.count({
-                            where: { ...patientWhere, doctorReviewed: false },
-                        }),
+                    const [bsTotal, bsPending, bsFlagged, bsWeek, bsScanType] = await Promise.all([
                         BubbleScanResult_1.BubbleScanResult.count({ where: patientWhere }),
+                        // Only entries that are fully processed AND not yet reviewed
+                        BubbleScanResult_1.BubbleScanResult.count({
+                            where: {
+                                ...patientWhere,
+                                processingStatus: "completed",
+                                doctorReviewed: false,
+                            },
+                        }),
                         BubbleScanResult_1.BubbleScanResult.count({
                             where: { ...patientWhere, flagged: true },
                         }),
                         BubbleScanResult_1.BubbleScanResult.count({
-                            where: {
-                                ...patientWhere,
-                                scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo },
-                            },
+                            where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } },
                         }),
                         BubbleScanResult_1.BubbleScanResult.count({
                             where: { ...patientWhere, submissionType: "scan" },
                         }),
-                        ScanLog_1.ScanLog.count({
-                            where: { ...patientWhere, doctorReviewed: false },
-                        }),
-                        ScanLog_1.ScanLog.count({ where: patientWhere }),
-                        ScanLog_1.ScanLog.count({
-                            where: { ...patientWhere, flagged: true },
-                        }),
-                        ScanLog_1.ScanLog.count({
-                            where: {
-                                ...patientWhere,
-                                scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo },
-                            },
-                        }),
                     ]);
-                    // Combine
-                    totalEntries = bsTotal + slTotal;
-                    pendingReviews = bsPending + slPending;
-                    flaggedEntries = bsFlagged + slFlagged;
-                    weekEntries = bsWeek + slWeek;
-                    scanTypeCount = {
-                        scan: bsScanType,
-                        manual: bsTotal - bsScanType + slTotal,
-                    };
+                    if (bsTotal > 0) {
+                        // BubbleScanResult has data — use it exclusively
+                        totalEntries = bsTotal;
+                        pendingReviews = bsPending;
+                        flaggedEntries = bsFlagged;
+                        weekEntries = bsWeek;
+                        scanTypeCount = {
+                            scan: bsScanType,
+                            manual: bsTotal - bsScanType,
+                        };
+                    }
+                    else {
+                        // Fallback to ScanLog (legacy data)
+                        const [slTotal, slPending, slFlagged, slWeek] = await Promise.all([
+                            ScanLog_1.ScanLog.count({ where: patientWhere }),
+                            ScanLog_1.ScanLog.count({
+                                where: { ...patientWhere, doctorReviewed: false },
+                            }),
+                            ScanLog_1.ScanLog.count({ where: { ...patientWhere, flagged: true } }),
+                            ScanLog_1.ScanLog.count({
+                                where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } },
+                            }),
+                        ]);
+                        totalEntries = slTotal;
+                        pendingReviews = slPending;
+                        flaggedEntries = slFlagged;
+                        weekEntries = slWeek;
+                        scanTypeCount = { scan: 0, manual: slTotal };
+                    }
                 }
                 catch (err) {
                     console.error("Diary stats query failed:", err);
@@ -493,15 +492,9 @@ class DashboardService {
                         order: [["scannedAt", "DESC"]],
                         limit: 10,
                         attributes: [
-                            "id",
-                            "patientId",
-                            "pageNumber",
-                            "submissionType",
-                            "processingStatus",
-                            "doctorReviewed",
-                            "flagged",
-                            "scannedAt",
-                            "createdAt",
+                            "id", "patientId", "pageNumber", "submissionType",
+                            "processingStatus", "doctorReviewed", "flagged",
+                            "scannedAt", "createdAt",
                         ],
                         include: [
                             {
@@ -536,24 +529,6 @@ class DashboardService {
                 }
             }
             // ─────────────────────────────────────────────────────────────
-            // Tasks
-            // ─────────────────────────────────────────────────────────────
-            // let totalTasks = 0;
-            // let pendingTasks = 0;
-            // try {
-            //   [totalTasks, pendingTasks] = await Promise.all([
-            //     Task.count({ where: { createdBy: doctorId } }),
-            //     Task.count({
-            //       where: {
-            //         createdBy: doctorId,
-            //         status: { [Op.in]: ["pending", "in-progress"] },
-            //       },
-            //     }),
-            //   ]);
-            // } catch (err) {
-            //   console.error("Task query failed:", err);
-            // }
-            // ─────────────────────────────────────────────────────────────
             // Team
             // ─────────────────────────────────────────────────────────────
             const totalAssistants = await Appuser_1.AppUser.count({
@@ -575,10 +550,7 @@ class DashboardService {
             catch (err) {
                 console.error("Follow-up query failed:", err);
             }
-            // ─────────────────────────────────────────────────────────────
-            // FINAL RESPONSE
-            // ─────────────────────────────────────────────────────────────
-            const response = {
+            return {
                 doctorName: doctor?.fullName || null,
                 patients: {
                     total: totalPatients,
@@ -586,7 +558,7 @@ class DashboardService {
                     dormant: dormantPatients,
                     closedCases: closedPatients,
                     doctorReassigned: doctorReassignedPatients,
-                    activeCases,
+                    activeCases: ongoingPatients,
                     needingFollowUp: patientsNeedingFollowUp,
                 },
                 diaryEntries: {
@@ -597,18 +569,11 @@ class DashboardService {
                     flagged: flaggedEntries,
                     byType: scanTypeCount,
                 },
-                // tasks: {
-                //   total: totalTasks,
-                //   pending: pendingTasks,
-                //   completed: totalTasks - pendingTasks,
-                // },
                 team: {
                     totalAssistants,
                 },
                 recentEntries,
             };
-            console.log("Dashboard Response:", response);
-            return response;
         }
         catch (error) {
             console.error("Dashboard API failed:", error);
@@ -619,7 +584,6 @@ class DashboardService {
      * Assistant Dashboard Statistics
      */
     async getAssistantDashboard(assistantId) {
-        // Get assistant info
         const assistant = await Appuser_1.AppUser.findByPk(assistantId);
         if (!assistant || assistant.role !== "ASSISTANT") {
             throw new Error("Assistant not found");
@@ -628,74 +592,116 @@ class DashboardService {
         if (!doctorId) {
             throw new Error("Assistant is not assigned to a doctor");
         }
-        // ── Patient counts by status ──────────────────────────────────────
-        const totalPatients = await Patient_1.Patient.count({ where: { doctorId } });
+        // ─────────────────────────────────────────────────────────────
+        // Resolve the patient scope for this assistant:
+        //   "all"      → all patients of the parent doctor
+        //   "selected" → only the explicitly assigned patient IDs
+        // ─────────────────────────────────────────────────────────────
+        const accessMode = assistant.patientAccessMode || "all";
+        const assignedIds = assistant.assignedPatientIds || [];
+        const patientScope = accessMode === "selected" && assignedIds.length > 0
+            ? { id: { [sequelize_1.Op.in]: assignedIds } }
+            : { doctorId };
+        // ─────────────────────────────────────────────────────────────
+        // Patient Counts (scoped to assistant's accessible patients)
+        // "ongoing"  = ACTIVE + CRITICAL
+        // "dormant"  = ON_HOLD
+        // "closed"   = INACTIVE + COMPLETED
+        // ─────────────────────────────────────────────────────────────
+        const totalPatients = await Patient_1.Patient.count({ where: patientScope });
         let ongoingPatients = 0;
         let dormantPatients = 0;
         let closedPatients = 0;
         try {
             [ongoingPatients, dormantPatients, closedPatients] = await Promise.all([
-                Patient_1.Patient.count({ where: { doctorId, status: { [sequelize_1.Op.notIn]: ["INACTIVE", "ON_HOLD"] } } }),
-                Patient_1.Patient.count({ where: { doctorId, status: "ON_HOLD" } }),
-                Patient_1.Patient.count({ where: { doctorId, status: "INACTIVE" } }),
+                Patient_1.Patient.count({
+                    where: { ...patientScope, status: { [sequelize_1.Op.in]: ["ACTIVE", "CRITICAL"] } },
+                }),
+                Patient_1.Patient.count({ where: { ...patientScope, status: "ON_HOLD" } }),
+                Patient_1.Patient.count({
+                    where: { ...patientScope, status: { [sequelize_1.Op.in]: ["INACTIVE", "COMPLETED"] } },
+                }),
             ]);
         }
         catch (err) {
             console.error("Assistant patient status query failed:", err);
         }
-        const activeCases = ongoingPatients;
-        // ── Diary entry stats (combine BubbleScanResult + ScanLog) ────────
-        const doctorPatientIds = (await Patient_1.Patient.findAll({
-            where: { doctorId },
+        // ─────────────────────────────────────────────────────────────
+        // Get scoped Patient IDs for diary queries
+        // ─────────────────────────────────────────────────────────────
+        const scopedPatients = await Patient_1.Patient.findAll({
+            where: patientScope,
             attributes: ["id"],
             raw: true,
-        })).map((p) => p.id);
+        });
+        const scopedPatientIds = scopedPatients.map((p) => p.id);
+        // ─────────────────────────────────────────────────────────────
+        // Diary Stats — same fallback logic as doctor dashboard:
+        // use BubbleScanResult exclusively; fall back to ScanLog only
+        // when no BubbleScanResult entries exist.
+        // pendingReviews = processingStatus:'completed' + doctorReviewed:false
+        // ─────────────────────────────────────────────────────────────
         let totalEntries = 0;
         let pendingReviews = 0;
         let flaggedEntries = 0;
         let weekEntries = 0;
         let scanTypeCount = { scan: 0, manual: 0 };
-        if (doctorPatientIds.length > 0) {
+        if (scopedPatientIds.length > 0) {
             const oneWeekAgo = new Date();
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const patientWhere = { patientId: { [sequelize_1.Op.in]: doctorPatientIds } };
-            // ── BubbleScanResult counts ──
-            let bsTotal = 0, bsPending = 0, bsFlagged = 0, bsWeek = 0, bsScanType = 0;
+            const patientWhere = { patientId: { [sequelize_1.Op.in]: scopedPatientIds } };
             try {
-                [bsPending, bsTotal, bsFlagged, bsWeek] = await Promise.all([
-                    BubbleScanResult_1.BubbleScanResult.count({ where: { ...patientWhere, doctorReviewed: false } }),
+                const [bsTotal, bsPending, bsFlagged, bsWeek, bsScanType] = await Promise.all([
                     BubbleScanResult_1.BubbleScanResult.count({ where: patientWhere }),
-                    BubbleScanResult_1.BubbleScanResult.count({ where: { ...patientWhere, flagged: true } }),
-                    BubbleScanResult_1.BubbleScanResult.count({ where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } } }),
+                    BubbleScanResult_1.BubbleScanResult.count({
+                        where: {
+                            ...patientWhere,
+                            processingStatus: "completed",
+                            doctorReviewed: false,
+                        },
+                    }),
+                    BubbleScanResult_1.BubbleScanResult.count({
+                        where: { ...patientWhere, flagged: true },
+                    }),
+                    BubbleScanResult_1.BubbleScanResult.count({
+                        where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } },
+                    }),
+                    BubbleScanResult_1.BubbleScanResult.count({
+                        where: { ...patientWhere, submissionType: "scan" },
+                    }),
                 ]);
-                bsScanType = await BubbleScanResult_1.BubbleScanResult.count({
-                    where: { ...patientWhere, submissionType: "scan" },
-                });
+                if (bsTotal > 0) {
+                    totalEntries = bsTotal;
+                    pendingReviews = bsPending;
+                    flaggedEntries = bsFlagged;
+                    weekEntries = bsWeek;
+                    scanTypeCount = { scan: bsScanType, manual: bsTotal - bsScanType };
+                }
+                else {
+                    const [slTotal, slPending, slFlagged, slWeek] = await Promise.all([
+                        ScanLog_1.ScanLog.count({ where: patientWhere }),
+                        ScanLog_1.ScanLog.count({
+                            where: { ...patientWhere, doctorReviewed: false },
+                        }),
+                        ScanLog_1.ScanLog.count({ where: { ...patientWhere, flagged: true } }),
+                        ScanLog_1.ScanLog.count({
+                            where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } },
+                        }),
+                    ]);
+                    totalEntries = slTotal;
+                    pendingReviews = slPending;
+                    flaggedEntries = slFlagged;
+                    weekEntries = slWeek;
+                    scanTypeCount = { scan: 0, manual: slTotal };
+                }
             }
             catch (err) {
-                console.error("Assistant BubbleScanResult query failed:", err);
+                console.error("Assistant diary stats query failed:", err);
             }
-            // ── ScanLog counts ──
-            let slTotal = 0, slPending = 0, slFlagged = 0, slWeek = 0;
-            try {
-                [slPending, slTotal, slFlagged, slWeek] = await Promise.all([
-                    ScanLog_1.ScanLog.count({ where: { ...patientWhere, doctorReviewed: false } }),
-                    ScanLog_1.ScanLog.count({ where: patientWhere }),
-                    ScanLog_1.ScanLog.count({ where: { ...patientWhere, flagged: true } }),
-                    ScanLog_1.ScanLog.count({ where: { ...patientWhere, scannedAt: { [sequelize_1.Op.gte]: oneWeekAgo } } }),
-                ]);
-            }
-            catch (err) {
-                console.error("Assistant ScanLog query failed:", err);
-            }
-            // ── Combine both sources ──
-            totalEntries = bsTotal + slTotal;
-            pendingReviews = bsPending + slPending;
-            flaggedEntries = bsFlagged + slFlagged;
-            weekEntries = bsWeek + slWeek;
-            scanTypeCount = { scan: bsScanType, manual: (bsTotal - bsScanType) + slTotal };
         }
+        // ─────────────────────────────────────────────────────────────
         // Tasks assigned to this assistant
+        // ─────────────────────────────────────────────────────────────
         let totalTasks = 0;
         let pendingTasks = 0;
         let inProgressTasks = 0;
@@ -703,19 +709,20 @@ class DashboardService {
         let overdueTasks = 0;
         let recentTasks = [];
         try {
-            [totalTasks, pendingTasks, inProgressTasks, completedTasks, overdueTasks] = await Promise.all([
-                Task_1.Task.count({ where: { assignedTo: assistantId } }),
-                Task_1.Task.count({ where: { assignedTo: assistantId, status: "pending" } }),
-                Task_1.Task.count({ where: { assignedTo: assistantId, status: "in-progress" } }),
-                Task_1.Task.count({ where: { assignedTo: assistantId, status: "completed" } }),
-                Task_1.Task.count({
-                    where: {
-                        assignedTo: assistantId,
-                        status: { [sequelize_1.Op.in]: ["pending", "in-progress"] },
-                        dueDate: { [sequelize_1.Op.lt]: new Date() },
-                    },
-                }),
-            ]);
+            [totalTasks, pendingTasks, inProgressTasks, completedTasks, overdueTasks] =
+                await Promise.all([
+                    Task_1.Task.count({ where: { assignedTo: assistantId } }),
+                    Task_1.Task.count({ where: { assignedTo: assistantId, status: "pending" } }),
+                    Task_1.Task.count({ where: { assignedTo: assistantId, status: "in-progress" } }),
+                    Task_1.Task.count({ where: { assignedTo: assistantId, status: "completed" } }),
+                    Task_1.Task.count({
+                        where: {
+                            assignedTo: assistantId,
+                            status: { [sequelize_1.Op.in]: ["pending", "in-progress"] },
+                            dueDate: { [sequelize_1.Op.lt]: new Date() },
+                        },
+                    }),
+                ]);
             recentTasks = await Task_1.Task.findAll({
                 where: { assignedTo: assistantId },
                 order: [["createdAt", "DESC"]],
@@ -725,32 +732,15 @@ class DashboardService {
         catch (err) {
             console.error("Assistant task query failed:", err);
         }
-        // Patients needing follow-up calls
-        let patientsNeedingCalls = 0;
-        try {
-            patientsNeedingCalls = await Patient_1.Patient.count({
-                where: {
-                    doctorId,
-                    lastDoctorContact: {
-                        [sequelize_1.Op.or]: [
-                            { [sequelize_1.Op.is]: null },
-                            { [sequelize_1.Op.lt]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-                        ],
-                    },
-                },
-            });
-        }
-        catch (err) {
-            console.error("Assistant follow-up query failed:", err);
-        }
-        // Fetch parent doctor name for the assistant banner
-        let doctorName = '';
-        if (doctorId) {
-            const doctorRecord = await Appuser_1.AppUser.findByPk(doctorId, {
-                attributes: ['id', 'fullName'],
-            });
-            doctorName = doctorRecord?.fullName ? `Dr. ${doctorRecord.fullName}` : '';
-        }
+        // ─────────────────────────────────────────────────────────────
+        // Parent doctor name (for the assistant dashboard banner)
+        // ─────────────────────────────────────────────────────────────
+        const doctorRecord = await Appuser_1.AppUser.findByPk(doctorId, {
+            attributes: ["id", "fullName"],
+        });
+        const doctorName = doctorRecord?.fullName
+            ? `Dr. ${doctorRecord.fullName}`
+            : "";
         return {
             doctorName,
             patients: {
@@ -758,8 +748,7 @@ class DashboardService {
                 ongoing: ongoingPatients,
                 dormant: dormantPatients,
                 closedCases: closedPatients,
-                activeCases,
-                needingCalls: patientsNeedingCalls,
+                activeCases: ongoingPatients,
             },
             diaryEntries: {
                 total: totalEntries,
@@ -779,8 +768,8 @@ class DashboardService {
             recentTasks,
             permissions: assistant.permissions || {},
             assistantStatus: assistant.assistantStatus || "ACTIVE",
-            patientAccessMode: assistant.patientAccessMode || "all",
-            assignedPatientIds: assistant.assignedPatientIds || [],
+            patientAccessMode: accessMode,
+            assignedPatientIds: assignedIds,
         };
     }
     async getAllSuperAdmins() {

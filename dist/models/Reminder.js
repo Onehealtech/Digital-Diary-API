@@ -51,7 +51,7 @@ __decorate([
 ], Reminder.prototype, "reminderDate", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
-        type: sequelize_typescript_1.DataType.ENUM("APPOINTMENT", "CHEMOTHERAPY", "RADIOLOGY", "FOLLOW_UP", "OTHER"),
+        type: sequelize_typescript_1.DataType.ENUM("APPOINTMENT", "CHEMOTHERAPY", "RADIOLOGY", "SURGERY", "FOLLOW_UP", "OTHER"),
         allowNull: false,
     }),
     __metadata("design:type", String)

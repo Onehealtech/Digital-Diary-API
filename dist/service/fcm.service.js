@@ -22,9 +22,14 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fcmService = void 0;
 const admin = __importStar(require("firebase-admin"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
 const sequelize_1 = require("sequelize");
@@ -33,26 +38,46 @@ class FCMService {
         this.initialized = false;
     }
     /**
-     * Initialize Firebase Admin SDK
-     * Reads service account from file path in FIREBASE_SERVICE_ACCOUNT_PATH env var
+     * Initialize Firebase Admin SDK.
+     *
+     * Priority order:
+     *   1. FIREBASE_SERVICE_ACCOUNT_PATH — path to the service account JSON file (preferred)
+     *   2. Individual env vars: FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
      */
     initialize() {
         if (this.initialized)
             return;
         try {
-            if (!process.env.FIREBASE_PROJECT_ID ||
-                !process.env.FIREBASE_CLIENT_EMAIL ||
-                !process.env.FIREBASE_PRIVATE_KEY) {
-                console.warn("⚠️ Firebase env variables missing. FCM disabled.");
+            let credential;
+            // Option 1: load from service account JSON file
+            const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+            if (serviceAccountPath) {
+                const resolvedPath = path_1.default.resolve(serviceAccountPath);
+                if (fs_1.default.existsSync(resolvedPath)) {
+                    const serviceAccount = JSON.parse(fs_1.default.readFileSync(resolvedPath, "utf8"));
+                    credential = admin.credential.cert(serviceAccount);
+                    console.log(`✅ Firebase: loaded service account from ${resolvedPath}`);
+                }
+                else {
+                    console.warn(`⚠️ FIREBASE_SERVICE_ACCOUNT_PATH set but file not found: ${resolvedPath}`);
+                }
+            }
+            // Option 2: fall back to individual env vars
+            if (!credential) {
+                const { FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = process.env;
+                if (FIREBASE_PROJECT_ID && FIREBASE_CLIENT_EMAIL && FIREBASE_PRIVATE_KEY) {
+                    credential = admin.credential.cert({
+                        projectId: FIREBASE_PROJECT_ID,
+                        clientEmail: FIREBASE_CLIENT_EMAIL,
+                        privateKey: FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+                    });
+                }
+            }
+            if (!credential) {
+                console.warn("⚠️ Firebase credentials not configured. Set FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY. FCM disabled.");
                 return;
             }
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-                }),
-            });
+            admin.initializeApp({ credential });
             this.initialized = true;
             console.log("✅ Firebase Admin SDK initialized");
         }

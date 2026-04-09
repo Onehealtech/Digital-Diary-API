@@ -35,7 +35,12 @@ router.post("/verify-payment", authMiddleware_1.patientAuthCheck, subscription_c
 router.post("/subscribe-direct", authMiddleware_1.patientAuthCheck, (0, validate_middleware_1.validate)({ body: subscription_schemas_1.subscribeToPlanSchema }), subscription_controller_1.subscribeToPlan);
 router.put("/:subscriptionId/link-doctor", authMiddleware_1.patientAuthCheck, (0, validate_middleware_1.validate)({ body: subscription_schemas_1.linkDoctorSchema }), subscription_controller_1.linkDoctor);
 router.get("/my-subscription", authMiddleware_1.patientAuthCheck, subscription_controller_1.getMySubscription);
+// Legacy direct upgrade (no payment)
 router.post("/upgrade", authMiddleware_1.patientAuthCheck, subscription_controller_1.upgradePlan);
+// Upgrade with payment — Step 1: create order
+router.post("/upgrade/initiate", authMiddleware_1.patientAuthCheck, subscription_controller_1.initiateUpgrade);
+// Upgrade with payment — Step 2: verify & activate
+router.post("/upgrade/verify", authMiddleware_1.patientAuthCheck, subscription_controller_1.verifyUpgradePayment);
 // ── Permission Check Endpoints (Patient) ─────────────────────────────────
 router.get("/check/page-limit", authMiddleware_1.patientAuthCheck, subscription_controller_1.checkPageLimit);
 router.get("/check/features", authMiddleware_1.patientAuthCheck, subscription_controller_1.checkFeatureAccess);

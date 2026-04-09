@@ -20,7 +20,8 @@ const translations_1 = require("../utils/translations");
  */
 const createReminder = async (req, res) => {
     try {
-        const { patientId, message, reminderDate, type } = req.body;
+        const { patientId, message, reminderDate, type, force } = req.body;
+        const forceCreate = force === true || force === "true";
         let attachmentUrl = req.body.attachmentUrl || undefined;
         const file = req.file;
         if (file) {
@@ -68,6 +69,27 @@ const createReminder = async (req, res) => {
                 message: "You don't have access to this patient",
             });
             return;
+        }
+        // Check for existing PENDING reminder at the same time (unless force flag is set)
+        if (!forceCreate) {
+            const requestedTime = new Date(reminderDate);
+            const windowStart = new Date(requestedTime.getTime() - 30 * 60 * 1000); // -30 min
+            const windowEnd = new Date(requestedTime.getTime() + 30 * 60 * 1000); // +30 min
+            const existing = await Reminder_1.Reminder.findOne({
+                where: {
+                    patientId: patient.id,
+                    status: "PENDING",
+                    reminderDate: { [sequelize_1.Op.between]: [windowStart, windowEnd] },
+                },
+            });
+            if (existing) {
+                res.status(409).json({
+                    success: false,
+                    isDuplicate: true,
+                    message: `An appointment is already scheduled near this time (${new Date(existing.reminderDate).toLocaleString()}).`,
+                });
+                return;
+            }
         }
         // Create reminder
         const reminder = await Reminder_1.Reminder.create({

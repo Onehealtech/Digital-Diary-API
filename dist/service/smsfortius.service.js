@@ -45,8 +45,8 @@ async function sendTemplateSMS(phone, templateId, message) {
 // Message: CANtrac: Your Login OTP is {otp}. Valid for {minutes}. Do not share this code with anyone.
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendLoginOTP(phone, otp, expiryMinutes = "5") {
-    if (process.env.FALLBACK_OTP === "true") {
-        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
     const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
@@ -76,11 +76,11 @@ exports.sendConsultationAlert = sendConsultationAlert;
 // ═══════════════════════════════════════════════════════════════════════════════
 /**
  * Send OTP via SMS — uses the Login OTP template.
- * When FALLBACK_OTP is true (staging/testing), skips the actual SMS.
+ * In staging/non-production, skips actual SMS sending (OTP is always 123456).
  */
 async function sendOTP(phone, otp) {
-    if (process.env.FALLBACK_OTP === "true") {
-        console.log(`[Fortius SMS] FALLBACK_OTP enabled — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Fortius SMS] Staging mode — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
     const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";

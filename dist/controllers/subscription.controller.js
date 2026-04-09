@@ -24,7 +24,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkFeatureAccess = exports.checkPageLimit = exports.upgradePlan = exports.getAllSubscriptions = exports.getMySubscription = exports.linkDoctor = exports.subscribeToPlan = exports.verifySubscriptionPayment = exports.initiateSubscription = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
+exports.checkFeatureAccess = exports.checkPageLimit = exports.verifyUpgradePayment = exports.initiateUpgrade = exports.upgradePlan = exports.getAllSubscriptions = exports.getMySubscription = exports.linkDoctor = exports.subscribeToPlan = exports.verifySubscriptionPayment = exports.initiateSubscription = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
 const response_1 = require("../utils/response");
 const constants_1 = require("../utils/constants");
 const subscriptionService = __importStar(require("../service/subscription.service"));
@@ -258,6 +258,68 @@ const upgradePlan = async (req, res) => {
     }
 };
 exports.upgradePlan = upgradePlan;
+// ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE PAYMENT FLOW
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * POST /subscriptions/upgrade/initiate
+ * Creates a PENDING payment order for upgrading to a new plan.
+ */
+const initiateUpgrade = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        const { newPlanId } = req.body;
+        if (!newPlanId) {
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "newPlanId is required");
+        }
+        const result = await subscriptionService.initiateUpgradePayment({ patientId, newPlanId });
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.CREATED, "Upgrade payment order created", result);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to initiate upgrade";
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, message);
+    }
+};
+exports.initiateUpgrade = initiateUpgrade;
+/**
+ * POST /subscriptions/upgrade/verify
+ * Verifies payment and activates the upgraded subscription.
+ */
+const verifyUpgradePayment = async (req, res) => {
+    try {
+        const { orderId, gateway, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+        if (!orderId) {
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "orderId is required");
+        }
+        if (gateway === "RAZORPAY") {
+            if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "razorpayOrderId, razorpayPaymentId, and razorpaySignature are required");
+            }
+            const isValid = (0, razorpay_service_1.verifyRazorpayPaymentSignature)({ razorpayOrderId, razorpayPaymentId, razorpaySignature });
+            if (!isValid) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "Payment verification failed: invalid signature");
+            }
+            const result = await subscriptionService.activateUpgradeAfterPayment(orderId, "RAZORPAY", razorpayPaymentId);
+            if (result.alreadyProcessed) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription already upgraded", result.subscription);
+            }
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Payment verified and plan upgraded", { subscription: result.subscription, plan: result.plan });
+        }
+        if (gateway === "CASHFREE") {
+            const result = await subscriptionService.activateUpgradeAfterPayment(orderId, "CASHFREE");
+            if (result.alreadyProcessed) {
+                return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription already upgraded", result.subscription);
+            }
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Plan upgraded successfully", { subscription: result.subscription, plan: result.plan });
+        }
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, "Invalid gateway specified");
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Upgrade payment verification failed";
+        return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.BAD_REQUEST, message);
+    }
+};
+exports.verifyUpgradePayment = verifyUpgradePayment;
 // ═══════════════════════════════════════════════════════════════════════════
 // PERMISSION CHECK ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════

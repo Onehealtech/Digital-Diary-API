@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.incrementPageUsage = exports.isManualEntryEnabled = exports.isScanEnabled = exports.canAddDiaryPage = exports.upgradePlan = exports.getAllSubscriptions = exports.getPatientSubscription = exports.linkDoctor = exports.subscribeToPlan = exports.activateSubscriptionAfterPayment = exports.initiateSubscriptionPayment = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
+exports.incrementPageUsage = exports.isManualEntryEnabled = exports.isScanEnabled = exports.canAddDiaryPage = exports.upgradePlan = exports.activateUpgradeAfterPayment = exports.initiateUpgradePayment = exports.getAllSubscriptions = exports.getPatientSubscription = exports.linkDoctor = exports.subscribeToPlan = exports.activateSubscriptionAfterPayment = exports.initiateSubscriptionPayment = exports.getPlanById = exports.getAllPlans = exports.deletePlan = exports.updatePlan = exports.createPlan = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const sequelize_1 = require("sequelize");
 const Dbconnetion_1 = require("../config/Dbconnetion");
@@ -496,7 +496,174 @@ const getAllSubscriptions = async (params) => {
 };
 exports.getAllSubscriptions = getAllSubscriptions;
 // ═══════════════════════════════════════════════════════════════════════════
-// PLAN UPGRADE / DOWNGRADE
+// UPGRADE SUBSCRIPTION PAYMENT FLOW
+// ═══════════════════════════════════════════════════════════════════════════
+const generateUpgradeOrderId = () => {
+    const timestamp = Date.now().toString(36);
+    const random = crypto_1.default.randomBytes(4).toString("hex");
+    return `UPG-${timestamp}-${random}`.toUpperCase();
+};
+/**
+ * Step 1: Initiate an upgrade payment order.
+ * Patient must have an ACTIVE subscription. Creates a PENDING order for the new plan price.
+ */
+const initiateUpgradePayment = async (params) => {
+    const { patientId, newPlanId } = params;
+    // 1. Validate patient & active subscription
+    const patient = await Patient_1.Patient.findByPk(patientId);
+    if (!patient)
+        throw new Error("Patient not found");
+    const currentSub = await UserSubscription_1.UserSubscription.findOne({
+        where: { patientId, status: "ACTIVE" },
+        include: [{ model: SubscriptionPlan_1.SubscriptionPlan, attributes: ["id", "name"] }],
+    });
+    if (!currentSub)
+        throw new Error("No active subscription found. Please subscribe first.");
+    // 2. Validate new plan
+    const newPlan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(newPlanId);
+    if (!newPlan)
+        throw new Error("Plan not found");
+    if (!newPlan.isActive)
+        throw new Error("This plan is no longer available");
+    if (newPlanId === currentSub.planId)
+        throw new Error("You are already on this plan");
+    // 3. Idempotency: return existing PENDING upgrade order if present
+    const existingPending = await Order_1.Order.findOne({
+        where: { patientId, subscriptionPlanId: newPlanId, status: "PENDING" },
+    });
+    if (existingPending) {
+        const gateway = existingPending.paymentGateway || "CASHFREE";
+        return {
+            orderId: existingPending.orderId,
+            gateway,
+            gatewayOrderId: existingPending.cfOrderId || "",
+            paymentSessionId: gateway === "CASHFREE" ? existingPending.paymentSessionId : undefined,
+            razorpayKeyId: gateway === "RAZORPAY" ? process.env.RAZORPAY_KEY_ID : undefined,
+            amount: Number(existingPending.amount),
+            currency: existingPending.currency,
+            plan: { id: newPlan.id, name: newPlan.name, monthlyPrice: newPlan.monthlyPrice },
+        };
+    }
+    // 4. Create payment order with active gateway
+    const orderId = generateUpgradeOrderId();
+    const amount = Number(newPlan.monthlyPrice);
+    const paymentResult = await (0, paymentGateway_service_1.createPaymentOrder)({
+        orderId,
+        amount,
+        customerName: patient.fullName || "Patient",
+        customerPhone: patient.phone || "9999999999",
+        orderNote: `Upgrade: ${newPlan.name}`,
+        notes: { newPlanId, patientId, planName: newPlan.name, isUpgrade: "true" },
+    });
+    // 5. Save Order as PENDING (orderNote prefix "Upgrade:" is used by webhooks to route correctly)
+    await Order_1.Order.create({
+        orderId,
+        cfOrderId: paymentResult.gatewayOrderId,
+        patientId,
+        doctorId: null,
+        vendorId: null,
+        amount,
+        currency: "INR",
+        status: "PENDING",
+        paymentSessionId: paymentResult.paymentSessionId || null,
+        paymentGateway: paymentResult.gateway,
+        subscriptionPlanId: newPlanId,
+        orderNote: `Upgrade: ${newPlan.name}`,
+    });
+    return {
+        orderId,
+        gateway: paymentResult.gateway,
+        gatewayOrderId: paymentResult.gatewayOrderId,
+        paymentSessionId: paymentResult.paymentSessionId,
+        razorpayKeyId: paymentResult.razorpayKeyId,
+        amount,
+        currency: "INR",
+        plan: { id: newPlan.id, name: newPlan.name, monthlyPrice: newPlan.monthlyPrice },
+    };
+};
+exports.initiateUpgradePayment = initiateUpgradePayment;
+/**
+ * Step 2: Activate the upgrade after successful payment.
+ * Marks the current subscription as UPGRADED and creates a new ACTIVE one with the same diary/doctor.
+ * Idempotent — safe to call multiple times for the same order.
+ */
+const activateUpgradeAfterPayment = async (orderId, paymentMethod, transactionId) => {
+    return await Dbconnetion_1.sequelize.transaction(async (t) => {
+        // 1. Find and lock the order
+        const order = await Order_1.Order.findOne({
+            where: { orderId },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+        });
+        if (!order)
+            throw new Error(`Order ${orderId} not found`);
+        // Idempotency: already processed
+        if (order.status === "PAID") {
+            const existingSub = await UserSubscription_1.UserSubscription.findOne({
+                where: { paymentOrderId: orderId },
+                transaction: t,
+            });
+            return { subscription: existingSub, alreadyProcessed: true };
+        }
+        if (!order.subscriptionPlanId)
+            throw new Error("Order is not an upgrade order");
+        // 2. Update order to PAID
+        order.status = "PAID";
+        order.paymentMethod = paymentMethod || order.paymentMethod;
+        order.transactionId = transactionId || order.transactionId;
+        order.paidAt = new Date();
+        await order.save({ transaction: t });
+        // 3. Get new plan
+        const newPlan = await SubscriptionPlan_1.SubscriptionPlan.findByPk(order.subscriptionPlanId, { transaction: t });
+        if (!newPlan)
+            throw new Error("Subscription plan not found");
+        // 4. Find and lock the current ACTIVE subscription
+        const current = await UserSubscription_1.UserSubscription.findOne({
+            where: { patientId: order.patientId, status: "ACTIVE" },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+        });
+        if (!current)
+            throw new Error("No active subscription found to upgrade");
+        // 5. Mark current subscription as UPGRADED
+        current.status = "UPGRADED";
+        await current.save({ transaction: t });
+        // 6. Create new subscription carrying over diary + doctor + page usage
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + 1);
+        const newSub = await UserSubscription_1.UserSubscription.create({
+            patientId: order.patientId,
+            planId: order.subscriptionPlanId,
+            diaryId: current.diaryId,
+            doctorId: current.doctorId,
+            status: "ACTIVE",
+            paidAmount: newPlan.monthlyPrice,
+            maxDiaryPages: newPlan.maxDiaryPages,
+            scanEnabled: newPlan.scanEnabled,
+            manualEntryEnabled: newPlan.manualEntryEnabled,
+            pagesUsed: current.pagesUsed,
+            paymentOrderId: orderId,
+            paymentMethod: paymentMethod || order.paymentGateway,
+            startDate: now,
+            endDate,
+        }, { transaction: t });
+        console.info(`[UPGRADE] patientId=${order.patientId} from plan=${current.planId} to plan=${newPlan.id} orderId=${orderId}`);
+        return {
+            subscription: newSub,
+            plan: {
+                name: newPlan.name,
+                maxDiaryPages: newPlan.maxDiaryPages,
+                scanEnabled: newPlan.scanEnabled,
+                manualEntryEnabled: newPlan.manualEntryEnabled,
+            },
+            alreadyProcessed: false,
+        };
+    });
+};
+exports.activateUpgradeAfterPayment = activateUpgradeAfterPayment;
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAN UPGRADE / DOWNGRADE (legacy direct upgrade — no payment)
 // ═══════════════════════════════════════════════════════════════════════════
 const upgradePlan = async (params) => {
     const { patientId, newPlanId, paymentOrderId, paymentMethod } = params;

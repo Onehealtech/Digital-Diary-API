@@ -69,5 +69,6 @@ router.put("/:id/review", (0, authMiddleware_1.authCheck)([constants_1.UserRole.
 // Doctor dashboard: filter patients by diary page submission status
 router.get("/doctor/diary-filter", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.getDiaryFilteredPatients);
 // Doctor manually fills / pre-fills an investigation report for a patient
-router.post("/doctor/fill-report", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), bubbleScanController.doctorFillReport);
+// Assistants need the 'fillReport' permission granted by the doctor
+router.post("/doctor/fill-report", (0, authMiddleware_1.authCheck)([constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT]), (0, permissionMiddleware_1.requirePermission)('fillReport'), bubbleScanController.doctorFillReport);
 exports.default = router;
