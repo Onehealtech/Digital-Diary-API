@@ -287,23 +287,39 @@ export class AdvancedAnalysisRepository {
   /**
    * Fetch all active patients for a doctor along with their BubbleScanResult records.
    */
-  async findPatientsForDoctor(doctorId: string): Promise<PatientWithScans[]> {
+  async findPatientsForDoctor(
+    doctorId: string,
+    patientIds?: string[] | null
+  ): Promise<PatientWithScans[]> {
     // Step 1: fetch patients for this doctor
+    const whereClause: any = {
+      doctorId,
+      status: { [Op.in]: ["ACTIVE", "CRITICAL", "ON_HOLD", "COMPLETED"] },
+    };
+
+    const normalizedPatientIds = (patientIds ?? []).filter(
+      (id): id is string => typeof id === "string" && id.trim() !== ""
+    );
+
+    if (patientIds !== undefined) {
+      if (normalizedPatientIds.length === 0) {
+        return [];
+      }
+      whereClause.id = { [Op.in]: normalizedPatientIds };
+    }
+
     const patients = await Patient.findAll({
-      where: {
-        doctorId,
-        status: { [Op.in]: ["ACTIVE", "CRITICAL", "ON_HOLD", "COMPLETED"] },
-      },
+      where: whereClause,
       order: [["createdAt", "ASC"]],
     });
 
     if (patients.length === 0) return [];
 
     // Step 2: fetch all completed bubble scans for these patients in one query
-    const patientIds = patients.map((p) => p.id);
+    const patientIdsInScope = patients.map((p) => p.id);
     const allScans = await BubbleScanResult.findAll({
       where: {
-        patientId: { [Op.in]: patientIds },
+        patientId: { [Op.in]: patientIdsInScope },
         processingStatus: "completed",
       },
       order: [["pageNumber", "ASC"]],

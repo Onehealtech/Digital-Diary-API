@@ -1,265 +1,241 @@
-// src/service/patientAccess.service.ts
-
-import { Patient } from "../models/Patient";
-import { Diary } from "../models/Diary";
 import { AppUser } from "../models/Appuser";
-import { UserSubscription } from "../models/UserSubscription";
+import { Patient } from "../models/Patient";
 import { SubscriptionPlan } from "../models/SubscriptionPlan";
+import { UserSubscription } from "../models/UserSubscription";
 import { AppError } from "../utils/AppError";
 import {
   AccessLevel,
-  CaseType,
-  DIARY_MODULES,
   BUNDLE_PACKS,
+  DIARY_MODULES,
+  CaseType,
   getDiaryTypeForCaseType,
 } from "../utils/constants";
-import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
-export interface PatientAccessInfo {
-  accessLevel: "all_access" | "limited_access";
-  registrationSource: "VENDOR_ASSIGNED" | "SELF_SIGNUP";
+export interface AssistantPatientScope {
+  doctorId: string;
+  allowedPatientIds?: string[];
+}
 
-  patient: {
-    id: string;
-    fullName: string;
-    caseType: string | null;
-    status: string;
-    diaryId: string | null;
-    doctorAssigned: boolean;
-  };
-
-  diaryModule: {
-    moduleName: string;
-    diaryType: string;
-    caseType: string | null;
-    defaultValidityDays: number;
-    mrp: number;
-    extensions: { label: string; days: number; price: number }[];
-  } | null;
-
-  diary: {
-    id: string;
-    status: string;
-    activationDate: Date | null;
-  } | null;
-
-  doctor: {
-    id: string;
-    fullName: string;
-    specialization: string | null;
-    hospital: string | null;
-  } | null;
-
-  subscription: {
-    id: string;
-    planName: string;
-    status: string;
-    startDate: Date;
-    endDate: Date;
-    paidAmount: number;
-  } | null;
-
-  features: {
-    scanEnabled: boolean;
-    manualEntryEnabled: boolean;
-    maxDiaryPages: number;
-    pagesUsed: number;
-    unlimitedPages: boolean;
-  };
-
-  validity: {
-    startDate: Date | null;
-    endDate: Date | null;
-    daysRemaining: number;
-    isExpired: boolean;
-    isActive: boolean;
-  };
+function normalizePatientIds(patientIds?: string[] | null): string[] {
+  return (patientIds ?? []).filter((id): id is string => typeof id === "string" && id.trim() !== "");
 }
 
 /**
- * Get complete access info for a patient.
- * Used by the mobile app to determine UI rendering and feature gating.
- *
- * VENDOR_ASSIGNED → all_access: unlimited pages, scan, manual entry, no expiry concern
- * SELF_SIGNUP     → limited_access: features based on subscription plan, validity tracked
+ * Resolve the effective doctor scope for analytics-style queries.
+ * Doctors can see their own patients.
+ * Assistants can see their parent doctor's patients, but selected-access
+ * assistants are restricted to assignedPatientIds only.
  */
-export async function getPatientAccessInfo(patientId: string): Promise<PatientAccessInfo> {
-  const patient = await Patient.findByPk(patientId);
-  if (!patient) throw new AppError(404, "Patient not found");
-
-  const isVendorAssigned = patient.registrationSource === "VENDOR_ASSIGNED";
-  const accessLevel = isVendorAssigned ? AccessLevel.ALL_ACCESS : AccessLevel.LIMITED_ACCESS;
-
-  // Resolve diary module from caseType
-  const caseType = patient.caseType as CaseType | undefined;
-  const moduleConfig = caseType ? DIARY_MODULES[caseType] : null;
-
-  // Fetch diary if assigned
-  let diaryInfo: PatientAccessInfo["diary"] = null;
-  if (patient.diaryId) {
-    const diary = await Diary.findByPk(patient.diaryId, {
-      attributes: ["id", "status", "activationDate"],
-    });
-    if (diary) {
-      diaryInfo = {
-        id: diary.id,
-        status: normalizeDiaryStatus(diary.status),
-        activationDate: diary.activationDate || null,
-      };
-    }
+export async function resolveAssistantPatientScope(user: {
+  id: string;
+  role?: string;
+}): Promise<AssistantPatientScope> {
+  if (user.role === "DOCTOR") {
+    return { doctorId: user.id };
   }
 
-  // Fetch doctor if assigned
-  let doctorInfo: PatientAccessInfo["doctor"] = null;
-  if (patient.doctorId) {
-    const doctor = await AppUser.findByPk(patient.doctorId, {
-      attributes: ["id", "fullName", "specialization", "hospital"],
-    });
-    if (doctor) {
-      doctorInfo = {
-        id: doctor.id,
-        fullName: doctor.fullName,
-        specialization: doctor.specialization || null,
-        hospital: doctor.hospital || null,
-      };
-    }
+  if (user.role !== "ASSISTANT") {
+    throw new AppError(403, "Unauthorized");
   }
 
-  // Fetch active subscription (for SELF_SIGNUP patients)
-  let subscriptionInfo: PatientAccessInfo["subscription"] = null;
-  let activeSubscription: UserSubscription | null = null;
+  const assistant = await AppUser.findByPk(user.id, {
+    attributes: ["id", "parentId", "patientAccessMode", "assignedPatientIds"],
+  });
 
-  if (!isVendorAssigned) {
-    activeSubscription = await UserSubscription.findOne({
-      where: { patientId, status: "ACTIVE" },
-      include: [{ model: SubscriptionPlan, attributes: ["id", "name"] }],
-    });
-    if (activeSubscription) {
-      subscriptionInfo = {
-        id: activeSubscription.id,
-        planName: activeSubscription.plan?.name || "Unknown Plan",
-        status: activeSubscription.status,
-        startDate: activeSubscription.startDate,
-        endDate: activeSubscription.endDate,
-        paidAmount: Number(activeSubscription.paidAmount),
-      };
-    }
+  if (!assistant?.parentId) {
+    throw new AppError(403, "Assistant is not linked to a doctor");
   }
 
-  // Build features based on access level
-  let features: PatientAccessInfo["features"];
-  let validity: PatientAccessInfo["validity"];
+  const assignedPatientIds = normalizePatientIds(assistant.assignedPatientIds);
 
-  if (isVendorAssigned) {
-    // ALL ACCESS — Vendor/SuperAdmin sold diary: everything enabled, no page limits
-    const validityDays = moduleConfig?.defaultValidityDays || 365;
-    const activationDate = diaryInfo?.activationDate
-      ? new Date(diaryInfo.activationDate)
-      : null;
-    const endDate = activationDate
-      ? new Date(activationDate.getTime() + validityDays * 24 * 60 * 60 * 1000)
-      : null;
-    const now = new Date();
-    const daysRemaining = endDate
-      ? Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
-    const isExpired = endDate ? now > endDate : false;
-
-    features = {
-      scanEnabled: true,
-      manualEntryEnabled: true,
-      maxDiaryPages: -1,
-      pagesUsed: 0,
-      unlimitedPages: true,
-    };
-
-    validity = {
-      startDate: activationDate,
-      endDate,
-      daysRemaining,
-      isExpired,
-      isActive: !!diaryInfo && diaryInfo.status === DIARY_STATUS.APPROVED && !isExpired,
-    };
-  } else {
-    // LIMITED ACCESS — Subscription model: features from plan
-    const now = new Date();
-    const subEndDate = activeSubscription?.endDate
-      ? new Date(activeSubscription.endDate)
-      : null;
-    const daysRemaining = subEndDate
-      ? Math.max(0, Math.ceil((subEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
-    const isExpired = subEndDate ? now > subEndDate : true;
-
-    features = {
-      scanEnabled: activeSubscription?.scanEnabled ?? false,
-      manualEntryEnabled: activeSubscription?.manualEntryEnabled ?? false,
-      maxDiaryPages: activeSubscription?.maxDiaryPages ?? 0,
-      pagesUsed: activeSubscription?.pagesUsed ?? 0,
-      unlimitedPages: activeSubscription?.maxDiaryPages === -1,
-    };
-
-    validity = {
-      startDate: activeSubscription?.startDate || null,
-      endDate: subEndDate,
-      daysRemaining,
-      isExpired,
-      isActive: !!activeSubscription && activeSubscription.status === "ACTIVE" && !isExpired,
+  if (assistant.patientAccessMode === "selected" || assignedPatientIds.length > 0) {
+    return {
+      doctorId: assistant.parentId,
+      allowedPatientIds: assignedPatientIds,
     };
   }
+
+  return { doctorId: assistant.parentId };
+}
+
+/**
+ * Check whether an assistant can access a specific patient record.
+ * Returns false when the assistant uses selected access and the patient is
+ * not explicitly assigned.
+ */
+export async function canAssistantAccessPatient(
+  user: { id: string; role?: string },
+  patientId: string
+): Promise<boolean> {
+  if (user.role === "DOCTOR") {
+    return true;
+  }
+
+  if (user.role !== "ASSISTANT") {
+    return false;
+  }
+
+  const assistant = await AppUser.findByPk(user.id, {
+    attributes: ["id", "parentId", "patientAccessMode", "assignedPatientIds"],
+  });
+
+  if (!assistant?.parentId) {
+    return false;
+  }
+
+  const assignedPatientIds = normalizePatientIds(assistant.assignedPatientIds);
+  if (assignedPatientIds.length > 0) {
+    return assignedPatientIds.includes(patientId);
+  }
+
+  if (assistant.patientAccessMode === "selected") {
+    return false;
+  }
+
+  return true;
+}
+
+function getDiaryModuleConfig(caseType?: string | null) {
+  const normalizedCaseType = caseType && caseType in DIARY_MODULES ? (caseType as CaseType) : CaseType.PERI_OPERATIVE;
+  return DIARY_MODULES[normalizedCaseType];
+}
+
+function getSubscriptionValidity(endDate?: Date | null) {
+  if (!endDate) {
+    return {
+      isExpired: true,
+      daysRemaining: 0,
+    };
+  }
+
+  const now = Date.now();
+  const remainingMs = endDate.getTime() - now;
+  return {
+    isExpired: remainingMs < 0,
+    daysRemaining: remainingMs > 0 ? Math.ceil(remainingMs / (1000 * 60 * 60 * 24)) : 0,
+  };
+}
+
+export async function getPatientAccessInfo(patientId: string) {
+  const patient = await Patient.findByPk(patientId, {
+    include: [
+      {
+        model: AppUser,
+        as: "doctor",
+        attributes: [
+          "id",
+          "fullName",
+          "email",
+          "phone",
+          "specialization",
+          "hospital",
+          "license",
+        ],
+      },
+    ],
+  });
+
+  if (!patient) {
+    throw new AppError(404, "Patient not found");
+  }
+
+  const subscription = await UserSubscription.findOne({
+    where: { patientId },
+    include: [
+      {
+        model: SubscriptionPlan,
+        attributes: [
+          "id",
+          "name",
+          "description",
+          "monthlyPrice",
+          "maxDiaryPages",
+          "scanEnabled",
+          "manualEntryEnabled",
+        ],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+
+  const diaryModule = getDiaryModuleConfig(patient.caseType);
+  const diaryType = getDiaryTypeForCaseType(patient.caseType);
+  const activeSubscription =
+    subscription &&
+    subscription.status === "ACTIVE" &&
+    subscription.endDate &&
+    new Date(subscription.endDate) >= new Date();
+
+  const validity = getSubscriptionValidity(subscription?.endDate ?? null);
 
   return {
-    accessLevel,
-    registrationSource: patient.registrationSource,
     patient: {
       id: patient.id,
       fullName: patient.fullName,
-      caseType: patient.caseType || null,
+      phone: patient.phone,
+      age: patient.age,
+      gender: patient.gender,
       status: patient.status,
-      diaryId: patient.diaryId || null,
-      doctorAssigned: !!patient.doctorId,
+      caseType: patient.caseType,
+      diaryId: patient.diaryId,
+      doctorId: patient.doctorId,
+      registeredDate: patient.registeredDate,
     },
-    diaryModule: moduleConfig
+    doctor: patient.doctor
       ? {
-          moduleName: moduleConfig.moduleName,
-          diaryType: moduleConfig.diaryType,
-          caseType: moduleConfig.caseType,
-          defaultValidityDays: moduleConfig.defaultValidityDays,
-          mrp: moduleConfig.mrpInclGST,
-          extensions: moduleConfig.extensions,
+          id: patient.doctor.id,
+          fullName: patient.doctor.fullName,
+          email: patient.doctor.email,
+          phone: patient.doctor.phone,
+          specialization: patient.doctor.specialization,
+          hospital: patient.doctor.hospital,
+          license: patient.doctor.license,
         }
       : null,
-    diary: diaryInfo,
-    doctor: doctorInfo,
-    subscription: subscriptionInfo,
-    features,
-    validity,
+    diaryModule: {
+      caseType: patient.caseType ?? CaseType.PERI_OPERATIVE,
+      moduleName: diaryModule.moduleName,
+      diaryType,
+      defaultValidityDays: diaryModule.defaultValidityDays,
+      mrpInclGST: diaryModule.mrpInclGST,
+      extensions: diaryModule.extensions,
+    },
+    subscription: subscription
+      ? {
+          id: subscription.id,
+          status: subscription.status,
+          planId: subscription.planId,
+          planName: (subscription.plan as SubscriptionPlan | null)?.name ?? "Subscription",
+          description: (subscription.plan as SubscriptionPlan | null)?.description ?? null,
+          maxDiaryPages: subscription.maxDiaryPages,
+          scanEnabled: subscription.scanEnabled,
+          manualEntryEnabled: subscription.manualEntryEnabled,
+          pagesUsed: subscription.pagesUsed,
+          remainingPages:
+            subscription.maxDiaryPages === -1
+              ? -1
+              : Math.max(subscription.maxDiaryPages - subscription.pagesUsed, 0),
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+        }
+      : null,
+    accessLevel: activeSubscription ? AccessLevel.ALL_ACCESS : AccessLevel.LIMITED_ACCESS,
+    validity: {
+      startDate: subscription?.startDate ?? null,
+      endDate: subscription?.endDate ?? null,
+      ...validity,
+    },
+    features: {
+      canScan: activeSubscription ? subscription?.scanEnabled ?? false : false,
+      canManualEntry: activeSubscription ? subscription?.manualEntryEnabled ?? false : false,
+      canViewCatalog: true,
+    },
   };
 }
 
-/**
- * Get all available diary modules with pricing for the catalog/store.
- */
 export function getDiaryModuleCatalog() {
-  const modules = Object.values(DIARY_MODULES).map((m) => ({
-    caseType: m.caseType,
-    moduleName: m.moduleName,
-    diaryType: m.diaryType,
-    defaultValidityDays: m.defaultValidityDays,
-    mrp: m.mrpInclGST,
-    extensions: m.extensions,
-  }));
-
-  const bundles = BUNDLE_PACKS.map((b) => ({
-    bundleCode: b.bundleCode,
-    bundleName: b.bundleName,
-    includes: b.includes.map((ct) => ({
-      caseType: ct,
-      moduleName: DIARY_MODULES[ct].moduleName,
-    })),
-    packMRP: b.packMRP,
-    discountPercent: b.discountPercent,
-  }));
-
-  return { modules, bundles };
+  return {
+    modules: Object.values(DIARY_MODULES),
+    bundles: BUNDLE_PACKS,
+  };
 }

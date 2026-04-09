@@ -234,10 +234,11 @@ function makeHeaderFormatRequests(sheetId: number, colCount: number) {
 
 async function fetchAllPatients(
   doctorId: string,
-  filter: AdvancedAnalysisFilter
+  filter: AdvancedAnalysisFilter,
+  patientIds?: string[] | null
 ): Promise<PatientAnalysisRow[]> {
   const repo = new AdvancedAnalysisRepository();
-  const all = await repo.findPatientsForDoctor(doctorId);
+  const all = await repo.findPatientsForDoctor(doctorId, patientIds);
   const rows = all.map(({ patient, scans }) =>
     repo.mapToPatientAnalysisRow(patient, scans)
   );
@@ -255,13 +256,14 @@ export class GoogleSheetsService {
   async syncAnalyticsSheet(
     doctorId: string,
     filter: AdvancedAnalysisFilter,
-    existingSheetId?: string
+    existingSheetId?: string,
+    patientIds?: string[] | null
   ): Promise<{ sheetId: string; sheetUrl: string }> {
     const auth = getAuth();
     const sheetsApi = google.sheets({ version: "v4", auth });
     const driveApi = google.drive({ version: "v3", auth });
 
-    const patients = await fetchAllPatients(doctorId, filter);
+    const patients = await fetchAllPatients(doctorId, filter, patientIds);
     const patientRows = buildPatientRows(patients);
     const filterRows = buildFilterRows(filter, patients.length);
 

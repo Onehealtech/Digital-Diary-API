@@ -171,9 +171,9 @@ function makeHeaderFormatRequests(sheetId, colCount) {
     ];
 }
 // ── Fetch all patients (no pagination) ───────────────────────────────────
-async function fetchAllPatients(doctorId, filter) {
+async function fetchAllPatients(doctorId, filter, patientIds) {
     const repo = new advancedAnalysisRepository_1.AdvancedAnalysisRepository();
-    const all = await repo.findPatientsForDoctor(doctorId);
+    const all = await repo.findPatientsForDoctor(doctorId, patientIds);
     const rows = all.map(({ patient, scans }) => repo.mapToPatientAnalysisRow(patient, scans));
     const filtered = repo.applyFilters(rows, filter);
     return repo.applySorting(filtered, filter.sortBy);
@@ -184,11 +184,11 @@ class GoogleSheetsService {
      * Creates a new Google Sheet (first sync) or updates an existing one.
      * Returns { sheetId, sheetUrl }.
      */
-    async syncAnalyticsSheet(doctorId, filter, existingSheetId) {
+    async syncAnalyticsSheet(doctorId, filter, existingSheetId, patientIds) {
         const auth = getAuth();
         const sheetsApi = googleapis_1.google.sheets({ version: "v4", auth });
         const driveApi = googleapis_1.google.drive({ version: "v3", auth });
-        const patients = await fetchAllPatients(doctorId, filter);
+        const patients = await fetchAllPatients(doctorId, filter, patientIds);
         const patientRows = buildPatientRows(patients);
         const filterRows = buildFilterRows(filter, patients.length);
         let sheetId;
