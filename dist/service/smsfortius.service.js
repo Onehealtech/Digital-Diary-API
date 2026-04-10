@@ -49,7 +49,7 @@ async function sendLoginOTP(phone, otp, expiryMinutes = "5") {
         console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
-    const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
+    const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone. ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(phone, "1207177519219296859", message);
 }
 exports.sendLoginOTP = sendLoginOTP;
@@ -58,7 +58,7 @@ exports.sendLoginOTP = sendLoginOTP;
 // Message: Your appointment with Dr. {name} is confirmed for {date} at {time}. Please be available on time. Team CANtrac
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendDoctorAppointmentSMS(patientPhone, doctorName, date, time) {
-    const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac`;
+    const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac. ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(patientPhone, "1207177519385352008", message);
 }
 exports.sendDoctorAppointmentSMS = sendDoctorAppointmentSMS;
@@ -67,7 +67,7 @@ exports.sendDoctorAppointmentSMS = sendDoctorAppointmentSMS;
 // Message: New appointment confirmed by {patientName} for {date} at {time}. Please check and prepare accordingly. Team CANtrac
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendConsultationAlert(staffPhone, patientName, date, time) {
-    const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac`;
+    const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(staffPhone, "1207177519626797564", message);
 }
 exports.sendConsultationAlert = sendConsultationAlert;

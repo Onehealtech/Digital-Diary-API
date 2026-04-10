@@ -53,7 +53,7 @@ export async function sendLoginOTP(phone: string, otp: string, expiryMinutes: st
         console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
     }
-    const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone.`;
+    const message = `CANtrac: Your Login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share this code with anyone. ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(phone, "1207177519219296859", message);
 }
 
@@ -68,7 +68,7 @@ export async function sendDoctorAppointmentSMS(
     date: string,
     time: string
 ): Promise<boolean> {
-    const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac`;
+    const message = `Your appointment with Dr. ${doctorName} is confirmed for ${date} at ${time}. Please be available on time. Team CANtrac. ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(patientPhone, "1207177519385352008", message);
 }
 
@@ -83,7 +83,7 @@ export async function sendConsultationAlert(
     date: string,
     time: string
 ): Promise<boolean> {
-    const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac`;
+    const message = `New appointment confirmed by ${patientName} for ${date} at ${time}. Please check and prepare accordingly. Team CANtrac ONEHEAL TECHNOLOGIES`;
     return sendTemplateSMS(staffPhone, "1207177519626797564", message);
 }
 
