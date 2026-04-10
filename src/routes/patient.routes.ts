@@ -22,6 +22,7 @@ import {
     updateProfile,
     getProfile,
     updateLanguage,
+    getMyData,
 } from "../controllers/patientProfile.controller";
 import {
     getAccessInfo,
@@ -61,6 +62,8 @@ router.patch("/language", patientAuthCheck, updateLanguage);
 router.post("/request-edit-otp", patientAuthCheck, translateResponse(), requestEditOTP);
 router.post("/update-profile", patientAuthCheck, translateResponse(), updateProfile);
 router.get("/profile", patientAuthCheck, translateResponse(), getProfile);
+// All patient data for PDF export
+router.get("/my-data", patientAuthCheck, getMyData);
 
 // Onboarding instructions (Accessed by Patients)
 router.get("/onboarding-status", patientAuthCheck, translateResponse(), getOnboardingStatus);

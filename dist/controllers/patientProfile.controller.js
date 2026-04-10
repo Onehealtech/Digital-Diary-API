@@ -1,8 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateLanguage = exports.getProfile = exports.updateProfile = exports.requestEditOTP = void 0;
+exports.updateLanguage = exports.getMyData = exports.getProfile = exports.updateProfile = exports.requestEditOTP = void 0;
 const Patient_1 = require("../models/Patient");
 const Appuser_1 = require("../models/Appuser");
+const Reminder_1 = require("../models/Reminder");
+const BubbleScanResult_1 = require("../models/BubbleScanResult");
+const UserSubscription_1 = require("../models/UserSubscription");
+const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
+const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
+const patientPdf_service_1 = require("../service/patientPdf.service");
 const otpService_1 = require("../service/otpService");
 const translations_1 = require("../utils/translations");
 /**
@@ -174,6 +180,133 @@ const getProfile = async (req, res) => {
     }
 };
 exports.getProfile = getProfile;
+/**
+ * GET /api/v1/patient/my-data
+ * Returns all patient data in a single response for PDF export.
+ * Includes: profile, doctor info, subscription, reminders, diary scan results.
+ */
+const getMyData = async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        // 1. Patient profile + doctor
+        const patient = await Patient_1.Patient.findByPk(patientId, {
+            attributes: [
+                "id", "diaryId", "fullName", "age", "gender", "phone",
+                "address", "language", "caseType", "status", "stage",
+                "treatmentPlan", "prescribedTests", "testCompletionPercentage",
+                "totalTestsPrescribed", "doctorId", "registeredDate",
+                "lastDiaryScan", "lastDoctorContact", "createdAt",
+            ],
+            include: [{
+                    model: Appuser_1.AppUser,
+                    as: "doctor",
+                    attributes: ["id", "fullName", "specialization", "hospital", "phone", "email", "license"],
+                }],
+        });
+        if (!patient) {
+            res.status(404).json({ success: false, message: "Patient not found" });
+            return;
+        }
+        // 2. Active subscription
+        const subscription = await UserSubscription_1.UserSubscription.findOne({
+            where: { patientId, status: "ACTIVE" },
+            include: [{ model: SubscriptionPlan_1.SubscriptionPlan, attributes: ["name", "description", "monthlyPrice", "maxDiaryPages", "scanEnabled", "manualEntryEnabled"] }],
+        });
+        // 3. Reminders (last 50, sorted newest first)
+        const reminders = await Reminder_1.Reminder.findAll({
+            where: { patientId },
+            order: [["reminderDate", "DESC"]],
+            limit: 50,
+            attributes: ["id", "message", "reminderDate", "type", "status", "createdAt", "reminderCount", "newReminderDate"],
+        });
+        // 4. Diary scan results — include all answer and image fields
+        const scanResults = await BubbleScanResult_1.BubbleScanResult.findAll({
+            where: { patientId },
+            order: [["createdAt", "DESC"]],
+            limit: 200,
+            attributes: [
+                "id", "pageNumber", "pageType", "pageId", "templateName",
+                "submissionType", "processingStatus",
+                "imageUrl",
+                "scanResults", "doctorOverrides", "questionMarks",
+                "doctorReviewed", "doctorNotes",
+                "flagged", "reportUrls", "questionReports",
+                "createdAt", "reviewedAt",
+            ],
+        });
+        // 5. Full doctor history (all doctors ever assigned)
+        const doctorHistory = await DoctorPatientHistory_1.DoctorPatientHistory.findAll({
+            where: { patientId },
+            order: [["assignedAt", "ASC"]],
+            include: [{
+                    model: Appuser_1.AppUser,
+                    as: "doctor",
+                    attributes: ["id", "fullName", "specialization", "hospital", "phone", "email"],
+                }],
+        });
+        const exportedAt = new Date().toISOString();
+        const subscriptionData = subscription
+            ? {
+                status: subscription.status,
+                planName: subscription.plan?.name,
+                paidAmount: subscription.paidAmount,
+                maxDiaryPages: subscription.maxDiaryPages,
+                pagesUsed: subscription.pagesUsed,
+                scanEnabled: subscription.scanEnabled,
+                manualEntryEnabled: subscription.manualEntryEnabled,
+                startDate: subscription.startDate,
+                endDate: subscription.endDate,
+            }
+            : null;
+        const doctorHistoryData = doctorHistory.map((h) => ({
+            doctorId: h.doctorId,
+            doctor: h.doctor
+                ? {
+                    id: h.doctor.id,
+                    fullName: h.doctor.fullName,
+                    specialization: h.doctor.specialization,
+                    hospital: h.doctor.hospital,
+                    phone: h.doctor.phone,
+                    email: h.doctor.email,
+                }
+                : null,
+            assignedAt: h.assignedAt,
+            unassignedAt: h.unassignedAt ?? null,
+            isCurrent: !h.unassignedAt,
+        }));
+        const pdfPayload = {
+            exportedAt,
+            patient: patient.toJSON(),
+            subscription: subscriptionData,
+            reminders: reminders.map((r) => r.toJSON()),
+            scanResults: scanResults.map((s) => s.toJSON()),
+            doctorHistory: doctorHistoryData,
+        };
+        // Generate PDF in background and upload to S3
+        let pdfUrl = null;
+        try {
+            pdfUrl = await (0, patientPdf_service_1.generateAndUploadPatientPDF)(pdfPayload, patientId, patient.diaryId);
+            console.info(`[PDF_EXPORT] patientId=${patientId} url=${pdfUrl}`);
+        }
+        catch (pdfErr) {
+            // PDF generation failure must not block the data response
+            console.error("[PDF_EXPORT] Failed to generate/upload PDF:", pdfErr.message);
+        }
+        res.status(200).json({
+            success: true,
+            message: "Patient data retrieved successfully",
+            data: {
+                // ...pdfPayload,/
+                pdfUrl,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Get my data error:", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to retrieve patient data" });
+    }
+};
+exports.getMyData = getMyData;
 /**
  * PATCH /api/v1/patient/language
  * Update patient language preference
