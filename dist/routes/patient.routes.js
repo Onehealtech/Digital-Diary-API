@@ -26,6 +26,8 @@ router.patch("/language", authMiddleware_1.patientAuthCheck, patientProfile_cont
 router.post("/request-edit-otp", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), patientProfile_controller_1.requestEditOTP);
 router.post("/update-profile", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), patientProfile_controller_1.updateProfile);
 router.get("/profile", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), patientProfile_controller_1.getProfile);
+// All patient data for PDF export
+router.get("/my-data", authMiddleware_1.patientAuthCheck, patientProfile_controller_1.getMyData);
 // Onboarding instructions (Accessed by Patients)
 router.get("/onboarding-status", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), onboarding_controller_1.getOnboardingStatus);
 router.post("/onboarding-viewed", authMiddleware_1.patientAuthCheck, (0, translateResponse_middleware_1.translateResponse)(), onboarding_controller_1.recordOnboardingView);
