@@ -1,8 +1,13 @@
 "use strict";
 // src/config/cashfree.ts
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CASHFREE_API_VERSION = exports.cashfreeClient = void 0;
 const cashfree_pg_1 = require("cashfree-pg");
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 /**
  * Create and export a configured Cashfree client instance
  * Uses sandbox or production based on CASHFREE_ENV

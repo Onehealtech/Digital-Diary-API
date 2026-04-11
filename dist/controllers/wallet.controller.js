@@ -211,7 +211,8 @@ const createPayoutOrder = async (req, res) => {
         }
         const { amount } = req.body;
         const orderId = `payout_${(0, uuid_1.v3)(`${userId}_${Date.now()}`, UUID_NAMESPACE)}`;
-        const response = await axios_1.default.post("https://sandbox.cashfree.com/pg/orders", {
+        await axios_1.default.post(process.env.CASHFREE_ENV === "PRODUCTION" ? "https://api.cashfree.com/pg/orders" :
+            "https://sandbox.cashfree.com/pg/orders", {
             order_id: orderId,
             order_amount: amount,
             order_currency: "INR",
@@ -227,6 +228,7 @@ const createPayoutOrder = async (req, res) => {
                 "x-client-secret": process.env.CASHFREE_SECRET_KEY,
             },
         }).then((response) => {
+            console.log("Payout order created:", response.data);
             res.json({
                 success: true,
                 paymentSessionId: response.data.payment_session_id,
