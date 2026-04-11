@@ -51,7 +51,7 @@ const staffLogin = async (email, password) => {
     }
     // Generate a single OTP — send the SAME code via Email and SMS
     const otp = (0, otpService_1.generateOTP)(email);
-    console.log(`[Fortius SMS] Preparing to send OTP ${user}`);
+    console.log(`[Fortius SMS] Preparing to send OTP ${JSON.stringify(user)}`);
     // Store the same OTP under the phone key so verification works from either channel
     if (user.phone) {
         (0, otpService_1.storeOTP)(user.phone, otp);
