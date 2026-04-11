@@ -50,6 +50,7 @@ async function sendTemplateSMS(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function sendLoginOTP(phone: string, otp: string, expiryMinutes: string = "5"): Promise<boolean> {
+    console.log(`[Fortius SMS] Preparing to send OTP 2 ${process.env.NODE_ENV}`);
     if (process.env.NODE_ENV !== 'production') {
         console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;

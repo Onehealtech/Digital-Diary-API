@@ -67,10 +67,14 @@ export const staffLogin = async (
 
     // Generate a single OTP — send the SAME code via Email and SMS
     const otp = generateOTP(email);
+    console.log(`[Fortius SMS] Preparing to send OTP ${user}`);
 
     // Store the same OTP under the phone key so verification works from either channel
     if (user.phone) {
         storeOTP(user.phone, otp);
+        const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
+        const sent = await sendLoginOTP(user.phone, otp, expiryMinutes);
+        console.log(sent ? `OTP sent via Fortius to ${user.phone}` : `Failed to send OTP via Fortius to ${user.phone}`);
     }
 
     // Send OTP via Email
@@ -82,12 +86,7 @@ export const staffLogin = async (
     }
 
     // Send the same OTP via SMS (Twilio)
-    if (user.phone) {
 
-        const expiryMinutes = process.env.OTP_EXPIRY_MINUTES || "5";
-        const sent = await sendLoginOTP(user.phone, otp, expiryMinutes);
-            console.log(sent ? `OTP sent via Fortius to ${user.phone}` : `Failed to send OTP via Fortius to ${user.phone}`);
-    }   
 
     return {
         message: "OTP sent to your email and phone",

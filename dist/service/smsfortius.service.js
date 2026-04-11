@@ -47,6 +47,7 @@ async function sendTemplateSMS(phone, templateId, message) {
 // Message: CANtrac: Your Login OTP is {otp}. Valid for {minutes}. Do not share this code with anyone.
 // ═══════════════════════════════════════════════════════════════════════════════
 async function sendLoginOTP(phone, otp, expiryMinutes = "5") {
+    console.log(`[Fortius SMS] Preparing to send OTP 2 ${process.env.NODE_ENV}`);
     if (process.env.NODE_ENV !== 'production') {
         console.log(`[Fortius SMS] Staging mode — skipping OTP SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
