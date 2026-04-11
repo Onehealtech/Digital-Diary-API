@@ -81,6 +81,7 @@ exports.sendConsultationAlert = sendConsultationAlert;
  * In staging/non-production, skips actual SMS sending (OTP is always 123456).
  */
 async function sendOTP(phone, otp) {
+    console.log(`[Fortius SMS] Preparing to send OTP ${process.env.NODE_ENV}`);
     if (process.env.NODE_ENV !== 'production') {
         console.log(`[Fortius SMS] Staging mode — skipping SMS to ${formatPhone(phone)} (OTP: ${otp})`);
         return true;
