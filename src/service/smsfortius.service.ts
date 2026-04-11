@@ -10,7 +10,8 @@
 const API_BASE = "https://smsfortius.org/V2/apikey.php";
 const API_KEY = process.env.SMSFORTIUS_API_KEY || "w7GMJx4munLTTLYf";
 const SENDER_ID = "ONEH";
-
+const dotenv = require('dotenv');
+dotenv.config();
 /**
  * Normalize phone number to 91XXXXXXXXXX format (no + prefix).
  */
