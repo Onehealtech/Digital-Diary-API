@@ -143,6 +143,7 @@ export const createReminder = async (
             message: alertMessage,
             relatedTaskId: reminder.id,
             deliveryMethod: "in-app",
+            attachmentUrl: attachmentUrl,
         });
 
         // Send SMS via Fortius (DLT-approved templates) + Twilio fallback
@@ -223,6 +224,7 @@ export const getPatientReminders = async (
                 "type",
                 "status",
                 "createdAt",
+                "attachmentUrl",
             ],
         });
 
@@ -661,6 +663,7 @@ export const resendReminder = async (
                 message: alertMessage,
                 relatedTaskId: reminder.id,
                 deliveryMethod: "in-app",
+                attachmentUrl: reminder.attachmentUrl,
             });
 
             if (reminder.patient.phone) {
