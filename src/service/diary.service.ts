@@ -85,6 +85,7 @@ export class DiaryService {
     status?: string;
     vendorId?: string;
     search?: string;
+    diaryType?: string;
   }) {
     const page = params.page || 1;
     const limit = params.limit || 50;
@@ -95,13 +96,14 @@ export class DiaryService {
     if (params.status) {
       whereClause.status = params.status;
     }
-
     if (params.vendorId) {
       whereClause.assignedTo = params.vendorId;
     }
-
     if (params.search) {
       whereClause.id = { [Op.iLike]: `%${params.search}%` };
+    }
+    if (params.diaryType) {
+      whereClause.diaryType = params.diaryType;
     }
 
     const diaries = await GeneratedDiary.findAndCountAll({
@@ -111,8 +113,27 @@ export class DiaryService {
       order: [["generatedDate", "DESC"]],
     });
 
+    // Resolve vendor names for assigned diaries, including archived vendors (paranoid: false).
+    // This ensures the "Assigned To" column always shows the vendor name, even after archiving.
+    const vendorIds = [
+      ...new Set(diaries.rows.map((d) => d.assignedTo).filter(Boolean)),
+    ] as string[];
+
+    const vendorNameMap = new Map<string, string>();
+    if (vendorIds.length > 0) {
+      const vendors = await AppUser.findAll({
+        where: { id: { [Op.in]: vendorIds } },
+        attributes: ["id", "fullName"],
+        paranoid: false, // include archived vendors
+      });
+      vendors.forEach((v) => vendorNameMap.set(v.id, v.fullName));
+    }
+
     return {
-      data: diaries.rows,
+      data: diaries.rows.map((d) => ({
+        ...d.toJSON(),
+        assignedVendorName: d.assignedTo ? (vendorNameMap.get(d.assignedTo) ?? null) : null,
+      })),
       total: diaries.count,
       page,
       limit,

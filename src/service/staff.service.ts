@@ -700,8 +700,13 @@ async getVendorDoctors(
       throw new Error("User not found");
     }
 
-    await user.update({ isActive: false });
-    await user.destroy(); // paranoid soft-delete
+    // Enforce the state machine: Active → Inactive → Archived.
+    // Archiving an active user is not permitted; they must be deactivated first.
+    if (user.isActive) {
+      throw new Error("User must be marked as Inactive before archiving. Please deactivate them first.");
+    }
+
+    await user.destroy(); // paranoid soft-delete (isActive is already false)
 
     try {
       await AuditLog.create({
