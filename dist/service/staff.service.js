@@ -530,6 +530,7 @@ class StaffService {
                 id: userId,
                 role: { [sequelize_1.Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
             },
+            paranoid: false,
         });
         if (!user) {
             // Check if it's a Patient
@@ -579,6 +580,10 @@ class StaffService {
         const assistantStatusSync = user.role === "ASSISTANT"
             ? { assistantStatus: newStatus ? "ACTIVE" : "ON_HOLD" }
             : {};
+        // If activating a soft-deleted user, seamlessly restore them FIRST
+        if (newStatus && user.deletedAt) {
+            await user.restore();
+        }
         await user.update({
             isActive: newStatus,
             ...assistantStatusSync,

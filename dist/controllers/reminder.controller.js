@@ -131,6 +131,7 @@ const createReminder = async (req, res) => {
             message: alertMessage,
             relatedTaskId: reminder.id,
             deliveryMethod: "in-app",
+            attachmentUrl: attachmentUrl,
         });
         // Send SMS via Fortius (DLT-approved templates) + Twilio fallback
         if (patient.phone) {
@@ -197,6 +198,7 @@ const getPatientReminders = async (req, res) => {
                 "type",
                 "status",
                 "createdAt",
+                "attachmentUrl",
             ],
         });
         const lang = await (0, translations_1.getPatientLanguage)(patientId);
@@ -567,6 +569,7 @@ const resendReminder = async (req, res) => {
                 message: alertMessage,
                 relatedTaskId: reminder.id,
                 deliveryMethod: "in-app",
+                attachmentUrl: reminder.attachmentUrl,
             });
             if (reminder.patient.phone) {
                 const reschedDateObj = new Date(reminder.newReminderDate || reminder.reminderDate);
