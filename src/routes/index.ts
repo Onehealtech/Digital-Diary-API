@@ -31,6 +31,7 @@ import doctorRequestRoutes from "./doctorRequest.routes";
 import accountDeletionRoutes from "./accountDeletion.routes";
 import paymentConfigRoutes from "./paymentConfig.routes";
 import advancedAnalysisRoutes from "./advancedAnalysisRoutes";
+import savedFilterRoutes from "./savedFilterRoutes";
 import publicRoutes from "./public.routes";
 import { handleCashfreeWebhook, handleRazorpayWebhook } from "../controllers/webhook.controller";
 
@@ -70,6 +71,7 @@ router.use("/v1/subscriptions", subscriptionRoutes); // Subscription plans & pat
 router.use("/v1/doctor-requests", doctorRequestRoutes); // Patient→Doctor assignment requests (self-signup)
 router.use("/v1/account", accountDeletionRoutes); // Account deletion (Play Store compliance)
 router.use("/v1/payment-config", paymentConfigRoutes); // Payment gateway config (Super Admin)
+router.use("/v1/saved-filters", savedFilterRoutes);   // Saved analysis filters (Doctor/Admin)
 // Public routes (no auth required)
 router.use("/v1/public", publicRoutes);
 // Webhook routes (no auth — verified via signatures)

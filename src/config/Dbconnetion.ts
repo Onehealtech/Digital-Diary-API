@@ -28,6 +28,7 @@ import { VendorDoctor } from '../models/VendorDoctor';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { UserSubscription } from '../models/UserSubscription';
 import { DoctorAssignmentRequest } from '../models/DoctorAssignmentRequest';
+import { SavedFilter } from '../models/SavedFilter';
 import { PatientDoctorSuggestion } from '../models/PatientDoctorSuggestion';
 import { PaymentConfig } from '../models/PaymentConfig';
 import { DoctorPatientHistory } from '../models/DoctorPatientHistory';
@@ -91,6 +92,7 @@ export const sequelize = new Sequelize({
     PatientDoctorSuggestion,
     PaymentConfig,
     DoctorPatientHistory,
+    SavedFilter,
   ],
 
   // Logging configuration
@@ -635,6 +637,43 @@ export const initializeDatabase = async (): Promise<void> => {
     // `).catch((err: unknown) => {
     //   console.warn('⚠️ bubble_scan_results.questionReports migration warning:', err instanceof Error ? err.message : err);
     // });
+
+    // ── saved_filters table ───────────────────────────────────────────────────
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        -- ENUM: creatorRole
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_saved_filters_creatorRole') THEN
+          CREATE TYPE "enum_saved_filters_creatorRole" AS ENUM ('DOCTOR', 'SUPER_ADMIN');
+        END IF;
+        -- ENUM: scope
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_saved_filters_scope') THEN
+          CREATE TYPE "enum_saved_filters_scope" AS ENUM ('personal', 'global');
+        END IF;
+      END $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ saved_filters ENUM creation warning:', err instanceof Error ? err.message : err);
+    });
+
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "saved_filters" (
+        "id"                UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+        "name"              VARCHAR(100)  NOT NULL,
+        "description"       VARCHAR(500),
+        "color"             VARCHAR(20),
+        "createdBy"         UUID          NOT NULL,
+        "creatorRole"       "enum_saved_filters_creatorRole" NOT NULL,
+        "scope"             "enum_saved_filters_scope"       NOT NULL DEFAULT 'personal',
+        "assignedDoctorIds" JSONB         NOT NULL DEFAULT '[]'::jsonb,
+        "filterConfig"      JSONB         NOT NULL DEFAULT '{}'::jsonb,
+        "usageCount"        INTEGER       NOT NULL DEFAULT 0,
+        "isActive"          BOOLEAN       NOT NULL DEFAULT true,
+        "createdAt"         TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        "updatedAt"         TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `).catch((err: unknown) => {
+      console.warn('⚠️ saved_filters table creation warning:', err instanceof Error ? err.message : err);
+    });
 
     console.log('✅ Database models synchronized');
 
