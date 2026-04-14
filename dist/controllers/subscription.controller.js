@@ -213,7 +213,7 @@ const getMySubscription = async (req, res) => {
         const patientId = req.user.id;
         const subscription = await subscriptionService.getPatientSubscription(patientId);
         if (!subscription) {
-            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.NOT_FOUND, "No active subscription found");
+            return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "No active subscription found");
         }
         return (0, response_1.responseMiddleware)(res, constants_1.HTTP_STATUS.OK, "Subscription fetched successfully", subscription);
     }

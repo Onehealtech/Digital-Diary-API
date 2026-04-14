@@ -13,7 +13,7 @@ class VisionScanService {
     constructor() {
         this.apiKey = process.env.OPENROUTER_API_KEY || "";
         if (!this.apiKey) {
-            console.warn("[VisionScan] OPENROUTER_API_KEY not set in .env — scan processing will fail");
+            console.error("[VisionScan] OPENROUTER_API_KEY is not set in .env — all scan uploads will fail with 401");
         }
         this.s3Client = new client_s3_1.S3Client({ region: visionScan_config_1.VISION_SCAN_CONFIG.S3_REGION });
     }
@@ -65,6 +65,9 @@ class VisionScanService {
         console.log(response, "response");
         if (!response.ok) {
             const errorText = await response.text();
+            if (response.status === 401) {
+                throw new AppError_1.AppError(502, "Scan service unavailable: invalid or missing OPENROUTER_API_KEY. Check .env.production on the server.");
+            }
             throw new AppError_1.AppError(502, `Page detection API error (${response.status}): ${errorText}`);
         }
         const data = (await response.json());

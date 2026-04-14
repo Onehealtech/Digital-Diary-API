@@ -7,7 +7,8 @@
     "start": "node dist/index.js",
     "dev": "nodemon --exec ts-node src/index.ts",
     "worker": "ts-node src/worker.ts",
-    "worker:dev": "nodemon --exec ts-node src/worker.ts"
+    "worker:dev": "nodemon --exec ts-node src/worker.ts",
+    "seed:diary": "node -e \"const {initializeDatabase}=require('./dist/config/Dbconnetion');const {seedDiaryPages}=require('./dist/seeders/diaryPages.seed');initializeDatabase().then(()=>seedDiaryPages()).then(n=>{console.log('Seeded',n,'pages');process.exit(0);}).catch(e=>{console.error(e);process.exit(1);})\""
   },
   "keywords": [],
   "author": "",

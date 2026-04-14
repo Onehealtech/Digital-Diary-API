@@ -577,6 +577,20 @@ const initializeDatabase = async () => {
         // `).catch((err: unknown) => {
         //   console.warn('⚠️ bubble_scan_results.questionReports migration warning:', err instanceof Error ? err.message : err);
         // });
+        // Migrate old single-word diaryType values to the current suffixed format.
+        // The seeder previously used "CANtrac" (no suffix); the code now expects "CanTRAC-Breast".
+        // This UPDATE is safe to re-run: WHERE clause only matches the old values.
+        await exports.sequelize.query(`
+      UPDATE "diary_pages"
+      SET "diaryType" = 'CanTRAC-Breast'
+      WHERE "diaryType" IN ('CANtrac', 'CANTrac', 'cantrac', 'CanTrac-Breast', 'CanTRAC-breast');
+
+      UPDATE "diary_pages"
+      SET "diaryCode" = REPLACE("diaryCode", 'CanTrac-', 'CanTRAC-')
+      WHERE "diaryCode" LIKE 'CanTrac-%';
+    `).catch((err) => {
+            console.warn('⚠️ diary_pages diaryType migration warning:', err instanceof Error ? err.message : err);
+        });
         console.log('✅ Database models synchronized');
     }
     catch (error) {

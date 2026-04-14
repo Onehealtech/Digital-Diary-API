@@ -220,7 +220,7 @@ export const getMySubscription = async (req: AuthenticatedRequest, res: Response
     const subscription = await subscriptionService.getPatientSubscription(patientId);
 
     if (!subscription) {
-      return responseMiddleware(res, HTTP_STATUS.NOT_FOUND, "No active subscription found");
+      return responseMiddleware(res, HTTP_STATUS.OK, "No active subscription found");
     }
 
     return responseMiddleware(res, HTTP_STATUS.OK, "Subscription fetched successfully", subscription);
