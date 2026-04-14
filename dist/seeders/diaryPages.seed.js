@@ -2,8 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedDiaryPages = void 0;
 const DiaryPage_1 = require("../models/DiaryPage");
-const DIARY_TYPE = "CANTrac-Breast";
-const DIARY_CODE = "CANTrac-A001";
+const DIARY_TYPE = "CanTRAC-Breast";
+const DIARY_CODE = "CanTRAC-A001";
 // ── Helper: standard schedule questions (shared by all schedule pages) ──
 function scheduleQuestions() {
     return [

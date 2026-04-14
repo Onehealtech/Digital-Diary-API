@@ -71,16 +71,16 @@ var CaseType;
  * Update the values here when new diary types are seeded.
  */
 exports.CASE_TYPE_TO_DIARY_TYPE = {
-    [CaseType.PERI_OPERATIVE]: "CANTrac-Breast",
-    [CaseType.POST_OPERATIVE]: "CANTrac-PostOp",
-    [CaseType.FOLLOW_UP]: "CANTrac-FollowUp",
-    [CaseType.CHEMOTHERAPY]: "CANTrac-Chemo",
-    [CaseType.RADIOLOGY]: "CANTrac-Radiology",
+    [CaseType.PERI_OPERATIVE]: "CanTRAC-Breast",
+    [CaseType.POST_OPERATIVE]: "CanTRAC-PostOp",
+    [CaseType.FOLLOW_UP]: "CanTRAC-FollowUp",
+    [CaseType.CHEMOTHERAPY]: "CanTRAC-Chemo",
+    [CaseType.RADIOLOGY]: "CanTRAC-Radiology",
 };
 /**
  * Default diary type for backward compatibility (patients without caseType)
  */
-exports.DEFAULT_DIARY_TYPE = "CANTrac-Breast";
+exports.DEFAULT_DIARY_TYPE = "CanTRAC-Breast";
 /**
  * Resolve a patient's caseType to its corresponding diaryType.
  * Falls back to DEFAULT_DIARY_TYPE when caseType is null/undefined.
@@ -104,7 +104,7 @@ exports.DIARY_MODULES = {
     [CaseType.PERI_OPERATIVE]: {
         caseType: CaseType.PERI_OPERATIVE,
         moduleName: "Peri-Operative Diary",
-        diaryType: "CANTrac-Breast",
+        diaryType: "CanTRAC-Breast",
         defaultValidityDays: 30,
         mrpInclGST: 2499,
         extensions: [
@@ -115,7 +115,7 @@ exports.DIARY_MODULES = {
     [CaseType.POST_OPERATIVE]: {
         caseType: CaseType.POST_OPERATIVE,
         moduleName: "Post-Operative Diary",
-        diaryType: "CANTrac-PostOp",
+        diaryType: "CanTRAC-PostOp",
         defaultValidityDays: 30,
         mrpInclGST: 2499,
         extensions: [
@@ -126,7 +126,7 @@ exports.DIARY_MODULES = {
     [CaseType.CHEMOTHERAPY]: {
         caseType: CaseType.CHEMOTHERAPY,
         moduleName: "Chemotherapy Diary",
-        diaryType: "CANTrac-Chemo",
+        diaryType: "CanTRAC-Chemo",
         defaultValidityDays: 90,
         mrpInclGST: 4999,
         extensions: [{ label: "+30 days", days: 30, price: 1499 }],
@@ -134,7 +134,7 @@ exports.DIARY_MODULES = {
     [CaseType.RADIOLOGY]: {
         caseType: CaseType.RADIOLOGY,
         moduleName: "Radiation Therapy Diary",
-        diaryType: "CANTrac-Radiology",
+        diaryType: "CanTRAC-Radiology",
         defaultValidityDays: 60,
         mrpInclGST: 3999,
         extensions: [{ label: "+15 days", days: 15, price: 999 }],
@@ -142,7 +142,7 @@ exports.DIARY_MODULES = {
     [CaseType.FOLLOW_UP]: {
         caseType: CaseType.FOLLOW_UP,
         moduleName: "Follow-up Diary",
-        diaryType: "CANTrac-FollowUp",
+        diaryType: "CanTRAC-FollowUp",
         defaultValidityDays: 365,
         mrpInclGST: 2999,
         extensions: [{ label: "+12 months", days: 365, price: 2499 }],

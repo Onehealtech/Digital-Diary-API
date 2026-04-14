@@ -1,7 +1,7 @@
 import { DiaryPage } from "../models/DiaryPage";
 
-const DIARY_TYPE = "CANTrac-Breast";
-const DIARY_CODE = "CANTrac-A001";
+const DIARY_TYPE = "CanTRAC-Breast";
+const DIARY_CODE = "CanTRAC-A001";
 
 type QuestionType = "yes_no" | "date" | "select" | "text" | "info";
 
