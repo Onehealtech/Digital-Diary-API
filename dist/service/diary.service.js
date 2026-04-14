@@ -74,14 +74,34 @@ class DiaryService {
         if (params.search) {
             whereClause.id = { [sequelize_1.Op.iLike]: `%${params.search}%` };
         }
+        if (params.diaryType) {
+            whereClause.diaryType = params.diaryType;
+        }
         const diaries = await GeneratedDiary_1.GeneratedDiary.findAndCountAll({
             where: whereClause,
             limit,
             offset,
             order: [["generatedDate", "DESC"]],
         });
+        // Resolve vendor names for assigned diaries, including archived vendors (paranoid: false).
+        // This ensures the "Assigned To" column always shows the vendor name, even after archiving.
+        const vendorIds = [
+            ...new Set(diaries.rows.map((d) => d.assignedTo).filter(Boolean)),
+        ];
+        const vendorNameMap = new Map();
+        if (vendorIds.length > 0) {
+            const vendors = await Appuser_1.AppUser.findAll({
+                where: { id: { [sequelize_1.Op.in]: vendorIds } },
+                attributes: ["id", "fullName"],
+                paranoid: false, // include archived vendors
+            });
+            vendors.forEach((v) => vendorNameMap.set(v.id, v.fullName));
+        }
         return {
-            data: diaries.rows,
+            data: diaries.rows.map((d) => ({
+                ...d.toJSON(),
+                assignedVendorName: d.assignedTo ? (vendorNameMap.get(d.assignedTo) ?? null) : null,
+            })),
             total: diaries.count,
             page,
             limit,

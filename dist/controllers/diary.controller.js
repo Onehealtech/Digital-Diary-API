@@ -30,13 +30,14 @@ class DiaryController {
      */
     async getAllGeneratedDiaries(req, res) {
         try {
-            const { page, limit, status, vendorId, search } = req.query;
+            const { page, limit, status, vendorId, search, diaryType } = req.query;
             const result = await diaryService.getAllGeneratedDiaries({
                 page: page ? parseInt(page) : undefined,
                 limit: limit ? parseInt(limit) : undefined,
                 status: status,
                 vendorId: vendorId,
                 search: search,
+                diaryType: diaryType,
             });
             return (0, response_1.sendResponse)(res, 200, "Diaries retrieved successfully", result);
         }
