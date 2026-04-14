@@ -100,6 +100,14 @@ __decorate([
 ], SubscriptionPlan.prototype, "isActive", void 0);
 __decorate([
     (0, sequelize_typescript_1.Column)({
+        type: sequelize_typescript_1.DataType.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+    }),
+    __metadata("design:type", Boolean)
+], SubscriptionPlan.prototype, "isFree", void 0);
+__decorate([
+    (0, sequelize_typescript_1.Column)({
         type: sequelize_typescript_1.DataType.INTEGER,
         allowNull: false,
         defaultValue: 0,

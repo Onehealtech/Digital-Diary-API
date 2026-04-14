@@ -50,6 +50,7 @@ exports.createPlanSchema = zod_1.z.object({
     manualEntryEnabled: zod_1.z.coerce.boolean().default(false),
     isPopular: zod_1.z.coerce.boolean().default(false),
     isActive: zod_1.z.coerce.boolean().default(true),
+    isFree: zod_1.z.coerce.boolean().default(false),
     sortOrder: zod_1.z.coerce.number().int().min(0).default(0),
 });
 exports.updatePlanSchema = exports.createPlanSchema.partial();

@@ -27,6 +27,7 @@ export const createPlan = async (data: {
   manualEntryEnabled: boolean;
   isPopular: boolean;
   isActive?: boolean;
+  isFree?: boolean;
   sortOrder?: number;
 }) => {
   // If marking as popular, unmark others
@@ -46,6 +47,7 @@ export const updatePlan = async (planId: string, data: Partial<{
   manualEntryEnabled: boolean;
   isPopular: boolean;
   isActive: boolean;
+  isFree: boolean;
   sortOrder: number;
 }>) => {
   const plan = await SubscriptionPlan.findByPk(planId);
@@ -162,6 +164,100 @@ export const initiateSubscriptionPayment = async (params: {
   });
   if (existingActive) {
     throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
+  }
+
+  // Free plan — price is 0, activate immediately without payment
+  if (Number(plan.monthlyPrice) === 0) {
+    return await sequelize.transaction(async (t) => {
+      const lockedPatient = await Patient.findByPk(patientId, {
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
+      if (!lockedPatient) throw new Error("Patient not found");
+
+      const doctorId = lockedPatient.doctorId || null;
+      let assignedDiaryId: string;
+
+      if (lockedPatient.diaryId) {
+        assignedDiaryId = lockedPatient.diaryId;
+        console.info(`[DIARY_REUSE] scope=free_plan patientId=${patientId} existingDiaryId=${assignedDiaryId}`);
+      } else {
+        let generatedDiary = await GeneratedDiary.findOne({
+          where: { status: "unassigned" },
+          order: [["createdAt", "ASC"]],
+          lock: t.LOCK.UPDATE,
+          transaction: t,
+        });
+        if (!generatedDiary) {
+          const diaryId = await generateCanTracId();
+          generatedDiary = await GeneratedDiary.create(
+            { id: diaryId, diaryType: "peri-operative", status: "unassigned", generatedDate: new Date() },
+            { transaction: t }
+          );
+        }
+        generatedDiary.status = "sold";
+        generatedDiary.soldTo = patientId;
+        generatedDiary.soldDate = new Date();
+        await generatedDiary.save({ transaction: t });
+
+        await Diary.create(
+          {
+            id: generatedDiary.id,
+            patientId,
+            doctorId,
+            status: DIARY_STATUS.APPROVED,
+            activationDate: new Date(),
+            saleAmount: 0,
+            commissionAmount: 0,
+          },
+          { transaction: t }
+        );
+        console.info(`[DIARY_CREATE] scope=free_plan patientId=${patientId} diaryId=${generatedDiary.id}`);
+        lockedPatient.diaryId = generatedDiary.id;
+        await lockedPatient.save({ transaction: t });
+        assignedDiaryId = generatedDiary.id;
+      }
+
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setFullYear(endDate.getFullYear() + 100); // effectively permanent
+
+      const subscription = await UserSubscription.create(
+        {
+          patientId,
+          planId,
+          diaryId: assignedDiaryId,
+          doctorId,
+          status: "ACTIVE",
+          paidAmount: 0,
+          maxDiaryPages: plan.maxDiaryPages,
+          scanEnabled: plan.scanEnabled,
+          manualEntryEnabled: plan.manualEntryEnabled,
+          pagesUsed: 0,
+          paymentOrderId: null,
+          paymentMethod: "FREE",
+          startDate: now,
+          endDate,
+        },
+        { transaction: t }
+      );
+
+      console.info(`[FREE_PLAN] activated patientId=${patientId} diaryId=${assignedDiaryId} planId=${planId}`);
+
+      return {
+        isFree: true,
+        subscription,
+        diaryId: assignedDiaryId,
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          monthlyPrice: 0,
+          maxDiaryPages: plan.maxDiaryPages,
+          scanEnabled: plan.scanEnabled,
+          manualEntryEnabled: plan.manualEntryEnabled,
+        },
+      };
+    });
   }
 
   // 4. Check for an existing PENDING order for this patient + plan
@@ -421,7 +517,6 @@ export const subscribeToPlan = async (params: {
     const plan = await SubscriptionPlan.findByPk(planId, { transaction: t });
     if (!plan) throw new Error("Plan not found");
     if (!plan.isActive) throw new Error("This plan is no longer available");
-
     // 3. Check for existing active subscription
     const existingActive = await UserSubscription.findOne({
       where: { patientId, status: "ACTIVE" },
@@ -946,3 +1041,4 @@ export const incrementPageUsage = async (patientId: string) => {
   await subscription.save();
   return subscription.pagesUsed;
 };
+

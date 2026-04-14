@@ -636,6 +636,21 @@ export const initializeDatabase = async (): Promise<void> => {
     //   console.warn('⚠️ bubble_scan_results.questionReports migration warning:', err instanceof Error ? err.message : err);
     // });
 
+    // Add isFree column to subscription_plans (free plan support)
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'subscription_plans' AND column_name = 'isFree'
+        ) THEN
+          ALTER TABLE "subscription_plans" ADD COLUMN "isFree" BOOLEAN NOT NULL DEFAULT false;
+        END IF;
+      END $$;
+    `).catch((err: unknown) => {
+      console.warn('⚠️ subscription_plans.isFree migration warning:', err instanceof Error ? err.message : err);
+    });
+
     // Migrate old single-word diaryType values to the current suffixed format.
     // The seeder previously used "CANtrac" (no suffix); the code now expects "CanTRAC-Breast".
     // This UPDATE is safe to re-run: WHERE clause only matches the old values.
