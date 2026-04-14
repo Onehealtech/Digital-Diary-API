@@ -1,4 +1,5 @@
 import ImageHistory from "../models/ImageHistory.model";
+import path from "path";
 
 export class ImageService {
 
@@ -17,7 +18,8 @@ export class ImageService {
     const image = await ImageHistory.create({
       diaryId,
       imagePath: baseUrl ? `${baseUrl}/uploads/${file.filename}` : `/uploads/${file.filename}`,
-      fileName: file.filename,
+      // Keep the user-facing original name so doctors see something meaningful.
+      fileName: path.basename(file.originalname || file.filename),
       uploadSource: uploadSource || "scan",
       uploadedBy: uploadedBy || "system",
     });
