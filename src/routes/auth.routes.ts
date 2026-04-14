@@ -47,6 +47,8 @@ router.post("/auth/refresh", DoctorAuthController.refreshToken);
 
 router.post("/auth/forgot-password", DoctorAuthController.forgotPassword);
 
+router.get("/auth/verify-reset-token", DoctorAuthController.verifyResetToken);
+
 router.post("/auth/reset-password", DoctorAuthController.resetPassword);
 
 router.put(
