@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerPatient = void 0;
 const Patient_1 = require("../models/Patient");
+const GeneratedDiary_1 = require("../models/GeneratedDiary");
 /**
  * POST /api/v1/clinic/register-patient
  * Doctor or Assistant registers a patient with sticker ID
@@ -18,7 +19,7 @@ const registerPatient = async (req, res) => {
             });
             return;
         }
-        // Check if sticker already exists
+        // Check if sticker already exists on any patient row
         const existingPatient = await Patient_1.Patient.findOne({
             where: { diaryId },
         });
@@ -26,6 +27,22 @@ const registerPatient = async (req, res) => {
             res.status(409).json({
                 success: false,
                 message: "This sticker ID is already registered",
+            });
+            return;
+        }
+        // Check GeneratedDiary: sticker must exist and must NOT be already sold
+        const generatedDiary = await GeneratedDiary_1.GeneratedDiary.findOne({ where: { id: diaryId } });
+        if (!generatedDiary) {
+            res.status(404).json({
+                success: false,
+                message: "Diary sticker not found in the system. Please use a valid issued diary.",
+            });
+            return;
+        }
+        if (generatedDiary.status === "sold") {
+            res.status(409).json({
+                success: false,
+                message: "This diary sticker is already assigned to another patient.",
             });
             return;
         }
