@@ -55,6 +55,7 @@ export const createPlanSchema = z.object({
   manualEntryEnabled: z.coerce.boolean().default(false),
   isPopular: z.coerce.boolean().default(false),
   isActive: z.coerce.boolean().default(true),
+  isFree: z.coerce.boolean().default(false),
   sortOrder: z.coerce.number().int().min(0).default(0),
 });
 

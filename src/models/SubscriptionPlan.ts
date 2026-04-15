@@ -89,6 +89,13 @@ export class SubscriptionPlan extends Model {
   isActive!: boolean;
 
   @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  })
+  isFree!: boolean;
+
+  @Column({
     type: DataType.INTEGER,
     allowNull: false,
     defaultValue: 0,

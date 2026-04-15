@@ -47,12 +47,12 @@ async function deletePatientAccount(patientId, reason) {
         const [anonymizedOrders] = await Order_1.Order.update({ orderNote: "Account deleted" }, { where: { patientId }, transaction: t });
         deletedData.ordersAnonymized = anonymizedOrders;
         // 5. Anonymize patient PII and mark as INACTIVE
-        patient.fullName = ANONYMIZED_NAME;
-        patient.phone = null;
-        patient.address = null;
-        patient.fcmToken = null;
-        patient.age = null;
-        patient.gender = null;
+        // patient.fullName = ANONYMIZED_NAME;
+        // patient.phone = null as any;
+        // patient.address = null as any;
+        // patient.fcmToken = null as any;
+        // patient.age = null as any;
+        // patient.gender = null as any;
         patient.status = "INACTIVE";
         patient.deactivationReason = reason || "Account deleted by user (Play Store compliance)";
         patient.deactivatedAt = new Date();

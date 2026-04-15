@@ -364,3 +364,4 @@ export const checkFeatureAccess = async (req: AuthenticatedRequest, res: Respons
     return responseMiddleware(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, message);
   }
 };
+

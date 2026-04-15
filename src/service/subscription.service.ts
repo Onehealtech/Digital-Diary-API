@@ -27,6 +27,7 @@ export const createPlan = async (data: {
   manualEntryEnabled: boolean;
   isPopular: boolean;
   isActive?: boolean;
+  isFree?: boolean;
   sortOrder?: number;
 }) => {
   // If marking as popular, unmark others
@@ -46,6 +47,7 @@ export const updatePlan = async (planId: string, data: Partial<{
   manualEntryEnabled: boolean;
   isPopular: boolean;
   isActive: boolean;
+  isFree: boolean;
   sortOrder: number;
 }>) => {
   const plan = await SubscriptionPlan.findByPk(planId);
@@ -162,6 +164,100 @@ export const initiateSubscriptionPayment = async (params: {
   });
   if (existingActive) {
     throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
+  }
+
+  // Free plan — price is 0, activate immediately without payment
+  if (Number(plan.monthlyPrice) === 0) {
+    return await sequelize.transaction(async (t) => {
+      const lockedPatient = await Patient.findByPk(patientId, {
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
+      if (!lockedPatient) throw new Error("Patient not found");
+
+      const doctorId = lockedPatient.doctorId || null;
+      let assignedDiaryId: string;
+
+      if (lockedPatient.diaryId) {
+        assignedDiaryId = lockedPatient.diaryId;
+        console.info(`[DIARY_REUSE] scope=free_plan patientId=${patientId} existingDiaryId=${assignedDiaryId}`);
+      } else {
+        let generatedDiary = await GeneratedDiary.findOne({
+          where: { status: "unassigned" },
+          order: [["createdAt", "ASC"]],
+          lock: t.LOCK.UPDATE,
+          transaction: t,
+        });
+        if (!generatedDiary) {
+          const diaryId = await generateCanTracId();
+          generatedDiary = await GeneratedDiary.create(
+            { id: diaryId, diaryType: "peri-operative", status: "unassigned", generatedDate: new Date() },
+            { transaction: t }
+          );
+        }
+        generatedDiary.status = "sold";
+        generatedDiary.soldTo = patientId;
+        generatedDiary.soldDate = new Date();
+        await generatedDiary.save({ transaction: t });
+
+        await Diary.create(
+          {
+            id: generatedDiary.id,
+            patientId,
+            doctorId,
+            status: DIARY_STATUS.APPROVED,
+            activationDate: new Date(),
+            saleAmount: 0,
+            commissionAmount: 0,
+          },
+          { transaction: t }
+        );
+        console.info(`[DIARY_CREATE] scope=free_plan patientId=${patientId} diaryId=${generatedDiary.id}`);
+        lockedPatient.diaryId = generatedDiary.id;
+        await lockedPatient.save({ transaction: t });
+        assignedDiaryId = generatedDiary.id;
+      }
+
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setFullYear(endDate.getFullYear() + 100); // effectively permanent
+
+      const subscription = await UserSubscription.create(
+        {
+          patientId,
+          planId,
+          diaryId: assignedDiaryId,
+          doctorId,
+          status: "ACTIVE",
+          paidAmount: 0,
+          maxDiaryPages: plan.maxDiaryPages,
+          scanEnabled: plan.scanEnabled,
+          manualEntryEnabled: plan.manualEntryEnabled,
+          pagesUsed: 0,
+          paymentOrderId: null,
+          paymentMethod: "FREE",
+          startDate: now,
+          endDate,
+        },
+        { transaction: t }
+      );
+
+      console.info(`[FREE_PLAN] activated patientId=${patientId} diaryId=${assignedDiaryId} planId=${planId}`);
+
+      return {
+        isFree: true,
+        subscription,
+        diaryId: assignedDiaryId,
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          monthlyPrice: 0,
+          maxDiaryPages: plan.maxDiaryPages,
+          scanEnabled: plan.scanEnabled,
+          manualEntryEnabled: plan.manualEntryEnabled,
+        },
+      };
+    });
   }
 
   // 4. Check for an existing PENDING order for this patient + plan
@@ -295,51 +391,60 @@ export const activateSubscriptionAfterPayment = async (
 
     const doctorId = patient.doctorId || null;
 
-    // 5. Assign diary from GeneratedDiary pool
-    let generatedDiary = await GeneratedDiary.findOne({
-      where: { status: "unassigned" },
-      order: [["createdAt", "ASC"]],
-      lock: t.LOCK.UPDATE,
-      transaction: t,
-    });
+    // 5. Assign diary — only if the patient does NOT already have one.
+    // Patients registered via physical diary sale already have a diaryId; overwriting
+    // it would detach their sticker and allow it to be re-registered to another patient.
+    let assignedDiaryId: string;
 
-    if (!generatedDiary) {
-      const diaryId = await generateCanTracId();
-      generatedDiary = await GeneratedDiary.create(
+    if (patient.diaryId) {
+      // Patient already has a physical diary — use it for this subscription.
+      assignedDiaryId = patient.diaryId;
+      console.info(`[DIARY_REUSE] scope=subscription_checkout patientId=${order.patientId} existingDiaryId=${assignedDiaryId}`);
+    } else {
+      // Self-signup patient with no diary yet — assign one from the pool.
+      let generatedDiary = await GeneratedDiary.findOne({
+        where: { status: "unassigned" },
+        order: [["createdAt", "ASC"]],
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
+
+      if (!generatedDiary) {
+        const diaryId = await generateCanTracId();
+        generatedDiary = await GeneratedDiary.create(
+          {
+            id: diaryId,
+            diaryType: "peri-operative",
+            status: "unassigned",
+            generatedDate: new Date(),
+          },
+          { transaction: t }
+        );
+      }
+
+      generatedDiary.status = "sold";
+      generatedDiary.soldTo = order.patientId;
+      generatedDiary.soldDate = new Date();
+      await generatedDiary.save({ transaction: t });
+
+      await Diary.create(
         {
-          id: diaryId,
-          diaryType: "peri-operative",
-          status: "unassigned",
-          generatedDate: new Date(),
+          id: generatedDiary.id,
+          patientId: order.patientId,
+          doctorId,
+          status: DIARY_STATUS.APPROVED,
+          activationDate: new Date(),
+          saleAmount: Number(plan.monthlyPrice),
+          commissionAmount: 0,
         },
         { transaction: t }
       );
+      console.info(`[DIARY_CREATE] scope=subscription_checkout patientId=${order.patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
+
+      patient.diaryId = generatedDiary.id;
+      await patient.save({ transaction: t });
+      assignedDiaryId = generatedDiary.id;
     }
-
-    // Mark generated diary as sold
-    generatedDiary.status = "sold";
-    generatedDiary.soldTo = order.patientId;
-    generatedDiary.soldDate = new Date();
-    await generatedDiary.save({ transaction: t });
-
-    // Create diary record
-    await Diary.create(
-      {
-        id: generatedDiary.id,
-        patientId: order.patientId,
-        doctorId,
-        status: DIARY_STATUS.APPROVED,
-        activationDate: new Date(),
-        saleAmount: Number(plan.monthlyPrice),
-        commissionAmount: 0,
-      },
-      { transaction: t }
-    );
-    console.info(`[DIARY_CREATE] scope=subscription_checkout patientId=${order.patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
-
-    // Update patient with diaryId
-    patient.diaryId = generatedDiary.id;
-    await patient.save({ transaction: t });
 
     // 6. Create the subscription (with diary and doctor linked)
     const now = new Date();
@@ -350,7 +455,7 @@ export const activateSubscriptionAfterPayment = async (
       {
         patientId: order.patientId,
         planId: order.subscriptionPlanId,
-        diaryId: generatedDiary.id,
+        diaryId: assignedDiaryId,
         doctorId,
         status: "ACTIVE",
         paidAmount: plan.monthlyPrice,
@@ -368,7 +473,7 @@ export const activateSubscriptionAfterPayment = async (
 
     return {
       subscription,
-      diaryId: generatedDiary.id,
+      diaryId: assignedDiaryId,
       plan: {
         name: plan.name,
         maxDiaryPages: plan.maxDiaryPages,
@@ -412,7 +517,6 @@ export const subscribeToPlan = async (params: {
     const plan = await SubscriptionPlan.findByPk(planId, { transaction: t });
     if (!plan) throw new Error("Plan not found");
     if (!plan.isActive) throw new Error("This plan is no longer available");
-
     // 3. Check for existing active subscription
     const existingActive = await UserSubscription.findOne({
       where: { patientId, status: "ACTIVE" },
@@ -422,50 +526,59 @@ export const subscribeToPlan = async (params: {
       throw new Error("Patient already has an active subscription. Upgrade or cancel the current plan first.");
     }
 
-    // 4. Assign diary from GeneratedDiary pool
+    // 4. Assign diary — only if the patient does NOT already have one.
     const doctorId = patient.doctorId || null;
+    let assignedDiaryId: string;
 
-    let generatedDiary = await GeneratedDiary.findOne({
-      where: { status: "unassigned" },
-      order: [["createdAt", "ASC"]],
-      lock: t.LOCK.UPDATE,
-      transaction: t,
-    });
+    if (patient.diaryId) {
+      // Patient already has a physical diary — reuse it; do NOT overwrite.
+      assignedDiaryId = patient.diaryId;
+      console.info(`[DIARY_REUSE] scope=subscription_direct patientId=${patientId} existingDiaryId=${assignedDiaryId}`);
+    } else {
+      // Self-signup patient with no diary yet — assign one from the pool.
+      let generatedDiary = await GeneratedDiary.findOne({
+        where: { status: "unassigned" },
+        order: [["createdAt", "ASC"]],
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
 
-    if (!generatedDiary) {
-      const diaryId = await generateCanTracId();
-      generatedDiary = await GeneratedDiary.create(
+      if (!generatedDiary) {
+        const diaryId = await generateCanTracId();
+        generatedDiary = await GeneratedDiary.create(
+          {
+            id: diaryId,
+            diaryType: "peri-operative",
+            status: "unassigned",
+            generatedDate: new Date(),
+          },
+          { transaction: t }
+        );
+      }
+
+      generatedDiary.status = "sold";
+      generatedDiary.soldTo = patientId;
+      generatedDiary.soldDate = new Date();
+      await generatedDiary.save({ transaction: t });
+
+      await Diary.create(
         {
-          id: diaryId,
-          diaryType: "peri-operative",
-          status: "unassigned",
-          generatedDate: new Date(),
+          id: generatedDiary.id,
+          patientId,
+          doctorId,
+          status: DIARY_STATUS.APPROVED,
+          activationDate: new Date(),
+          saleAmount: Number(plan.monthlyPrice),
+          commissionAmount: 0,
         },
         { transaction: t }
       );
+      console.info(`[DIARY_CREATE] scope=subscription_direct patientId=${patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
+
+      patient.diaryId = generatedDiary.id;
+      await patient.save({ transaction: t });
+      assignedDiaryId = generatedDiary.id;
     }
-
-    generatedDiary.status = "sold";
-    generatedDiary.soldTo = patientId;
-    generatedDiary.soldDate = new Date();
-    await generatedDiary.save({ transaction: t });
-
-    await Diary.create(
-      {
-        id: generatedDiary.id,
-        patientId,
-        doctorId,
-        status: DIARY_STATUS.APPROVED,
-        activationDate: new Date(),
-        saleAmount: Number(plan.monthlyPrice),
-        commissionAmount: 0,
-      },
-      { transaction: t }
-    );
-    console.info(`[DIARY_CREATE] scope=subscription_direct patientId=${patientId} diaryId=${generatedDiary.id} status=${DIARY_STATUS.APPROVED}`);
-
-    patient.diaryId = generatedDiary.id;
-    await patient.save({ transaction: t });
 
     // 5. Create subscription with diary and doctor linked
     const now = new Date();
@@ -476,7 +589,7 @@ export const subscribeToPlan = async (params: {
       {
         patientId,
         planId,
-        diaryId: generatedDiary.id,
+        diaryId: assignedDiaryId,
         doctorId,
         status: "ACTIVE",
         paidAmount: plan.monthlyPrice,
@@ -494,7 +607,7 @@ export const subscribeToPlan = async (params: {
 
     return {
       subscription,
-      diaryId: generatedDiary.id,
+      diaryId: assignedDiaryId,
       plan: {
         name: plan.name,
         maxDiaryPages: plan.maxDiaryPages,
@@ -928,3 +1041,4 @@ export const incrementPageUsage = async (patientId: string) => {
   await subscription.save();
   return subscription.pagesUsed;
 };
+
