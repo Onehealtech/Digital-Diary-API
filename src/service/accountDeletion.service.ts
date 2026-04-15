@@ -67,12 +67,12 @@ export async function deletePatientAccount(
     deletedData.ordersAnonymized = anonymizedOrders;
 
     // 5. Anonymize patient PII and mark as INACTIVE
-    patient.fullName = ANONYMIZED_NAME;
-    patient.phone = null as any;
-    patient.address = null as any;
-    patient.fcmToken = null as any;
-    patient.age = null as any;
-    patient.gender = null as any;
+    // patient.fullName = ANONYMIZED_NAME;
+    // patient.phone = null as any;
+    // patient.address = null as any;
+    // patient.fcmToken = null as any;
+    // patient.age = null as any;
+    // patient.gender = null as any;
     patient.status = "INACTIVE";
     patient.deactivationReason = reason || "Account deleted by user (Play Store compliance)";
     patient.deactivatedAt = new Date();
