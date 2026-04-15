@@ -192,6 +192,39 @@ export class DoctorAuthService {
   }
 
   /**
+   * Verify a password-reset token is valid and not expired.
+   * Called before showing the reset-password form so the UI can
+   * reject stale links early without waiting for a form submission.
+   */
+  static async verifyResetToken(resetToken: string) {
+    try {
+      const decoded = jwt.verify(resetToken, process.env.JWT_SECRET!) as any;
+
+      if (decoded.type !== "password-reset") {
+        throw new Error("Invalid reset token");
+      }
+
+      const user = await AppUser.findByPk(decoded.id, {
+        attributes: ["id", "email", "fullName"],
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      return { valid: true, email: user.email };
+    } catch (error: any) {
+      if (error.name === "TokenExpiredError") {
+        throw new Error("Reset token has expired");
+      }
+      if (error.name === "JsonWebTokenError") {
+        throw new Error("Invalid reset token");
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Reset password using reset token
    */
   static async resetPassword(resetToken: string, newPassword: string) {

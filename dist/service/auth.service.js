@@ -9,7 +9,6 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Appuser_1 = require("../models/Appuser");
 const Wallet_1 = require("../models/Wallet");
 const wallet_service_1 = require("./wallet.service");
-const emailService_1 = require("./emailService");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config(); // ✅ MUST be first
 class DoctorAuthService {
@@ -131,29 +130,34 @@ class DoctorAuthService {
     /**
      * Forgot password - Generate reset token
      */
-    static async forgotPassword(email) {
+    static async forgotPassword(email, currentPassword) {
         const user = await Appuser_1.AppUser.findOne({
             where: { email: email.toLowerCase() },
         });
         if (!user) {
-            // Avoid account enumeration by returning the same response even when the account does not exist.
-            return {
-                message: "If the email exists, a password reset link has been sent.",
-            };
+            throw new Error("Invalid email or current password");
+        }
+        // Verify current password if provided
+        if (currentPassword) {
+            const isMatch = await bcrypt_1.default.compare(currentPassword.trim(), user.password);
+            if (!isMatch) {
+                throw new Error("Invalid email or current password");
+            }
         }
         // Generate password reset token
         const resetToken = jsonwebtoken_1.default.sign({
             id: user.id,
             type: "password-reset",
-            tokenVersion: user.tokenVersion ?? 0,
         }, process.env.JWT_SECRET, { expiresIn: "1h" });
-        await (0, emailService_1.sendPasswordResetEmail)(user.email, user.fullName, resetToken);
         return {
-            message: "If the email exists, a password reset link has been sent.",
+            message: "Identity verified. You can now reset your password.",
+            resetToken,
         };
     }
     /**
-     * Validate password reset token before showing the reset form
+     * Verify a password-reset token is valid and not expired.
+     * Called before showing the reset-password form so the UI can
+     * reject stale links early without waiting for a form submission.
      */
     static async verifyResetToken(resetToken) {
         try {
@@ -162,20 +166,12 @@ class DoctorAuthService {
                 throw new Error("Invalid reset token");
             }
             const user = await Appuser_1.AppUser.findByPk(decoded.id, {
-                attributes: ["id", "email", "fullName", "tokenVersion"],
+                attributes: ["id", "email", "fullName"],
             });
             if (!user) {
                 throw new Error("User not found");
             }
-            const currentTokenVersion = user.tokenVersion ?? 0;
-            if ((decoded.tokenVersion ?? -1) !== currentTokenVersion) {
-                throw new Error("Reset token is no longer valid");
-            }
-            return {
-                valid: true,
-                email: user.email,
-                fullName: user.fullName,
-            };
+            return { valid: true, email: user.email };
         }
         catch (error) {
             if (error.name === "TokenExpiredError") {
@@ -202,15 +198,8 @@ class DoctorAuthService {
             if (!user) {
                 throw new Error("User not found");
             }
-            const currentTokenVersion = user.tokenVersion ?? 0;
-            if ((decoded.tokenVersion ?? -1) !== currentTokenVersion) {
-                throw new Error("Reset token is no longer valid");
-            }
             // Update password — the @BeforeUpdate hook in AppUser hashes it automatically
-            await user.update({
-                password: newPassword.trim(),
-                tokenVersion: currentTokenVersion + 1,
-            });
+            await user.update({ password: newPassword.trim() });
             return {
                 message: "Password reset successfully",
             };
