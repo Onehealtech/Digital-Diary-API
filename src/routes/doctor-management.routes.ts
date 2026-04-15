@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { staffController } from "../controllers/staff.controller";
+import { retryCashfreeOnboarding } from "../controllers/admin.controller";
 import { authCheck } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 
@@ -22,10 +23,17 @@ router.get(
   staffController.getVendorDoctors
 );
 
+// Retry Cashfree onboarding for a doctor (idempotent).
+router.post(
+  "/:id/retry-cashfree",
+  authCheck([UserRole.SUPER_ADMIN]),
+  retryCashfreeOnboarding
+);
+
 // Get doctor by ID
 router.get(
   "/:id",
-  authCheck([UserRole.SUPER_ADMIN]),
+  authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR]),
   staffController.getDoctorById
 );
 

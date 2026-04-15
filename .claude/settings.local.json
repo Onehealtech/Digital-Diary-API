@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/OneHeal/onehealdiary-frontend/**)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(npx tsc:*)",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Read(//d/OneHeal/**)"
+    ],
+    "additionalDirectories": [
+      "d:\\OneHeal\\onehealdiary-frontend\\src\\services",
+      "d:\\OneHeal\\onehealdiary-frontend\\src\\pages",
+      "d:\\OneHeal\\onehealdiary-frontend\\src\\constants",
+      "d:\\OneHeal\\onehealdiary-frontend\\src"
+    ]
+  }
+}

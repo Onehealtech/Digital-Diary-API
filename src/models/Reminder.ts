@@ -48,18 +48,31 @@ export class Reminder extends Model {
             "APPOINTMENT",
             "CHEMOTHERAPY",
             "RADIOLOGY",
+            "SURGERY",
             "FOLLOW_UP",
             "OTHER"
         ),
         allowNull: false,
     })
-    type!: "APPOINTMENT" | "CHEMOTHERAPY" | "RADIOLOGY" | "FOLLOW_UP" | "OTHER";
+    type!: "APPOINTMENT" | "CHEMOTHERAPY" | "RADIOLOGY" | "SURGERY" | "FOLLOW_UP" | "OTHER";
 
     @Column({
-        type: DataType.ENUM("PENDING", "READ", "EXPIRED"),
+        type: DataType.ENUM("PENDING", "READ", "EXPIRED", "ACCEPTED", "REJECTED", "CLOSED"),
         defaultValue: "PENDING",
     })
-    status!: "PENDING" | "READ" | "EXPIRED";
+    status!: "PENDING" | "READ" | "EXPIRED" | "ACCEPTED" | "REJECTED" | "CLOSED";
+
+    @Column({
+        type: DataType.TEXT,
+        allowNull: true,
+    })
+    rejectReason?: string;
+
+    @Column({
+        type: DataType.INTEGER,
+        defaultValue: 1,
+    })
+    reminderCount!: number;
 
     @ForeignKey(() => AppUser)
     @Column({
@@ -70,4 +83,22 @@ export class Reminder extends Model {
 
     @BelongsTo(() => AppUser)
     creator!: AppUser;
+
+    @Column({
+        type: DataType.DATE,
+        allowNull: true,
+    })
+    newReminderDate?: Date;
+
+    @Column({
+        type: DataType.TEXT,
+        allowNull: true,
+    })
+    newReminderMessage?: string;
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true,
+    })
+    attachmentUrl?: string;
 }

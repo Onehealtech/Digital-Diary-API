@@ -1,14 +1,18 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { BubbleScanResult } from "../../models/BubbleScanResult";
 import { getDiaryTypeForCaseType } from "../../utils/constants";
+import { AppError } from "../../utils/AppError";
 import { visionScanRepository } from "./visionScan.repository";
-import { buildExtractionPrompt } from "./visionScan.prompts";
+import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT } from "./visionScan.prompts";
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
+import { extractWithDocumentAI, isDocumentAIConfigured } from "./documentAI.service";
+import { extractWithAnthropic, isAnthropicConfigured } from "./anthropic.service";
 import {
     AIExtractionResult,
     DiaryQuestion,
     EnrichedResult,
     OpenRouterResponse,
+    PageDetectionResult,
     ProcessingMetadata,
     ProcessingStatus,
     ReviewData,
@@ -23,8 +27,8 @@ class VisionScanService {
     constructor() {
         this.apiKey = process.env.OPENROUTER_API_KEY || "";
         if (!this.apiKey) {
-            console.warn(
-                "[VisionScan] OPENROUTER_API_KEY not set in .env — scan processing will fail"
+            console.error(
+                "[VisionScan] OPENROUTER_API_KEY is not set in .env — all scan uploads will fail with 401"
             );
         }
         this.s3Client = new S3Client({ region: VISION_SCAN_CONFIG.S3_REGION });
@@ -52,58 +56,257 @@ class VisionScanService {
         return `https://${VISION_SCAN_CONFIG.S3_BUCKET}.s3.${VISION_SCAN_CONFIG.S3_REGION}.amazonaws.com/${key}`;
     }
 
+    private async detectPageNumber(
+        base64: string,
+        mimeType: string
+    ): Promise<PageDetectionResult> {
+
+        const body = {
+            model: VISION_SCAN_CONFIG.MODEL,
+            messages: [
+                {
+                    role: "system",
+                    content: VISION_SCAN_SYSTEM_PROMPT,
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: PAGE_DETECTION_PROMPT },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: `data:${mimeType};base64,${base64}`,
+                            },
+                        },
+                    ],
+                },
+            ],
+            temperature: 0,
+            max_tokens: VISION_SCAN_CONFIG.MAX_TOKENS,
+        };
+
+        const response = await fetch(VISION_SCAN_CONFIG.OPENROUTER_API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.apiKey}`,
+                "HTTP-Referer": VISION_SCAN_CONFIG.HTTP_REFERER,
+                "X-Title": VISION_SCAN_CONFIG.APP_TITLE,
+            },
+            body: JSON.stringify(body),
+        });
+        console.log(response,"response");
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            if (response.status === 401) {
+                throw new AppError(502, "Scan service unavailable: invalid or missing OPENROUTER_API_KEY. Check .env.production on the server.");
+            }
+            throw new AppError(502, `Page detection API error (${response.status}): ${errorText}`);
+        }
+
+        const data = (await response.json()) as OpenRouterResponse;
+        console.log("[PageDetection] API response:", JSON.stringify(data, null, 2));
+        if (data.error) {
+            throw new AppError(502, `Page detection error: ${data.error.message}`);
+        }
+
+        let rawText = data.choices?.[0]?.message?.content?.trim() || "";
+        const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+        if (rawText.startsWith("```")) {
+            rawText = rawText
+                .replace(/^```(?:json)?\n?/, "")
+                .replace(/\n?```$/, "");
+        }
+
+        let parsed: { isValidDiaryPage: boolean; pageNumber?: number; reason?: string };
+        try {
+            parsed = JSON.parse(rawText);
+        } catch {
+            throw new AppError(500, `Failed to parse page detection response: ${rawText}`);
+        }
+
+        if (!parsed.isValidDiaryPage) {
+            return {
+                valid: false,
+                reason: `Invalid image: This does not appear to be a CANTrac diary page. ${parsed.reason || ""}`,
+            };
+        }
+
+        if (!parsed.pageNumber || typeof parsed.pageNumber !== "number") {
+            return {
+                valid: false,
+                reason: `Could not detect page number from the diary page image.`,
+            };
+        }
+
+        return { valid: true, pageNumber: parsed.pageNumber, usage };
+    }
+
+    /**
+     * Process scan: detect page, validate, create record, run extraction, return completed result.
+     */
     async processScan(
         patientId: string,
-        pageNumber: number,
+        pageNumber: number | undefined,
         imageBuffer: Buffer,
         mimeType: string,
         diaryType: string
-    ): Promise<BubbleScanResult> {
-        const diaryPage = await visionScanRepository.findDiaryPage(
-            pageNumber,
-            diaryType
-        );
+    ): Promise<BubbleScanResult | { valid: false; reason: string }> {
+        const base64 = imageBuffer.toString("base64");
+        let detectedPageNumber: number;
+
+        if (pageNumber) {
+            detectedPageNumber = pageNumber;
+        } else {
+            const detection = await this.detectPageNumber(base64, mimeType);
+            if (!detection.valid) return detection;
+            detectedPageNumber = detection.pageNumber;
+        }
+
+        // Run DB lookup and S3 upload in parallel
+        const [diaryPage, s3Url] = await Promise.all([
+            visionScanRepository.findDiaryPage(detectedPageNumber, diaryType),
+            this.uploadToS3(imageBuffer, mimeType, patientId, diaryType, detectedPageNumber),
+        ]);
         if (!diaryPage) {
-            throw new Error(
-                `Diary page ${pageNumber} not found for diary type "${diaryType}"`
+            throw new AppError(
+                404,
+                `Diary page ${detectedPageNumber} not found for diary type "${diaryType}"`
             );
         }
 
-        // Upload to S3 first
-        const s3Url = await this.uploadToS3(
-            imageBuffer,
-            mimeType,
-            patientId,
-            diaryType,
-            pageNumber
-        );
-
         const scanRecord = await visionScanRepository.createScanRecord({
             patientId,
-            pageNumber,
+            pageNumber: detectedPageNumber,
             diaryPageId: diaryPage.id,
             submissionType: SubmissionType.SCAN,
             processingStatus: ProcessingStatus.PROCESSING,
             imageUrl: s3Url,
         });
 
+        // Run extraction inline and await completion so the response includes results
+        await this.processExtraction({
+            scanRecordId: scanRecord.id,
+            base64,
+            mimeType,
+            diaryType,
+            detectedPageNumber,
+            patientId,
+        });
+
+        // Reload the scan record with completed extraction data
+        const completedRecord = await visionScanRepository.findScanById(scanRecord.id);
+        return completedRecord || scanRecord;
+    }
+
+    /**
+     * Background worker: runs the actual AI extraction and updates the scan record.
+     */
+    async processExtraction(data: {
+        scanRecordId: string;
+        base64: string;
+        mimeType: string;
+        diaryType: string;
+        detectedPageNumber: number;
+        patientId: string;
+    }): Promise<Record<string, EnrichedResult> | null> {
+        const scanRecord = await visionScanRepository.findScanById(data.scanRecordId);
+        if (!scanRecord) {
+            console.error(`[VisionScan] Scan record ${data.scanRecordId} not found, skipping extraction`);
+            return null;
+        }
+
+        const diaryPage = await visionScanRepository.findDiaryPage(
+            data.detectedPageNumber,
+            data.diaryType
+        );
+        if (!diaryPage) {
+            await visionScanRepository.updateScanFailed(
+                scanRecord,
+                `Diary page ${data.detectedPageNumber} not found for "${data.diaryType}"`
+            );
+            return null;
+        }
+
         try {
-            const prompt = buildExtractionPrompt(diaryPage);
-            const startTime = Date.now();
-            const aiResult = await this.callVisionApi(imageBuffer, mimeType, prompt);
-            const processingTimeMs = Date.now() - startTime;
+            const useAnthropic = process.env.USE_ANTHROPIC === "true" && isAnthropicConfigured();
+            const useDocAI     = !useAnthropic && process.env.USE_DOCUMENT_AI === "true" && isDocumentAIConfigured();
 
-            const { enrichedResults, rawConfidenceScores, lowConfidenceFields } =
-                this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+            let enrichedResults: Record<string, EnrichedResult>;
+            let rawConfidenceScores: Record<string, number>;
+            let lowConfidenceFields: string[];
+            let metadata: ProcessingMetadata;
 
-            const metadata: ProcessingMetadata = {
-                model: VISION_SCAN_CONFIG.MODEL,
-                promptTokens: aiResult.usage.prompt_tokens,
-                responseTokens: aiResult.usage.completion_tokens,
-                totalTokens: aiResult.usage.total_tokens,
-                processingTimeMs,
-                lowConfidenceFields,
-            };
+            if (useAnthropic) {
+                // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                const result = await extractWithAnthropic(
+                    imageBuffer,
+                    data.detectedPageNumber,
+                    diaryPage.title,
+                    diaryPage.questions
+                );
+
+                const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
+
+                metadata = {
+                    model: "anthropic/claude-sonnet-4-20250514",
+                    promptTokens:    0,
+                    responseTokens:  0,
+                    totalTokens:     0,
+                    processingTimeMs: result.processingTimeMs,
+                    lowConfidenceFields,
+                };
+
+            } else if (useDocAI) {
+                // ─── Google Document AI (trained custom extractor) ───────────
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                const docResult = await extractWithDocumentAI(
+                    imageBuffer,
+                    data.mimeType,
+                    diaryPage.questions
+                );
+
+                const built = this.buildEnrichedResults(diaryPage.questions, docResult.extraction);
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
+
+                metadata = {
+                    model: "google-document-ai-custom",
+                    promptTokens:    0,
+                    responseTokens:  0,
+                    totalTokens:     0,
+                    processingTimeMs: docResult.usage.processingTimeMs,
+                    lowConfidenceFields,
+                };
+
+            } else {
+                // ─── OpenRouter LLM (prompt-based fallback) ─────────────────
+                const prompt = buildExtractionPrompt(diaryPage);
+                const startTime = Date.now();
+                const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+                const processingTimeMs = Date.now() - startTime;
+
+                const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
+
+                metadata = {
+                    model: VISION_SCAN_CONFIG.MODEL,
+                    promptTokens:   aiResult.usage.prompt_tokens,
+                    responseTokens: aiResult.usage.completion_tokens,
+                    totalTokens:    aiResult.usage.total_tokens,
+                    processingTimeMs,
+                    lowConfidenceFields,
+                };
+            }
 
             await Promise.all([
                 visionScanRepository.updateScanCompleted(scanRecord, {
@@ -113,13 +316,13 @@ class VisionScanService {
                     flagged: lowConfidenceFields.length > 0,
                 }),
                 visionScanRepository.syncToScanLog(
-                    patientId,
-                    pageNumber,
+                    data.patientId,
+                    data.detectedPageNumber,
                     enrichedResults
                 ),
             ]);
 
-            return scanRecord;
+            return enrichedResults;
         } catch (error: any) {
             await visionScanRepository.updateScanFailed(
                 scanRecord,
@@ -139,10 +342,10 @@ class VisionScanService {
             pageNumber,
             diaryType
         );
+        console.log(diaryPage,"diaryPage");
+        
         if (!diaryPage) {
-            throw new Error(
-                `Diary page ${pageNumber} not found for ${diaryType}`
-            );
+            throw new AppError(404, `Diary page ${pageNumber} not found for ${diaryType}`);
         }
 
         const enrichedResults: Record<string, EnrichedResult> = {};
@@ -155,7 +358,8 @@ class VisionScanService {
                 category: questionDef?.category || "uncategorized",
             };
         }
-
+        console.log(enrichedResults,"enrichedResults");
+        
         const record = await visionScanRepository.createScanRecord({
             patientId,
             pageNumber,
@@ -164,7 +368,8 @@ class VisionScanService {
             processingStatus: ProcessingStatus.COMPLETED,
             scanResults: enrichedResults,
         });
-
+        console.log(`Manual submission saved for patient ${patientId}, page ${pageNumber}`);
+        console.log(record,"record");
         await visionScanRepository.syncToScanLog(
             patientId,
             pageNumber,
@@ -176,9 +381,9 @@ class VisionScanService {
 
     async retryScan(scanId: string): Promise<BubbleScanResult> {
         const existing = await visionScanRepository.findScanById(scanId);
-        if (!existing) throw new Error("Scan not found");
+        if (!existing) throw new AppError(404, "Scan not found");
         if (existing.processingStatus !== ProcessingStatus.FAILED) {
-            throw new Error("Can only retry failed scans");
+            throw new AppError(400, "Can only retry failed scans");
         }
 
         const caseType = await visionScanRepository.findPatientCaseType(
@@ -188,14 +393,26 @@ class VisionScanService {
 
         const { patientId, pageNumber, imageUrl } = existing;
         if (!pageNumber || !imageUrl) {
-            throw new Error("Missing pageNumber or imageUrl on failed scan");
+            throw new AppError(400, "Missing pageNumber or imageUrl on failed scan");
         }
 
-        // Download image from S3 for reprocessing
+        // Download image from S3, reset status, and re-queue extraction
         const { buffer, mimeType } = await this.downloadFromS3(imageUrl);
-        await visionScanRepository.deleteScan(existing);
+        const base64 = buffer.toString("base64");
 
-        return this.processScan(patientId, pageNumber, buffer, mimeType, diaryType);
+        await existing.update({ processingStatus: ProcessingStatus.PROCESSING, errorMessage: null });
+
+        const { visionScanQueue } = require("./visionScan.queue");
+        await visionScanQueue.add("extract", {
+            scanRecordId: existing.id,
+            base64,
+            mimeType,
+            diaryType,
+            detectedPageNumber: pageNumber,
+            patientId,
+        });
+
+        return existing;
     }
 
     private async downloadFromS3(
@@ -213,7 +430,7 @@ class VisionScanService {
         );
 
         const bodyBytes = await response.Body?.transformToByteArray();
-        if (!bodyBytes) throw new Error("Empty response from S3");
+        if (!bodyBytes) throw new AppError(500, "Empty response from S3");
 
         return {
             buffer: Buffer.from(bodyBytes),
@@ -227,13 +444,13 @@ class VisionScanService {
 
     async getScanById(scanId: string) {
         const scan = await visionScanRepository.findScanByIdWithPatient(scanId);
-        if (!scan) throw new Error("Bubble scan result not found");
+        if (!scan) throw new AppError(404, "Bubble scan result not found");
         return scan;
     }
 
     async reviewScan(scanId: string, doctorId: string, data: ReviewData) {
         const scan = await visionScanRepository.findScanById(scanId);
-        if (!scan) throw new Error("Bubble scan result not found");
+        if (!scan) throw new AppError(404, "Bubble scan result not found");
         return visionScanRepository.updateScanReview(scan, doctorId, data);
     }
 
@@ -299,7 +516,7 @@ class VisionScanService {
     }
 
     private async callVisionApi(
-        imageBuffer: Buffer,
+        base64: string,
         mimeType: string,
         prompt: string
     ): Promise<{
@@ -310,11 +527,14 @@ class VisionScanService {
             total_tokens: number;
         };
     }> {
-        const base64 = imageBuffer.toString("base64");
 
         const body = {
             model: VISION_SCAN_CONFIG.MODEL,
             messages: [
+                {
+                    role: "system",
+                    content: VISION_SCAN_SYSTEM_PROMPT,
+                },
                 {
                     role: "user",
                     content: [
@@ -345,15 +565,13 @@ class VisionScanService {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(
-                `OpenRouter API error (${response.status}): ${errorText}`
-            );
+            throw new AppError(502, `OpenRouter API error (${response.status}): ${errorText}`);
         }
 
         const data = (await response.json()) as OpenRouterResponse;
 
         if (data.error) {
-            throw new Error(`Vision API error: ${data.error.message}`);
+            throw new AppError(502, `Vision API error: ${data.error.message}`);
         }
 
         const rawText = data.choices?.[0]?.message?.content || "";
@@ -374,9 +592,7 @@ class VisionScanService {
         try {
             extraction = JSON.parse(cleanText);
         } catch {
-            throw new Error(
-                `Failed to parse vision API response as JSON: ${cleanText.slice(0, 300)}`
-            );
+            throw new AppError(500, `Failed to parse vision API response as JSON: ${cleanText.slice(0, 300)}`);
         }
 
         return { extraction, usage };

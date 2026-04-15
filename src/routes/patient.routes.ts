@@ -8,6 +8,9 @@ import {
     logCallAttempt,
     getTestProgress,
     getPatientsNeedingFollowUp,
+    deactivatePatient,
+    activatePatient,
+    putPatientOnHold,
     updateFcmToken,
     getPatientNotifications,
     getPatientNotificationStats,
@@ -18,39 +21,67 @@ import {
     requestEditOTP,
     updateProfile,
     getProfile,
+    updateLanguage,
+    getMyData,
 } from "../controllers/patientProfile.controller";
+import {
+    getAccessInfo,
+    getDiaryCatalog,
+} from "../controllers/patientAccess.controller";
+import {
+    getOnboardingStatus,
+    recordOnboardingView,
+} from "../controllers/onboarding.controller";
 import {
     getPatientReminders,
     markReminderAsRead,
+    respondToReminder
 } from "../controllers/reminder.controller";
 import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
+import { translateResponse } from "../middleware/translateResponse.middleware";
 import { authCheck as newAuthCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
+import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
+import { createPatientSchema } from "../schemas/staff.schemas";
 
 const router = Router();
 
 // Legacy routes (Accessed by Doctors)
-router.post("/", authCheck([UserRole.VENDOR]), createPatient);
+router.post("/", authCheck([UserRole.VENDOR]), validate({ body: createPatientSchema }), createPatient);
 router.get("/getAllPatients", authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]), requirePermission('viewPatients'), getDoctorPatients);
 
+// Patient access level & diary catalog (Accessed by Patients)
+router.get("/access-info", patientAuthCheck, translateResponse(), getAccessInfo);
+router.get("/diary-catalog", patientAuthCheck, translateResponse(), getDiaryCatalog);
+
+// Patient language preference (Accessed by Patients)
+router.patch("/language", patientAuthCheck, updateLanguage);
+
 // Patient profile management (Accessed by Patients)
-router.post("/request-edit-otp", patientAuthCheck, requestEditOTP);
-router.post("/update-profile", patientAuthCheck, updateProfile);
-router.get("/profile", patientAuthCheck, getProfile);
+router.post("/request-edit-otp", patientAuthCheck, translateResponse(), requestEditOTP);
+router.post("/update-profile", patientAuthCheck, translateResponse(), updateProfile);
+router.get("/profile", patientAuthCheck, translateResponse(), getProfile);
+// All patient data for PDF export
+router.get("/my-data", patientAuthCheck, getMyData);
+
+// Onboarding instructions (Accessed by Patients)
+router.get("/onboarding-status", patientAuthCheck, translateResponse(), getOnboardingStatus);
+router.post("/onboarding-viewed", patientAuthCheck, translateResponse(), recordOnboardingView);
 
 // Patient reminders (Accessed by Patients)
-router.get("/reminders", patientAuthCheck, getPatientReminders);
-router.patch("/reminders/:id/read", patientAuthCheck, markReminderAsRead);
+router.get("/reminders", patientAuthCheck, translateResponse(), getPatientReminders);
+router.patch("/reminders/:id/read", patientAuthCheck, translateResponse(), markReminderAsRead);
+router.patch("/reminders/:id/respond", patientAuthCheck, translateResponse(), respondToReminder);
 
 // Patient FCM token (Accessed by Patients)
 router.put("/fcm-token", patientAuthCheck, updateFcmToken);
 
 // Patient notifications (Accessed by Patients)
-router.get("/notifications/stats", patientAuthCheck, getPatientNotificationStats);
-router.get("/notifications", patientAuthCheck, getPatientNotifications);
-router.put("/notifications/mark-all-read", patientAuthCheck, markAllPatientNotificationsAsRead);
-router.put("/notifications/:id/read", patientAuthCheck, markPatientNotificationAsRead);
+router.get("/notifications/stats", patientAuthCheck, translateResponse(), getPatientNotificationStats);
+router.get("/notifications", patientAuthCheck, translateResponse(), getPatientNotifications);
+router.put("/notifications/mark-all-read", patientAuthCheck, translateResponse(), markAllPatientNotificationsAsRead);
+router.put("/notifications/:id/read", patientAuthCheck, translateResponse(), markPatientNotificationAsRead);
 
 // Enhanced Patient APIs (Doctor/Assistant access)
 // Get patients needing follow-up (must be before /:id to avoid route conflict)
@@ -75,7 +106,29 @@ router.put(
     updatePatient
 );
 
+// Deactivate patient
+router.put(
+    "/:id/deactivate",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    deactivatePatient
+);
 
+// Activate patient
+router.put(
+    "/:id/activate",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    activatePatient
+);
+
+// Put patient on hold
+router.put(
+    "/:id/on-hold",
+    newAuthCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('deactivatePatients'),
+    putPatientOnHold
+);
 
 // Update test status
 router.put(

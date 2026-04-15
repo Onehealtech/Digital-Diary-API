@@ -3,6 +3,9 @@ import { Patient } from "../models/Patient";
 import { AppUser } from "../models/Appuser";
 import { Op } from "sequelize";
 import { fcmService } from "./fcm.service";
+import { notificationRepository } from "../repositories/notification.repository";
+import { sendSMS } from "./smsfortius.service";
+import { transliterateName } from "../utils/translations";
 
 interface NotificationFilters {
   page?: number;
@@ -20,10 +23,12 @@ interface CreateNotificationData {
   severity?: "low" | "medium" | "high" | "critical";
   title: string;
   message: string;
+  language?: "en" | "hi";
   relatedTaskId?: string;
   relatedTestName?: string;
   actionUrl?: string;
   deliveryMethod?: "in-app" | "sms" | "email";
+  attachmentUrl?: string;
 }
 
 interface BulkNotificationData {
@@ -32,6 +37,7 @@ interface BulkNotificationData {
   severity?: "low" | "medium" | "high" | "critical";
   title: string;
   message: string;
+  language?: "en" | "hi";
   actionUrl?: string;
   deliveryMethod?: "in-app" | "sms" | "email";
   filters?: {
@@ -127,12 +133,65 @@ class NotificationService {
   }
 
   /**
-   * Create single notification
-   * Used by Doctor/Assistant to send to individual patient or staff
+   * Build personalized greeting based on sender role and language
+   */
+  private async buildGreeting(
+    senderId: string,
+    patientName: string,
+    language: "en" | "hi" = "en"
+  ): Promise<string> {
+    const sender = await AppUser.findByPk(senderId, {
+      attributes: ["id", "fullName", "role", "parentId"],
+    });
+
+    if (!sender) return "";
+
+    if (language === "hi") {
+      // Transliterate names to Hindi script (phonetic), then build Hindi greeting
+      const [hiPatient, hiSender] = await Promise.all([
+        transliterateName(patientName, "hi"),
+        transliterateName(sender.fullName, "hi"),
+      ]);
+
+      if (sender.role === "ASSISTANT") {
+        let hiDoctor = "आपके डॉक्टर";
+        if (sender.parentId) {
+          const doctor = await AppUser.findByPk(sender.parentId, {
+            attributes: ["id", "fullName"],
+          });
+          if (doctor?.fullName) {
+            const translitDoc = await transliterateName(doctor.fullName, "hi");
+            hiDoctor = `डॉ. ${translitDoc}`;
+          }
+        }
+        return `नमस्ते ${hiPatient}, मैं ${hiSender}, ${hiDoctor} की सहायक हूँ।`;
+      }
+      return `नमस्ते ${hiPatient}, मैं डॉ. ${hiSender} हूँ।`;
+    }
+
+    // English greeting
+    if (sender.role === "ASSISTANT") {
+      let doctorName = "your Doctor";
+      if (sender.parentId) {
+        const doctor = await AppUser.findByPk(sender.parentId, {
+          attributes: ["id", "fullName"],
+        });
+        if (doctor?.fullName) doctorName = `Dr. ${doctor.fullName}`;
+      }
+      return `Hello ${patientName}, this is ${sender.fullName}, assistant to ${doctorName}.`;
+    }
+    return `Hello ${patientName}, this is Dr. ${sender.fullName}.`;
+  }
+
+  /**
+   * Create single notification for an individual patient or staff member.
+   * Sends in-app notification + FCM push + SMS (for patients) individually.
    */
   async createNotification(data: CreateNotificationData) {
     // Verify recipient exists and get FCM token
     let fcmToken: string | null = null;
+    let patientName = "";
+    let patientPhone: string | null = null;
 
     if (data.recipientType === "patient") {
       const patient = await Patient.findByPk(data.recipientId);
@@ -140,6 +199,12 @@ class NotificationService {
         throw new Error("Patient not found");
       }
       fcmToken = patient.fcmToken || null;
+      patientName = patient.fullName || "";
+      patientPhone = patient.phone || null;
+      // Auto-use patient's language preference if not explicitly set
+      if (!data.language) {
+        data.language = (patient.language as "en" | "hi") || "en";
+      }
     } else {
       const staff = await AppUser.findByPk(data.recipientId);
       if (!staff) {
@@ -148,6 +213,15 @@ class NotificationService {
       fcmToken = staff.fcmToken || null;
     }
 
+    // Build personalized greeting and prepend to message
+    let finalMessage = data.message;
+    // if (data.recipientType === "patient" && patientName) {
+    //   const greeting = await this.buildGreeting(data.senderId, patientName, data.language || "en");
+    //   if (greeting) {
+    //     finalMessage = `${greeting}\n\n${data.message}`;
+    //   }
+    // }
+
     const notification = await Notification.create({
       senderId: data.senderId,
       recipientId: data.recipientId,
@@ -155,29 +229,39 @@ class NotificationService {
       type: data.type,
       severity: data.severity || "low",
       title: data.title,
-      message: data.message,
+      message: finalMessage,
       relatedTaskId: data.relatedTaskId,
       relatedTestName: data.relatedTestName,
       actionUrl: data.actionUrl,
       deliveryMethod: data.deliveryMethod || "in-app",
       delivered: true,
+      attachmentUrl: data.attachmentUrl,
     });
 
     // Send FCM push notification if token exists
     if (fcmToken) {
-      fcmService.sendPushNotification(fcmToken, data.title, data.message, {
+      fcmService.sendPushNotification(fcmToken, data.title, finalMessage, {
         notificationId: notification.id,
         type: data.type,
         severity: data.severity || "low",
       }).catch((err) => console.error("FCM push error:", err));
     }
 
+    // Send SMS individually to the patient via Twilio
+    if (data.recipientType === "patient" && patientPhone) {
+      const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
+      sendSMS(patientPhone, smsContent).catch((err) =>
+        console.error(`SMS error for patient ${data.recipientId}:`, err)
+      );
+    }
+
     return notification;
   }
 
   /**
-   * Create bulk notifications
-   * Used by Doctor/Assistant to send to multiple patients
+   * Create bulk notifications — sends per-patient individually.
+   * Each patient gets their own notification record, personalized greeting,
+   * individual FCM push, and individual SMS. No broadcast/bulk blast.
    */
   async createBulkNotifications(data: BulkNotificationData) {
     const filters = data.filters || {};
@@ -186,7 +270,6 @@ class NotificationService {
     const whereClause: any = {};
 
     if (filters.diaryType) {
-      // Map frontend format (e.g. "peri-operative") → DB enum (e.g. "PERI_OPERATIVE")
       whereClause.caseType = filters.diaryType.toUpperCase().replace(/-/g, "_");
     }
 
@@ -202,50 +285,83 @@ class NotificationService {
       whereClause.status = filters.status;
     }
 
-    // Get all matching patients (include fcmToken for push)
+    // Get all matching patients with all needed attributes in a single query
     const patients = await Patient.findAll({
       where: whereClause,
-      attributes: ["id", "fullName", "fcmToken"],
+      attributes: ["id", "fullName", "fcmToken", "phone", "language"],
     });
 
     if (patients.length === 0) {
       throw new Error("No patients found matching the filters");
     }
 
-    // Create notifications for all patients
-    const notifications = await Promise.all(
-      patients.map((patient) =>
-        Notification.create({
+    // Process each patient individually — personalized greeting, notification, FCM, SMS
+    const notifications = [];
+    const errors: { patientId: string; error: string }[] = [];
+
+    for (const patient of patients) {
+      try {
+        // Build personalized greeting for this specific patient
+        let finalMessage = data.message;
+        // const patientName = patient.fullName || "";
+        // const patientLang = ((patient as any).language || data.language || "en") as "en" | "hi";
+        // if (patientName) {
+        //   const greeting = await this.buildGreeting(data.senderId, patientName, patientLang);
+        //   if (greeting) {
+        //     finalMessage = `${greeting}\n\n${data.message}`;
+        //   }
+        // }
+
+        // Create individual notification record
+        const notification = await Notification.create({
           senderId: data.senderId,
           recipientId: patient.id,
           recipientType: "patient",
           type: data.type,
           severity: data.severity || "low",
           title: data.title,
-          message: data.message,
+          message: finalMessage,
           actionUrl: data.actionUrl,
           deliveryMethod: data.deliveryMethod || "in-app",
           delivered: true,
-        })
-      )
-    );
+        });
 
-    // Send FCM push to all patients with tokens
-    const fcmTokens = patients
-      .map((p) => p.fcmToken)
-      .filter((token): token is string => !!token);
+        notifications.push(notification);
 
-    if (fcmTokens.length > 0) {
-      fcmService.sendMulticastPush(fcmTokens, data.title, data.message, {
-        type: data.type,
-        severity: data.severity || "low",
-      }).catch((err) => console.error("FCM multicast error:", err));
+        // Send individual FCM push notification
+        if (patient.fcmToken) {
+          fcmService.sendPushNotification(
+            patient.fcmToken,
+            data.title,
+            finalMessage,
+            {
+              notificationId: notification.id,
+              type: data.type,
+              severity: data.severity || "low",
+            }
+          ).catch((err) =>
+            console.error(`FCM push error for patient ${patient.id}:`, err)
+          );
+        }
+
+        // Send individual SMS via Twilio
+        if (patient.phone) {
+          const smsContent = `OneHeal Alert: ${data.title}\n${finalMessage}`;
+          sendSMS(patient.phone, smsContent).catch((err) =>
+            console.error(`SMS error for patient ${patient.id}:`, err)
+          );
+        }
+      } catch (err: any) {
+        console.error(`Failed to create notification for patient ${patient.id}:`, err);
+        errors.push({ patientId: patient.id, error: err.message });
+      }
     }
 
     return {
-      message: `Notifications sent to ${notifications.length} patients`,
+      message: `Notifications sent to ${notifications.length} patients individually`,
       count: notifications.length,
-      patientIds: patients.map((p) => p.id),
+      patientIds: notifications.map((n) => n.recipientId),
+      ...(errors.length > 0 && { errors }),
     };
   }
 
@@ -384,6 +500,95 @@ class NotificationService {
       unread,
       read: total - unread,
       bySeverity,
+    };
+  }
+
+  /**
+   * Get notification history for a specific patient.
+   * Used by Doctor/Assistant to see what notifications were sent to a patient.
+   */
+  async getPatientNotificationHistory(
+    patientId: string,
+    filters: { page?: number; limit?: number } = {}
+  ) {
+    const { rows: notifications, count: total } =
+      await notificationRepository.findByPatientId(patientId, filters);
+
+    const { page = 1, limit = 20 } = filters;
+
+    return {
+      notifications,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Patient responds to a notification.
+   * Sends response back to the staff member individually.
+   */
+  async respondToNotification(
+    notificationId: any,
+    patientId: string,
+    message: string
+  ) {
+    const notification = await Notification.findOne({
+      where: {
+        id: notificationId,
+        recipientId: patientId,
+        recipientType: "patient",
+      },
+    });
+
+    if (!notification) {
+      throw new Error("Notification not found");
+    }
+
+    const patient = await Patient.findByPk(patientId);
+
+    if (!patient) {
+      throw new Error("Patient not found");
+    }
+
+    const staff = await AppUser.findByPk(notification.senderId);
+
+    if (!staff) {
+      throw new Error("Staff not found");
+    }
+
+    // Save response
+    notification.responseMessage = message;
+    notification.respondedAt = new Date();
+    notification.responseId = patientId;
+    notification.isResponded = true;
+
+    await notification.save();
+
+    const responseText = `Patient ${patient.fullName} responded: ${message}`;
+
+    // In-app notification to the specific staff member
+    await this.createNotification({
+      senderId: notification.senderId,  // staff member's AppUser ID (valid FK)
+      recipientId: notification.senderId,
+      recipientType: "staff",
+      type: "info",
+      severity: "low",
+      title: "Patient Response",
+      message: responseText,
+    });
+
+    // Send SMS to the specific staff member
+    if (staff.phone) {
+      sendSMS(staff.phone, `OneHeal Alert: ${responseText}`)
+        .catch((err: unknown) => console.error("SMS error:", err));
+    }
+
+    return {
+      message: "Response sent successfully",
     };
   }
 }

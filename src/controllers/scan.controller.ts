@@ -6,127 +6,262 @@ import { scanService } from "../service/scan.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { logActivity } from "../utils/activityLogger";
+import { BubbleScanResult } from "../models/BubbleScanResult";
+import { DiaryPage } from "../models/DiaryPage";
+import { AppError } from "../utils/AppError";
 
 /**
  * POST /api/v1/scan/submit
  * Patient submits scan data from daily diary page
  */
+// export const submitScan = async (
+//     req: AuthenticatedRequest,
+//     res: Response
+// ): Promise<void> => {
+//     try {
+//         const { pageId, scanData } = req.body;
+//         console.log(pageId, scanData,"pageId, scanData");
+
+        
+//         // Validate required fields
+//         if (!pageId || !scanData) {
+//             res.status(400).json({
+//                 success: false,
+//                 message: "Page ID and scan data are required",
+//             });
+//             return;
+//         }
+
+//         // Parse scanData if it came as a JSON string (multipart form submissions)
+//         let parsedScanData = scanData;
+//         if (typeof scanData === "string") {
+//             try {
+//                 parsedScanData = JSON.parse(scanData);
+//             } catch {
+//                 res.status(400).json({
+//                     success: false,
+//                     message: "Scan data must be a valid JSON object or JSON string",
+//                 });
+//                 return;
+//             }
+//         }
+
+//         // Validate that parsedScanData is an object
+//         if (typeof parsedScanData !== "object") {
+//             res.status(400).json({
+//                 success: false,
+//                 message: "Scan data must be a valid JSON object",
+//             });
+//             return;
+//         }
+
+//         // Build imageUrl if a file was uploaded (stored in /uploads directory, served as static)
+//         const imageUrl = req.file
+//             ? `/uploads/${req.file.filename}`
+//             : undefined;
+
+//         // Get patient ID from authenticated user
+//         const patientId = req.user!.id;
+
+//         // Check if scan with same patientId + pageId already exists
+//         const existingScan = await ScanLog.findOne({
+//             where: { patientId, pageId },
+//         });
+
+//         let scanLog;
+
+//         if (existingScan) {
+//             // Update existing scan
+//             existingScan.scanData = parsedScanData;
+//             existingScan.isUpdated = true;
+//             existingScan.updatedCount = existingScan.updatedCount + 1;
+//             existingScan.scannedAt = new Date();
+//             // Update imageUrl only if a new image was provided
+//             if (imageUrl) {
+//                 existingScan.imageUrl = imageUrl;
+//             }
+//             await existingScan.save();
+//             scanLog = existingScan;
+//         } else {
+//             // Create new scan log entry
+//             scanLog = await ScanLog.create({
+//                 patientId,
+//                 pageId,
+//                 scanData: parsedScanData,
+//                 scannedAt: new Date(),
+//                 isUpdated: false,
+//                 updatedCount: 0,
+//                 imageUrl: imageUrl || null,
+//             });
+//         }
+
+//         // Update patient's lastActive timestamp (using updatedAt)
+//         await Patient.update(
+//             { updatedAt: new Date() },
+//             { where: { id: patientId } }
+//         );
+
+//         logActivity({
+//             req,
+//             userId: patientId,
+//             userRole: "PATIENT",
+//             action: "DIARY_SCAN_SUBMITTED",
+//             details: { patientId, pageId, scanLogId: scanLog.id, isUpdate: !!existingScan },
+//         });
+
+//         res.status(existingScan ? 200 : 201).json({
+//             success: true,
+//             message: existingScan
+//                 ? "Scan updated successfully"
+//                 : "Scan submitted successfully",
+//             data: {
+//                 id: scanLog.id,
+//                 pageId: scanLog.pageId,
+//                 scannedAt: scanLog.scannedAt,
+//                 isUpdated: scanLog.isUpdated,
+//                 updatedCount: scanLog.updatedCount,
+//                 imageUrl: scanLog.imageUrl || null,
+//             },
+//         });
+//     } catch (error: any) {
+//         console.error("Submit scan error:", error);
+//         res.status(500).json({
+//             success: false,
+//             message: error.message || "Failed to submit scan",
+//         });
+//     }
+// };
 export const submitScan = async (
-    req: AuthenticatedRequest,
-    res: Response
+  req: AuthenticatedRequest,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { pageId, scanData } = req.body;
+  try {
+    const { pageId, scanData } = req.body;
+    console.log(pageId, scanData, "pageId, scanData");
 
-        // Validate required fields
-        if (!pageId || !scanData) {
-            res.status(400).json({
-                success: false,
-                message: "Page ID and scan data are required",
-            });
-            return;
-        }
-
-        // Parse scanData if it came as a JSON string (multipart form submissions)
-        let parsedScanData = scanData;
-        if (typeof scanData === "string") {
-            try {
-                parsedScanData = JSON.parse(scanData);
-            } catch {
-                res.status(400).json({
-                    success: false,
-                    message: "Scan data must be a valid JSON object or JSON string",
-                });
-                return;
-            }
-        }
-
-        // Validate that parsedScanData is an object
-        if (typeof parsedScanData !== "object") {
-            res.status(400).json({
-                success: false,
-                message: "Scan data must be a valid JSON object",
-            });
-            return;
-        }
-
-        // Build imageUrl if a file was uploaded (stored in /uploads directory, served as static)
-        const imageUrl = req.file
-            ? `/uploads/${req.file.filename}`
-            : undefined;
-
-        // Get patient ID from authenticated user
-        const patientId = req.user!.id;
-
-        // Check if scan with same patientId + pageId already exists
-        const existingScan = await ScanLog.findOne({
-            where: { patientId, pageId },
-        });
-
-        let scanLog;
-
-        if (existingScan) {
-            // Update existing scan
-            existingScan.scanData = parsedScanData;
-            existingScan.isUpdated = true;
-            existingScan.updatedCount = existingScan.updatedCount + 1;
-            existingScan.scannedAt = new Date();
-            // Update imageUrl only if a new image was provided
-            if (imageUrl) {
-                existingScan.imageUrl = imageUrl;
-            }
-            await existingScan.save();
-            scanLog = existingScan;
-        } else {
-            // Create new scan log entry
-            scanLog = await ScanLog.create({
-                patientId,
-                pageId,
-                scanData: parsedScanData,
-                scannedAt: new Date(),
-                isUpdated: false,
-                updatedCount: 0,
-                imageUrl: imageUrl || null,
-            });
-        }
-
-        // Update patient's lastActive timestamp (using updatedAt)
-        await Patient.update(
-            { updatedAt: new Date() },
-            { where: { id: patientId } }
-        );
-
-        logActivity({
-            req,
-            userId: patientId,
-            userRole: "PATIENT",
-            action: "DIARY_SCAN_SUBMITTED",
-            details: { patientId, pageId, scanLogId: scanLog.id, isUpdate: !!existingScan },
-        });
-
-        res.status(existingScan ? 200 : 201).json({
-            success: true,
-            message: existingScan
-                ? "Scan updated successfully"
-                : "Scan submitted successfully",
-            data: {
-                id: scanLog.id,
-                pageId: scanLog.pageId,
-                scannedAt: scanLog.scannedAt,
-                isUpdated: scanLog.isUpdated,
-                updatedCount: scanLog.updatedCount,
-                imageUrl: scanLog.imageUrl || null,
-            },
-        });
-    } catch (error: any) {
-        console.error("Submit scan error:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Failed to submit scan",
-        });
+    if (!pageId || !scanData) {
+      res.status(400).json({
+        success: false,
+        message: "Page ID and scan data are required",
+      });
+      return;
     }
-};
 
+    let parsedScanData = scanData;
+
+    if (typeof scanData === "string") {
+      try {
+        parsedScanData = JSON.parse(scanData);
+      } catch {
+        res.status(400).json({
+          success: false,
+          message: "Scan data must be valid JSON",
+        });
+        return;
+      }
+    }
+
+    const patientId = req.user!.id;
+
+    // Extract page number from backend_page_12
+    const pageNumber = Number(pageId.replace("backend_page_", ""));
+
+    // ---------------- FETCH DIARY PAGE ----------------
+    const diaryPage = await DiaryPage.findOne({
+      where: { pageNumber, isActive: true },
+    });
+
+    if (!diaryPage) {
+      res.status(404).json({
+        success: false,
+        message: `Diary page ${pageNumber} not found`,
+      });
+      return;
+    }
+
+    // ---------------- ENRICH ANSWERS ----------------
+    const enrichedResults: Record<string, any> = {};
+
+    for (const [qId, answer] of Object.entries(parsedScanData)) {
+      const questionDef = diaryPage.questions.find((q: any) => q.id === qId);
+
+      enrichedResults[qId] = {
+        answer,
+        confidence: 1.0,
+        questionText: questionDef?.text || "Unknown question",
+        category: questionDef?.category || "uncategorized",
+      };
+    }
+
+    // ---------------- SAVE TO bubble_scan_results ----------------
+    await BubbleScanResult.create({
+      patientId,
+      pageId: `page-${pageNumber}`,
+      pageNumber,
+      diaryPageId: diaryPage.id,
+      submissionType: "manual",
+      processingStatus: "completed",
+      scanResults: enrichedResults,
+      scannedAt: new Date(),
+    });
+
+    // ---------------- IMAGE ----------------
+    const imageUrl = req.file
+      ? `/uploads/${req.file.filename}`
+      : undefined;
+
+    // ---------------- SCAN LOG ----------------
+    const existingScan = await ScanLog.findOne({
+      where: { patientId, pageId },
+    });
+
+    let scanLog;
+
+    if (existingScan) {
+      existingScan.scanData = parsedScanData;
+      existingScan.isUpdated = true;
+      existingScan.updatedCount += 1;
+      existingScan.scannedAt = new Date();
+
+      if (imageUrl) existingScan.imageUrl = imageUrl;
+
+      await existingScan.save();
+      scanLog = existingScan;
+
+    } else {
+      scanLog = await ScanLog.create({
+        patientId,
+        pageId,
+        scanData: parsedScanData,
+        scannedAt: new Date(),
+        isUpdated: false,
+        updatedCount: 0,
+        imageUrl: imageUrl || null,
+      });
+    }
+
+    await Patient.update(
+      { updatedAt: new Date() },
+      { where: { id: patientId } }
+    );
+
+    res.status(existingScan ? 200 : 201).json({
+      success: true,
+      message: existingScan
+        ? "Scan updated successfully"
+        : "Scan submitted successfully",
+      data: scanLog,
+    });
+
+  } catch (error: any) {
+    console.error("Submit scan error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to submit scan",
+    });
+  }
+};
 /**
  * GET /api/v1/scan/history
  * Get scan history for authenticated patient
@@ -140,6 +275,44 @@ export const getScanHistory = async (
         const offset = (Number(page) - 1) * Number(limit);
 
         const patientId = req.user!.id;
+
+        const { rows: scans, count: total } = await ScanLog.findAndCountAll({
+            where: { patientId },
+            limit: Number(limit),
+            offset,
+            order: [["scannedAt", "DESC"]],
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Scan history retrieved successfully",
+            data: {
+                scans,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    totalPages: Math.ceil(total / Number(limit)),
+                },
+            },
+        });
+    } catch (error: any) {
+        console.error("Get scan history error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Failed to retrieve scan history",
+        });
+    }
+};
+export const getScanHistoryAdmin = async (
+    req: AuthenticatedRequest,
+    res: Response
+): Promise<void> => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+
+        const patientId = req.params.patientId;
 
         const { rows: scans, count: total } = await ScanLog.findAndCountAll({
             where: { patientId },
@@ -215,7 +388,8 @@ export const getAllDiaryEntries = async (
 
         sendResponse(res, result, "Diary entries fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch diary entries");
     }
 };
 
@@ -241,7 +415,12 @@ export const getDiaryEntryById = async (
 
         sendResponse(res, entry, "Diary entry fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to fetch diary entry");
     }
 };
 
@@ -280,7 +459,12 @@ export const reviewDiaryEntry = async (
 
         sendResponse(res, entry, "Diary entry reviewed successfully");
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to review diary entry");
     }
 };
 
@@ -321,7 +505,12 @@ export const toggleFlag = async (
 
         sendResponse(res, entry, `Diary entry ${flagged ? "flagged" : "unflagged"} successfully`);
     } catch (error: any) {
-        sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
+        const status = error instanceof AppError
+            ? error.statusCode
+            : error.message.includes("not found")
+                ? 404
+                : 500;
+        sendError(res, status, error.message || "Failed to update diary entry flag");
     }
 };
 
@@ -346,7 +535,8 @@ export const getEntriesNeedingReview = async (
 
         sendResponse(res, entries, "Pending reviews fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch pending reviews");
     }
 };
 
@@ -371,6 +561,7 @@ export const getDiaryEntryStats = async (
 
         sendResponse(res, stats, "Diary stats fetched successfully");
     } catch (error: any) {
-        sendError(res, error.message);
+        const status = error instanceof AppError ? error.statusCode : 500;
+        sendError(res, status, error.message || "Failed to fetch diary stats");
     }
 };

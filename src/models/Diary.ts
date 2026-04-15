@@ -25,9 +25,9 @@ export class Diary extends Model {
   @ForeignKey(() => Patient)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  patientId!: string;
+  patientId?: string | null;
 
   @BelongsTo(() => Patient, {
     foreignKey: "patientId",
@@ -39,9 +39,9 @@ export class Diary extends Model {
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  doctorId!: string;
+  doctorId?: string | null;
 
   @BelongsTo(() => AppUser, {
     foreignKey: "doctorId",
@@ -53,15 +53,29 @@ export class Diary extends Model {
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  vendorId!: string;
+  vendorId?: string;
 
   @BelongsTo(() => AppUser, {
     foreignKey: "vendorId",
     as: "vendor",
   })
-  vendor!: AppUser;
+  vendor?: AppUser;
+
+
+  // ================== SELLER TRACKING ==================
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  soldBy?: string;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+  })
+  soldByRole?: "SUPER_ADMIN" | "VENDOR" | "DOCTOR" | "ASSISTANT";
 
   // ================== STATUS ==================
   @Column({
@@ -108,5 +122,11 @@ export class Diary extends Model {
     defaultValue: false,
   })
   commissionPaid!: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  fundTransferred!: boolean;
 }
 

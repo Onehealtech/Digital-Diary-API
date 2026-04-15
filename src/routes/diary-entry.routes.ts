@@ -51,7 +51,8 @@ router.get(
 // Mark diary entry as reviewed
 router.put(
     "/:id/review",
-    authCheck([UserRole.DOCTOR]),
+    authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+    requirePermission('markReviewed'),
     reviewDiaryEntry
 );
 

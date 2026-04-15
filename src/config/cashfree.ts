@@ -1,6 +1,9 @@
 // src/config/cashfree.ts
 
 import { Cashfree, CFEnvironment } from "cashfree-pg";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 /**
  * Create and export a configured Cashfree client instance

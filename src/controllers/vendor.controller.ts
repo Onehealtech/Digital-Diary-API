@@ -52,7 +52,9 @@ export class VendorController {
         phone,
         password,
         businessName,
-        location,
+        address,
+        city,
+        state,
         gst,
         bankDetails,
         commissionRate,
@@ -64,7 +66,9 @@ export class VendorController {
         !email ||
         !password ||
         !businessName ||
-        !location ||
+        !address ||
+        !city ||
+        !state ||
         !gst ||
         !bankDetails
       ) {
@@ -77,7 +81,9 @@ export class VendorController {
         phone,
         password,
         businessName,
-        location,
+        address,
+        city,
+        state,
         gst,
         bankDetails,
         commissionRate,
@@ -269,6 +275,22 @@ export class VendorController {
       );
     } catch (error: any) {
       return sendError(res, 500, "Failed to sell diary", error.message);
+    }
+  }
+
+  /**
+   * PUT /api/vendors/:id/sales/:diaryId/mark-transferred - Mark sale as fund transferred
+   */
+  async markFundTransferred(req: Request, res: Response) {
+    try {
+      const vendorId = req.params.id as string;
+      const diaryId = req.params.diaryId as string;
+
+      const result = await vendorService.markFundTransferred(diaryId, vendorId);
+
+      return sendResponse(res, 200, "Fund transfer marked successfully", result);
+    } catch (error: any) {
+      return sendError(res, 400, error.message);
     }
   }
 

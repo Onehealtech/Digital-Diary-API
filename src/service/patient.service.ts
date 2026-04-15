@@ -3,6 +3,7 @@ import { Diary } from "../models/Diary";
 import { ScanLog } from "../models/ScanLog";
 import { AppUser } from "../models/Appuser";
 import { VendorProfile } from "../models/VendorProfile";
+import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { Op } from "sequelize";
 
 interface PrescribeTestData {
@@ -29,28 +30,54 @@ interface CallLogData {
 
 class PatientService {
   /**
-   * Get patient by ID with full details
-   * Includes test status, diary info, scan logs
+   * Get patient by ID with full details.
+   * Current doctor sees ALL scan data from the start.
+   * Old doctor sees scan data only up to their unassignment date.
    */
   async getPatientById(patientId: string, requesterId: string, role: string) {
-    const whereClause: any = { id: patientId };
+    let doctorId: string | null = null;
 
-    // Role-based filtering
+    // Role-based access resolution
     if (role === "DOCTOR") {
-      whereClause.doctorId = requesterId;
+      doctorId = requesterId;
     } else if (role === "ASSISTANT") {
-      // Assistant can view their doctor's patients
       const assistant = await AppUser.findByPk(requesterId);
       if (!assistant || !assistant.parentId) {
         throw new Error("Assistant not linked to a doctor");
       }
-      whereClause.doctorId = assistant.parentId;
-    } else if (role === "VENDOR") {
-      // Vendor can only view patients they sold diaries to
+      doctorId = assistant.parentId;
+    }
+
+    // For doctors/assistants: check current or historical access
+    let dateCutoff: Date | null = null;
+
+    if (doctorId) {
+      const patient = await Patient.findByPk(patientId, { attributes: ["doctorId"] });
+
+      if (patient && patient.doctorId === doctorId) {
+        // Current doctor — full access, no cutoff
+      } else {
+        // Check history for old doctor
+        const history = await DoctorPatientHistory.findOne({
+          where: { patientId, doctorId, unassignedAt: { [Op.ne]: null } },
+          order: [["unassignedAt", "DESC"]],
+        });
+
+        if (!history) {
+          throw new Error("Patient not found or access denied");
+        }
+        dateCutoff = history.unassignedAt!;
+      }
+    }
+
+    // Build patient query (no doctorId filter — access already validated above)
+    const whereClause: any = { id: patientId };
+
+    if (role === "VENDOR") {
       whereClause.vendorId = requesterId;
     }
 
-    const patient = await Patient.findOne({
+    const patientRecord = await Patient.findOne({
       where: whereClause,
       include: [
         {
@@ -66,33 +93,41 @@ class PatientService {
       ],
     });
 
-    if (!patient) {
+    if (!patientRecord) {
       throw new Error("Patient not found or access denied");
     }
 
-    // Get scan logs count
-    const totalScans = await ScanLog.count({
-      where: { patientId },
-    });
+    // Build scan log filter (apply date cutoff for old doctors)
+    const scanWhere: any = { patientId };
+    if (dateCutoff) {
+      scanWhere.scannedAt = { [Op.lte]: dateCutoff };
+    }
+
+    const totalScans = await ScanLog.count({ where: scanWhere });
 
     const unreviewed = await ScanLog.count({
-      where: { patientId, doctorReviewed: false },
+      where: { ...scanWhere, doctorReviewed: false },
     });
 
     const flagged = await ScanLog.count({
-      where: { patientId, flagged: true },
+      where: { ...scanWhere, flagged: true },
     });
 
-    // Get recent scans
     const recentScans = await ScanLog.findAll({
-      where: { patientId },
+      where: scanWhere,
       order: [["createdAt", "DESC"]],
       limit: 5,
       attributes: ["id", "pageType", "doctorReviewed", "flagged", "createdAt"],
     });
 
+    const patientJson = patientRecord.toJSON();
+
     return {
-      ...patient.toJSON(),
+      ...patientJson,
+      isCurrentDoctor: !dateCutoff,
+      assignmentCutoff: dateCutoff,
+      // Old doctor sees "DOCTOR_REASSIGNED" status
+      status: dateCutoff ? "DOCTOR_REASSIGNED" : patientJson.status,
       scanStats: {
         total: totalScans,
         unreviewed,
@@ -141,6 +176,7 @@ class PatientService {
       "gender",
       "stage",
       "treatmentPlan",
+      "language",
     ];
 
     const updateData: any = {};
@@ -373,6 +409,131 @@ class PatientService {
   }
 
   /**
+   * Deactivate a patient — sets status to INACTIVE with reason.
+   */
+  async deactivatePatient(
+    patientId: string,
+    requesterId: string,
+    role: string,
+    reason: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can deactivate patients");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status === "INACTIVE") {
+      throw new Error("Patient is already inactive");
+    }
+
+    await patient.update({
+      status: "INACTIVE",
+      deactivationReason: reason,
+      deactivatedAt: new Date(),
+      deactivatedBy: requesterId,
+      // JWT is stateless; tokenVersion rotation invalidates previously issued tokens.
+      tokenVersion: ((patient as any).tokenVersion ?? 0) + 1,
+    });
+
+    return patient;
+  }
+
+  /**
+   * Put a patient on hold — sets status to ON_HOLD (no reason required).
+   */
+  async putPatientOnHold(
+    patientId: string,
+    requesterId: string,
+    role: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can put patients on hold");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status === "ON_HOLD") {
+      throw new Error("Patient is already on hold");
+    }
+
+    await patient.update({
+      status: "ON_HOLD",
+      deactivatedAt: new Date(),
+      deactivatedBy: requesterId,
+    });
+
+    return patient;
+  }
+
+  /**
+   * Reactivate an inactive/on-hold patient — sets status back to ACTIVE.
+   */
+  async activatePatient(
+    patientId: string,
+    requesterId: string,
+    role: string
+  ) {
+    const whereClause: Record<string, unknown> = { id: patientId };
+
+    if (role === "DOCTOR") {
+      whereClause.doctorId = requesterId;
+    } else if (role === "ASSISTANT") {
+      const assistant = await AppUser.findByPk(requesterId);
+      if (!assistant || !assistant.parentId) {
+        throw new Error("Assistant not linked to a doctor");
+      }
+      whereClause.doctorId = assistant.parentId;
+    } else {
+      throw new Error("Only doctors and assistants can activate patients");
+    }
+
+    const patient = await Patient.findOne({ where: whereClause });
+    if (!patient) {
+      throw new Error("Patient not found or access denied");
+    }
+
+    if (patient.status !== "INACTIVE" && patient.status !== "ON_HOLD") {
+      throw new Error("Patient is not inactive or on hold");
+    }
+
+    await patient.update({
+      status: "ACTIVE",
+      deactivationReason: null,
+      deactivatedAt: null,
+      deactivatedBy: null,
+    });
+
+    return patient;
+  }
+
+  /**
    * Get patients needing follow-up
    * (No recent contact or incomplete tests)
    */
@@ -399,8 +560,8 @@ class PatientService {
       },
       attributes: [
         "id",
-        "name",
-        "phoneNumber",
+        "fullName",
+        "phone",
         "lastDoctorContact",
         "totalTestsPrescribed",
         "testCompletionPercentage",

@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { notificationController } from "../controllers/notification.controller";
-import { authCheck } from "../middleware/authMiddleware";
+import { authCheck, patientAuthCheck } from "../middleware/authMiddleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
 import { UserRole } from "../utils/constants";
+import { notificationAttachmentUpload } from "../middleware/upload.middleware";
 
 const router = Router();
 
@@ -26,6 +27,13 @@ router.get(
   notificationController.getAllNotifications
 );
 
+// Get notification history for a specific patient (Doctor/Assistant)
+router.get(
+  "/patient/:patientId/history",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.getPatientNotificationHistory
+);
+
 // Update staff FCM token for push notifications
 router.put(
   "/fcm-token",
@@ -40,11 +48,26 @@ router.get(
   notificationController.getNotificationById
 );
 
+// Translate notification text (Doctor/Assistant only)
+router.post(
+  "/translate",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.translateText
+);
+
+// Transliterate English to Hindi script (Doctor/Assistant only)
+router.post(
+  "/transliterate",
+  authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
+  notificationController.transliterateText
+);
+
 // Send single notification (Doctor/Assistant only)
 router.post(
   "/",
   authCheck([UserRole.DOCTOR, UserRole.ASSISTANT]),
   requirePermission('sendNotifications'),
+  notificationAttachmentUpload.single("attachment"),
   notificationController.createNotification
 );
 
@@ -82,6 +105,12 @@ router.delete(
   "/:id",
   authCheck([UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.ASSISTANT, UserRole.VENDOR]),
   notificationController.deleteNotification
+);
+
+router.post(
+  "/:id/respond",
+  patientAuthCheck,
+  notificationController.respondToNotification
 );
 
 export default router;

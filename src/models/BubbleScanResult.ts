@@ -32,11 +32,11 @@ export class BubbleScanResult extends Model {
     patient!: Patient;
 
     @Column({
-        type: DataType.ENUM("scan", "manual"),
+        type: DataType.ENUM("scan", "manual", "doctor_manual"),
         allowNull: false,
         defaultValue: "scan",
     })
-    submissionType!: "scan" | "manual";
+    submissionType!: "scan" | "manual" | "doctor_manual";
 
     @Column({
         type: DataType.INTEGER,
@@ -146,4 +146,24 @@ export class BubbleScanResult extends Model {
         allowNull: true,
     })
     doctorOverrides?: object;
+
+    @Column({
+        type: DataType.JSONB,
+        allowNull: true,
+    })
+    questionMarks?: object; // { q1: true, q2: false, ... } — per-question doctor review marks
+
+    @Column({
+        type: DataType.JSONB,
+        allowNull: true,
+        defaultValue: [],
+    })
+    reportUrls?: string[]; // S3 URLs of patient-uploaded report files (PDFs / images)
+
+    @Column({
+        type: DataType.JSONB,
+        allowNull: true,
+        defaultValue: {},
+    })
+    questionReports?: Record<string, Array<{ url: string; name: string }>>; // { "q1": [{ url, name }] }
 }

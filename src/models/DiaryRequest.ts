@@ -23,12 +23,24 @@ export class DiaryRequest extends Model {
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  vendorId!: string;
+  vendorId?: string;
 
-  @BelongsTo(() => AppUser)
-  vendor!: AppUser;
+  @BelongsTo(() => AppUser, { foreignKey: "vendorId", as: "vendor" })
+  vendor?: AppUser;
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  requesterId?: string;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+  })
+  requesterRole?: "VENDOR" | "DOCTOR";
 
   @Column({
     type: DataType.INTEGER,
@@ -43,10 +55,10 @@ export class DiaryRequest extends Model {
   dairyType?: string;
 
   @Column({
-    type: DataType.ENUM("pending", "fulfilled", "rejected"),
+    type: DataType.ENUM("pending", "fulfilled", "rejected", "cancelled"),
     defaultValue: "pending",
   })
-  status!: "pending" | "fulfilled" | "rejected";
+  status!: "pending" | "fulfilled" | "rejected" | "cancelled";
 
   @Column({
     type: DataType.DATE,

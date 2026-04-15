@@ -8,6 +8,7 @@ import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { UserRole } from "../utils/constants";
 import { logActivity } from "../utils/activityLogger";
+import { t, getPatientLanguage, translateArrayFields } from "../utils/translations";
 
 export const createPatient = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -28,7 +29,7 @@ export const createPatient = async (req: AuthenticatedRequest, res: Response) =>
       doctorId,
       diaryId,
       vendorId,
-      caseType:"PERI_OPERATIVE",
+      caseType:"PERI OPERATIVE",
     });
 
     logActivity({
@@ -300,6 +301,104 @@ export const getPatientsNeedingFollowUp = async (req: AuthRequest, res: Response
   }
 };
 
+/**
+ * PUT /api/v1/patients/:id/deactivate
+ * Deactivate a patient (set status to INACTIVE)
+ */
+export const deactivatePatient = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const { reason } = req.body;
+    if (!reason || typeof reason !== "string" || !reason.trim()) {
+      return sendError(res, "Deactivation reason is required", 400);
+    }
+
+    const patient = await patientService.deactivatePatient(id, requesterId, role, reason.trim());
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_DEACTIVATED",
+      details: { patientId: id, reason: reason.trim() },
+    });
+
+    return sendResponse(res, patient, "Patient deactivated successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
+/**
+ * PUT /api/v1/patients/:id/activate
+ * Reactivate an inactive patient
+ */
+export const activatePatient = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const patient = await patientService.activatePatient(id, requesterId, role);
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_ACTIVATED",
+      details: { patientId: id },
+    });
+
+    return sendResponse(res, patient, "Patient activated successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
+/**
+ * PUT /api/v1/patients/:id/on-hold
+ * Put a patient on hold (no reason required)
+ */
+export const putPatientOnHold = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requesterId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!requesterId || !role) {
+      return sendError(res, "Unauthorized", 401);
+    }
+
+    const patient = await patientService.putPatientOnHold(id, requesterId, role);
+
+    logActivity({
+      req,
+      userId: requesterId,
+      userRole: role,
+      action: "PATIENT_ON_HOLD",
+      details: { patientId: id },
+    });
+
+    return sendResponse(res, patient, "Patient put on hold successfully");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return sendError(res, message, message.includes("not found") ? 404 : 400);
+  }
+};
+
 // =========================================================================
 // PATIENT FCM & NOTIFICATION ENDPOINTS (accessed by patients via patientAuthCheck)
 // =========================================================================
@@ -356,7 +455,15 @@ export const getPatientNotifications = async (req: CustomRequest, res: Response)
       }
     );
 
-    return sendResponse(res, result, "Notifications fetched successfully");
+    const lang = await getPatientLanguage(patientId!);
+
+    // Translate notification titles and messages for Hindi
+    if (lang === "hi" && result.notifications.length > 0) {
+      const notifData = result.notifications.map((n: any) => n.toJSON ? n.toJSON() : n);
+      result.notifications = await translateArrayFields(notifData, ["title", "message"], lang);
+    }
+
+    return sendResponse(res, result, t("msg.notificationsRetrieved", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }
@@ -375,8 +482,9 @@ export const getPatientNotificationStats = async (req: CustomRequest, res: Respo
     }
 
     const stats = await notificationService.getNotificationStats(patientId, "patient");
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, stats, "Notification stats fetched successfully");
+    return sendResponse(res, stats, t("msg.notificationsRetrieved", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }
@@ -396,8 +504,9 @@ export const markPatientNotificationAsRead = async (req: CustomRequest, res: Res
     }
 
     const notification = await notificationService.markAsRead(notificationId, patientId);
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, notification, "Notification marked as read");
+    return sendResponse(res, notification, t("msg.notificationMarkedRead", lang));
   } catch (error: any) {
     return sendError(res, error.message, error.message.includes("not found") ? 404 : 500);
   }
@@ -416,8 +525,9 @@ export const markAllPatientNotificationsAsRead = async (req: CustomRequest, res:
     }
 
     const result = await notificationService.markAllAsRead(patientId, "patient");
+    const lang = await getPatientLanguage(patientId);
 
-    return sendResponse(res, result, "All notifications marked as read");
+    return sendResponse(res, result, t("msg.allNotificationsRead", lang));
   } catch (error: any) {
     return sendError(res, error.message);
   }

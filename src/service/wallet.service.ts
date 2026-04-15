@@ -517,15 +517,38 @@ export const recordAdvancePayment = async (params: {
 }) => {
   return sequelize.transaction(async (t) => {
     const vendor = await AppUser.findOne({ where: { id: params.vendorId }, transaction: t });
-    if (!vendor) throw new Error("Vendor not found");
-    if (vendor.role !== "VENDOR") throw new Error("User is not a vendor");
+    if (!vendor) throw new Error("User not found");
+    const allowedRoles = ["VENDOR", "DOCTOR", "ASSISTANT"];
+    if (!allowedRoles.includes(vendor.role)) throw new Error("User role does not support advance payments");
 
-    const wallet = await Wallet.findOne({
+    let wallet = await Wallet.findOne({
       where: { userId: params.vendorId },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-    if (!wallet) throw new Error("Wallet not found");
+
+    // Auto-create wallet if it doesn't exist (for pre-existing doctors/assistants)
+    if (!wallet) {
+      const walletTypeMap: Record<string, "VENDOR" | "DOCTOR" | "PLATFORM"> = {
+        VENDOR: "VENDOR",
+        DOCTOR: "DOCTOR",
+        ASSISTANT: "DOCTOR",
+        SUPER_ADMIN: "PLATFORM",
+      };
+      const walletType = walletTypeMap[vendor.role] || "DOCTOR";
+      wallet = await Wallet.create(
+        {
+          userId: params.vendorId,
+          walletType,
+          balance: 0,
+          totalCredited: 0,
+          totalDebited: 0,
+          isActive: true,
+        } as any,
+        { transaction: t }
+      );
+    }
+
     if (!wallet.isActive) throw new Error("Wallet is inactive");
 
     const payment = new Decimal(params.amount);
@@ -1013,4 +1036,54 @@ export const creditWalletsOnSale = async (params: {
   return params.transaction
     ? run(params.transaction)
     : sequelize.transaction(run);
+};
+
+// ════════════════════════════════════════════════════════════════════
+// CREDIT REFERRAL COINS
+//
+// When a referred doctor is approved, the referrer earns COINS_PER_REFERRAL
+// coins. Coins are separate from INR balance. 10 coins = ₹0.10.
+// ════════════════════════════════════════════════════════════════════
+
+const COINS_PER_REFERRAL = 10;
+
+export const creditReferralCoins = async (params: {
+  referrerId: string;
+  referredDoctorId: string;
+}) => {
+  return sequelize.transaction(async (t) => {
+    const wallet = await Wallet.findOne({
+      where: { userId: params.referrerId },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!wallet) return null; // referrer may not have a wallet yet — skip silently
+
+    wallet.coinBalance = (wallet.coinBalance || 0) + COINS_PER_REFERRAL;
+    await wallet.save({ transaction: t });
+
+    // Record as a wallet transaction for audit trail
+    const rupeesEquivalent = parseFloat(
+      new Decimal(COINS_PER_REFERRAL).times(0.01).toFixed(2)
+    );
+
+    await WalletTransaction.create(
+      {
+        walletId: wallet.id,
+        type: "CREDIT",
+        amount: rupeesEquivalent,
+        balanceAfter: parseFloat(new Decimal(wallet.balance).toFixed(2)),
+        category: "REFERRAL_BONUS",
+        description: `Referral bonus: ${COINS_PER_REFERRAL} coins for onboarding doctor ${params.referredDoctorId}`,
+        referenceType: "MANUAL",
+        referenceId: params.referredDoctorId,
+        performedBy: null,
+        metadata: { coins: COINS_PER_REFERRAL, referredDoctorId: params.referredDoctorId },
+      } as any,
+      { transaction: t }
+    );
+
+    return { coinsAwarded: COINS_PER_REFERRAL, newCoinBalance: wallet.coinBalance };
+  });
 };

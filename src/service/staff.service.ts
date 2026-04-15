@@ -87,72 +87,21 @@ async getVendorDoctors(
   vendorId: string,
   filters: StaffFilters = {}
 ) {
-  const { page = 1, limit = 20, search } = filters;
-  const offset = (page - 1) * limit;
-
-  const whereClause: any = {
-    role: "DOCTOR",
-    // parentId: vendorId, // ✅ IMPORTANT
-  };
-
-  if (search) {
-    whereClause[Op.or] = [
-      { fullName: { [Op.iLike]: `%${search}%` } },
-      { email: { [Op.iLike]: `%${search}%` } },
-      { phone: { [Op.iLike]: `%${search}%` } },
-    ];
+  if (!vendorId) {
+    throw new Error("Vendor id is required");
   }
 
-  const { rows: doctors, count: total } =
-    await AppUser.findAndCountAll({
-      where: whereClause,
-      attributes: [
-        "id",
-        "fullName",
-        "email",
-        "phone",
-        "specialization",
-        "hospital",
-        "license",
-        "isActive",
-        "createdAt",
-        "updatedAt",
-      ],
-      order: [["createdAt", "DESC"]],
-      limit,
-      offset,
-    });
-
-  const doctorsWithStats = await Promise.all(
-    doctors.map(async (doctor) => {
-      const patientCount = await Patient.count({
-        where: { doctorId: doctor.id },
-      });
-
-      const assistantCount = await AppUser.count({
-        where: {
-          role: "ASSISTANT",
-          parentId: doctor.id,
-        },
-      });
-
-      return {
-        ...doctor.toJSON(),
-        stats: {
-          totalPatients: patientCount,
-          totalAssistants: assistantCount,
-        },
-      };
-    })
-  );
+  // Uses VendorDoctor junction table via doctorOnboard service
+  const { doctorOnboardService } = await import("./doctorOnboard.service");
+  const doctors = await doctorOnboardService.getVendorDoctors(vendorId);
 
   return {
-    doctors: doctorsWithStats,
+    doctors,
     pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      total: doctors.length,
+      page: 1,
+      limit: doctors.length,
+      totalPages: 1,
     },
   };
 }
@@ -289,7 +238,7 @@ async getVendorDoctors(
   }
 
   /**
-   * Get all assistants
+   * Get all assistants (includes isActive for Super Admin status toggle)
    */
   async getAllAssistants(filters: StaffFilters = {}, doctorId?: string) {
     const { page = 1, limit = 20, search } = filters;
@@ -318,8 +267,10 @@ async getVendorDoctors(
         "fullName",
         "email",
         "phone",
+        "landLinePhone",
         "parentId",
         "permissions",
+        "isActive",
         "assistantStatus",
         "patientAccessMode",
         "assignedPatientIds",
@@ -463,12 +414,19 @@ async getVendorDoctors(
       "fullName", "email", "phone", "permissions",
       "assistantStatus", "patientAccessMode", "assignedPatientIds",
     ];
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     for (const key of allowedFields) {
       if (updates[key as keyof AppUser] !== undefined) {
         updateData[key] = updates[key as keyof AppUser];
       }
+    }
+
+    // Sync isActive with assistantStatus for Super Admin visibility
+    if (updateData.assistantStatus === "ON_HOLD") {
+      updateData.isActive = false; // Doctor Hold → Super Admin sees Inactive
+    } else if (updateData.assistantStatus === "ACTIVE") {
+      updateData.isActive = true;  // Doctor Reactivate → Super Admin sees Active
     }
 
     await assistant.update(updateData);
@@ -519,9 +477,526 @@ async getVendorDoctors(
     }
 
     return {
-      message: "Assistant removed successfully. Records preserved.",
+      message: "Assistant archived successfully. Records preserved.",
     };
+  }
+
+  /**
+   * Get all archived (soft-deleted) assistants.
+   * Uses paranoid: false to include rows with deletedAt set.
+   */
+  async getArchivedAssistants(filters: StaffFilters = {}, doctorId?: string) {
+    const { page = 1, limit = 20, search } = filters;
+    const offset = (page - 1) * limit;
+
+    const whereClause: any = {
+      role: "ASSISTANT",
+      assistantStatus: "DELETED",
+      deletedAt: { [Op.ne]: null },
+    };
+
+    if (doctorId) {
+      whereClause.parentId = doctorId;
+    }
+
+    if (search) {
+      whereClause[Op.or] = [
+        { fullName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const { rows: assistants, count: total } = await AppUser.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "id", "fullName", "email", "phone", "parentId",
+        "permissions", "assistantStatus", "patientAccessMode",
+        "assignedPatientIds", "isEmailVerified",
+        "createdAt", "updatedAt", "deletedAt",
+      ],
+      include: [
+        {
+          model: AppUser,
+          as: "parent",
+          attributes: ["id", "fullName", "email"],
+        },
+      ],
+      order: [["deletedAt", "DESC"]],
+      limit,
+      offset,
+      paranoid: false,
+    });
+
+    return {
+      assistants: assistants.map((a) => a.toJSON()),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Restore an archived (soft-deleted) assistant.
+   * Clears deletedAt and sets assistantStatus back to ACTIVE.
+   */
+  async restoreAssistant(assistantId: string) {
+    const assistant = await AppUser.findOne({
+      where: {
+        id: assistantId,
+        role: "ASSISTANT",
+      },
+      paranoid: false,
+    });
+
+    if (!assistant) {
+      throw new Error("Assistant not found");
+    }
+
+    if (!assistant.deletedAt) {
+      throw new Error("Assistant is not archived");
+    }
+
+    await assistant.restore();
+    // Restore to ON_HOLD — doctor must explicitly reactivate.
+    await assistant.update({ assistantStatus: "ON_HOLD" });
+
+    return {
+      message: "Assistant restored successfully. Please reactivate to allow login.",
+      assistant: assistant.toJSON(),
+    };
+  }
+  /**
+   * Toggle a user's active/inactive status (SUPER_ADMIN, DOCTOR, or VENDOR).
+   * Prevents self-deactivation.
+   */
+  async toggleUserStatus(userId: string, toggledByUserId: string) {
+    if (userId === toggledByUserId) {
+      throw new Error("You cannot deactivate your own account");
+    }
+
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+      paranoid: false,
+    });
+
+    if (!user) {
+      // Check if it's a Patient
+      const patient = await Patient.findByPk(userId);
+      if (patient) {
+        const newStatus = patient.status === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+
+        // JWT is stateless and cannot be revoked directly.
+        // Incrementing tokenVersion invalidates all previously issued patient tokens.
+        const shouldRotateTokenVersion = newStatus === "INACTIVE";
+        await patient.update({
+          status: newStatus,
+          ...(shouldRotateTokenVersion
+            ? { tokenVersion: ((patient as any).tokenVersion ?? 0) + 1 }
+            : {}),
+        });
+        try {
+          await AuditLog.create({
+            userId: toggledByUserId,
+            userRole: "super_admin",
+            action: newStatus === "ACTIVE" ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+            details: {
+              targetUserId: userId,
+              targetName: patient.fullName,
+              targetRole: "PATIENT",
+              newStatus: newStatus === "ACTIVE" ? "active" : "inactive",
+            },
+            ipAddress: "system",
+          });
+        } catch {
+          // Audit log failure should not block the operation
+        }
+        return {
+          message: `PATIENT ${newStatus === "ACTIVE" ? "activated" : "deactivated"} successfully.`,
+          user: {
+            id: patient.id,
+            fullName: patient.fullName,
+            role: "PATIENT",
+            isActive: newStatus === "ACTIVE",
+          },
+        };
+      }
+      throw new Error("User not found");
+    }
+
+    const newStatus = !user.isActive;
+
+    // Sync assistantStatus with isActive for Doctor visibility
+    const assistantStatusSync = user.role === "ASSISTANT"
+      ? { assistantStatus: newStatus ? "ACTIVE" : "ON_HOLD" }
+      : {};
+
+    // If activating a soft-deleted user, seamlessly restore them FIRST
+    if (newStatus && user.deletedAt) {
+      await user.restore();
+    }
+
+    await user.update({
+      isActive: newStatus,
+      ...assistantStatusSync,
+      ...(newStatus === false
+        ? { tokenVersion: ((user as any).tokenVersion ?? 0) + 1 }
+        : {}),
+    });
+
+    try {
+      await AuditLog.create({
+        userId: toggledByUserId,
+        userRole: "super_admin",
+        action: newStatus ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetEmail: user.email,
+          targetRole: user.role,
+          newStatus: newStatus ? "active" : "inactive",
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    return {
+      message: `${user.role} user ${newStatus ? "activated" : "deactivated"} successfully.`,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isActive: newStatus,
+      },
+    };
+  }
+
+  /**
+   * Soft-delete a user (SUPER_ADMIN, DOCTOR, or VENDOR).
+   * Prevents self-archiving. Uses Sequelize paranoid destroy.
+   */
+  async archiveUser(userId: string, archivedByUserId: string) {
+    if (userId === archivedByUserId) {
+      throw new Error("You cannot archive your own account");
+    }
+
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Enforce the state machine: Active → Inactive → Archived.
+    // Archiving an active user is not permitted; they must be deactivated first.
+    if (user.isActive) {
+      throw new Error("User must be marked as Inactive before archiving. Please deactivate them first.");
+    }
+
+    await user.destroy(); // paranoid soft-delete (isActive is already false)
+
+    try {
+      await AuditLog.create({
+        userId: archivedByUserId,
+        userRole: "super_admin",
+        action: "USER_ARCHIVED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetEmail: user.email,
+          targetRole: user.role,
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    return {
+      message: `${user.role} user archived successfully. Records preserved.`,
+    };
+  }
+
+  /**
+   * Get all archived (soft-deleted) users (SUPER_ADMIN, DOCTOR, VENDOR).
+   */
+  async getArchivedUsers(filters: StaffFilters = {}) {
+    const { page = 1, limit = 20, search } = filters;
+    const offset = (page - 1) * limit;
+
+    const whereClause: any = {
+      role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      deletedAt: { [Op.ne]: null },
+    };
+
+    if (search) {
+      whereClause[Op.or] = [
+        { fullName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const { rows: users, count: total } = await AppUser.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "id", "fullName", "email", "phone", "role",
+        "hospital", "specialization", "license", "location", "GST",
+        "isActive", "createdAt", "updatedAt", "deletedAt",
+      ],
+      order: [["deletedAt", "DESC"]],
+      limit,
+      offset,
+      paranoid: false,
+    });
+
+    return {
+      users: users.map((u) => u.toJSON()),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Restore an archived (soft-deleted) user.
+   * Clears deletedAt and sets isActive back to true.
+   */
+  async restoreUser(userId: string) {
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+      paranoid: false,
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (!user.deletedAt) {
+      throw new Error("User is not archived");
+    }
+
+    await user.restore();
+    // Force isActive = false — admin must explicitly activate after restore.
+    await user.update({ isActive: false });
+
+    return {
+      message: `${user.role} user restored successfully. Please activate the account to allow login.`,
+      user: user.toJSON(),
+    };
+  }
+
+  // ==================== USER PROFILE VIEW & EDIT ====================
+
+  /**
+   * Get any user (SUPER_ADMIN, DOCTOR, VENDOR) by ID with role-specific stats.
+   */
+  async getUserById(userId: string) {
+    // First try AppUser table (Super Admin, Doctor, Vendor, Assistant)
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+      attributes: [
+        "id", "fullName", "email", "phone", "landLinePhone", "role",
+        "hospital", "specialization", "license", "GST", "location",
+        "address", "city", "state",
+        "commissionType", "commissionRate", "cashfreeVendorId",
+        "isActive", "isEmailVerified", "createdAt", "updatedAt",
+        "parentId", "assistantStatus", "deletedAt",
+      ],
+      paranoid: false, // include archived (soft-deleted) users
+    });
+
+    if (user) {
+      const result: Record<string, unknown> = { ...user.toJSON() };
+
+      // Add role-specific stats
+      if (user.role === "DOCTOR") {
+        const patientCount = await Patient.count({ where: { doctorId: userId } });
+        const assistantCount = await AppUser.count({
+          where: { role: "ASSISTANT", parentId: userId },
+        });
+        let taskCount = 0;
+        try {
+          taskCount = await Task.count({ where: { createdBy: userId } });
+        } catch {
+          // Tasks table may not exist
+        }
+        result.stats = { totalPatients: patientCount, totalAssistants: assistantCount, totalTasks: taskCount };
+      }
+
+      // Assistant: include parent doctor name
+      if (user.role === "ASSISTANT" && user.parentId) {
+        const parentDoctor = await AppUser.findByPk(user.parentId, { attributes: ["id", "fullName"] });
+        if (parentDoctor) {
+          result.doctorName = parentDoctor.fullName;
+          result.doctorId = parentDoctor.id;
+        }
+      }
+
+      return result;
+    }
+
+    // Fallback: check Patient table
+    const patient = await Patient.findByPk(userId);
+    if (patient) {
+      const result: Record<string, unknown> = {
+        id: patient.id,
+        fullName: patient.fullName,
+        email: "",
+        phone: patient.phone || "",
+        role: "PATIENT",
+        isActive: patient.status !== "INACTIVE",
+        isEmailVerified: false,
+        createdAt: patient.createdAt,
+        updatedAt: patient.updatedAt,
+        diaryId: patient.diaryId,
+        caseType: patient.caseType,
+        patientStatus: patient.status,
+        age: patient.age,
+        gender: patient.gender,
+        address: patient.address,
+      };
+      if (patient.doctorId) {
+        const doctor = await AppUser.findByPk(patient.doctorId, { attributes: ["id", "fullName"] });
+        if (doctor) {
+          result.doctorName = doctor.fullName;
+          result.doctorId = doctor.id;
+        }
+      }
+      return result;
+    }
+
+    throw new Error("User not found");
+  }
+
+  /**
+   * Update any user (SUPER_ADMIN, DOCTOR, VENDOR) by ID.
+   * Role is never editable. Prevents self-role modification.
+   * Supports optional password reset (model hooks handle hashing).
+   */
+  async updateUser(
+    userId: string,
+    updates: Record<string, unknown>,
+    requesterId: string
+  ) {
+    const user = await AppUser.findOne({
+      where: {
+        id: userId,
+        role: { [Op.in]: ["SUPER_ADMIN", "DOCTOR", "VENDOR", "ASSISTANT"] },
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Allowed fields for update (role is NEVER allowed)
+    const allowedFields = [
+      "fullName", "phone", "landLinePhone", "hospital", "specialization",
+      "license", "GST", "location", "address", "city", "state",
+      "commissionType", "commissionRate", "password",
+    ];
+
+    const updateData: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (updates[key] !== undefined && updates[key] !== "") {
+        updateData[key] = updates[key];
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new Error("No valid fields to update");
+    }
+
+    await user.update(updateData);
+
+    // Audit log
+    try {
+      await AuditLog.create({
+        userId: requesterId,
+        userRole: "super_admin",
+        action: "USER_UPDATED",
+        details: {
+          targetUserId: userId,
+          targetName: user.fullName,
+          targetRole: user.role,
+          updatedFields: Object.keys(updateData),
+        },
+        ipAddress: "system",
+      });
+    } catch {
+      // Audit log failure should not block the operation
+    }
+
+    // Return updated user WITHOUT password
+    const updated = await AppUser.findByPk(userId, {
+      attributes: [
+        "id", "fullName", "email", "phone", "landLinePhone", "role",
+        "hospital", "specialization", "license", "GST", "location",
+        "address", "city", "state",
+        "commissionType", "commissionRate", "cashfreeVendorId",
+        "isActive", "isEmailVerified", "createdAt", "updatedAt",
+      ],
+    });
+
+    return updated?.toJSON();
+  }
+
+  // ==================== SELF-REGISTRATION APPROVALS ====================
+
+  async getPendingRegistrations() {
+    const doctors = await AppUser.findAll({
+      where: { role: "DOCTOR", isActive: false, selfRegistered: true } as any,
+      attributes: ["id", "fullName", "email", "phone", "address", "city", "state", "createdAt"],
+      order: [["createdAt", "ASC"]],
+    });
+    return doctors.map((d) => d.toJSON());
+  }
+
+  async approveRegistration(userId: any, _reviewerId: string) {
+    const doctor = await AppUser.findOne({
+      where: { id: userId, role: "DOCTOR", selfRegistered: true, isActive: false } as any,
+    });
+    if (!doctor) throw new Error("Pending registration not found");
+
+    await doctor.update({ isActive: true, selfRegistered: false });
+
+    return { id: doctor.id, fullName: doctor.fullName, email: doctor.email };
+  }
+
+  async rejectRegistration(userId: any, _reviewerId: string) {
+    const doctor = await AppUser.findOne({
+      where: { id: userId, role: "DOCTOR", selfRegistered: true, isActive: false } as any,
+    });
+    if (!doctor) throw new Error("Pending registration not found");
+
+    await doctor.destroy(); // soft-delete via paranoid
+
+    return { id: userId };
   }
 }
 
 export const staffService = new StaffService();
+

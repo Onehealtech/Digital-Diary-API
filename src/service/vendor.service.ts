@@ -6,6 +6,7 @@ import { Transaction } from "../models/Transaction";
 import { GeneratedDiary } from "../models/GeneratedDiary";
 import { Op } from "sequelize";
 import bcrypt from "bcrypt";
+import { DIARY_STATUS, normalizeDiaryStatus } from "../utils/diaryStatus";
 
 export class VendorService {
   /**
@@ -85,7 +86,9 @@ export class VendorService {
     phone: string;
     password: string;
     businessName: string;
-    location: string;
+    address: string;
+    city: string;
+    state: string;
     gst: string;
     bankDetails: {
       accountNumber: string;
@@ -111,13 +114,18 @@ export class VendorService {
       phone: data.phone,
       password: data.password, // Will be hashed by BeforeCreate hook
       role: "VENDOR",
+      address: data.address,
+      city: data.city,
+      state: data.state,
     });
 
     // Create VendorProfile
     const vendorProfile = await VendorProfile.create({
       vendorId: vendor.id,
       businessName: data.businessName,
-      location: data.location,
+      address: data.address,
+      city: data.city,
+      state: data.state,
       gst: data.gst,
       bankDetails: data.bankDetails,
       commissionRate: data.commissionRate || 50,
@@ -136,7 +144,9 @@ export class VendorService {
       fullName?: string;
       phone?: string;
       businessName?: string;
-      location?: string;
+      address?: string;
+      city?: string;
+      state?: string;
       bankDetails?: any;
       commissionRate?: number;
       status?: string;
@@ -153,6 +163,9 @@ export class VendorService {
     // Update AppUser fields
     if (data.fullName) vendor.fullName = data.fullName;
     if (data.phone) vendor.phone = data.phone;
+    if (data.address) vendor.address = data.address;
+    if (data.city) vendor.city = data.city;
+    if (data.state) vendor.state = data.state;
     await vendor.save();
 
     // Update VendorProfile
@@ -162,7 +175,9 @@ export class VendorService {
 
     if (vendorProfile) {
       if (data.businessName) vendorProfile.businessName = data.businessName;
-      if (data.location) vendorProfile.location = data.location;
+      if (data.address) vendorProfile.address = data.address;
+      if (data.city) vendorProfile.city = data.city;
+      if (data.state) vendorProfile.state = data.state;
       if (data.bankDetails) vendorProfile.bankDetails = data.bankDetails;
       if (data.commissionRate !== undefined)
         vendorProfile.commissionRate = data.commissionRate;
@@ -269,7 +284,7 @@ export class VendorService {
     }
 
     if (params.status) {
-      whereClause.status = params.status;
+      whereClause.status = normalizeDiaryStatus(params.status);
     }
 
     const sales = await Diary.findAndCountAll({
@@ -323,6 +338,8 @@ export class VendorService {
         createdAt: { [Op.gte]: thisMonth },
       },
     });
+
+    console.info(`[DIARY_FETCH] scope=vendor_sales vendorId=${vendorId} total=${sales.count}`);
 
     return {
       sales: salesWithType,
@@ -442,7 +459,7 @@ export class VendorService {
       patientId: patient.id,
       doctorId: data.doctorId,
       vendorId: data.vendorId,
-      status: "pending",
+      status: DIARY_STATUS.PENDING,
       saleAmount: data.paymentAmount,
       commissionAmount: 50, // ₹50 commission
       commissionPaid: false,
@@ -454,7 +471,31 @@ export class VendorService {
     generatedDiary.soldDate = new Date();
     await generatedDiary.save();
 
+    console.info(`[DIARY_CREATE] scope=vendor_service vendorId=${data.vendorId} diaryId=${data.diaryId} status=${diary.status}`);
+
     return { patient, diary };
+  }
+
+  /**
+   * Mark a diary sale as fund-transferred
+   */
+  async markFundTransferred(diaryId: string, vendorId: string) {
+    const diary = await Diary.findOne({
+      where: { id: diaryId, vendorId },
+    });
+
+    if (!diary) {
+      throw new Error("Sale record not found");
+    }
+
+    if (diary.fundTransferred) {
+      throw new Error("Funds already transferred for this sale");
+    }
+
+    diary.fundTransferred = true;
+    await diary.save();
+
+    return { message: "Sale marked as fund transferred", diaryId };
   }
 
   /**
@@ -489,11 +530,11 @@ export class VendorService {
       },
     });
 
-    // Get active diaries count
+    // Get approved diaries count (kept variable name for response compatibility)
     const activeDiaries = await Diary.count({
       where: {
         vendorId,
-        status: "active",
+        status: DIARY_STATUS.APPROVED,
       },
     });
 

@@ -26,9 +26,9 @@ export class Patient extends Model {
   @Column({
     type: DataType.STRING,
     unique: true,
-    allowNull: false,
+    allowNull: true,
   })
-  diaryId!: string;
+  diaryId?: string;
 
   @Column({
     type: DataType.STRING,
@@ -110,10 +110,28 @@ export class Patient extends Model {
   registeredDate?: Date;
 
   @Column({
-    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED"),
+    type: DataType.ENUM("ACTIVE", "CRITICAL", "COMPLETED", "INACTIVE", "ON_HOLD", "DOCTOR_REASSIGNED"),
     defaultValue: "ACTIVE",
   })
-  status!: "ACTIVE" | "CRITICAL" | "COMPLETED";
+  status!: "ACTIVE" | "CRITICAL" | "COMPLETED" | "INACTIVE" | "ON_HOLD" | "DOCTOR_REASSIGNED";
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  deactivationReason?: string;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  deactivatedAt?: Date;
+
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  deactivatedBy?: string;
 
   @Column({
     type: DataType.ENUM(
@@ -138,13 +156,41 @@ export class Patient extends Model {
   })
   fcmToken?: string;
 
-  // 🔗 Foreign Key → Doctor
+  @Column({
+    type: DataType.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+  })
+  onboardingViewCount!: number;
+
+  @Column({
+    type: DataType.ENUM("VENDOR_ASSIGNED", "SELF_SIGNUP"),
+    defaultValue: "VENDOR_ASSIGNED",
+    allowNull: true,
+  })
+  registrationSource!: "VENDOR_ASSIGNED" | "SELF_SIGNUP";
+
+  @Column({
+    type: DataType.ENUM("en", "hi"),
+    defaultValue: "en",
+    allowNull: false,
+  })
+  language!: "en" | "hi";
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  })
+  tokenVersion!: number;
+
+  // 🔗 Foreign Key → Doctor (nullable for self-signup patients awaiting doctor acceptance)
   @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  doctorId!: string;
+  doctorId?: string;
 
   @BelongsTo(() => AppUser)
   doctor!: AppUser;

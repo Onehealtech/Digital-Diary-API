@@ -35,7 +35,7 @@ export class DiaryController {
    */
   async getAllGeneratedDiaries(req: Request, res: Response) {
     try {
-      const { page, limit, status, vendorId, search } = req.query;
+      const { page, limit, status, vendorId, search, diaryType } = req.query;
 
       const result = await diaryService.getAllGeneratedDiaries({
         page: page ? parseInt(page as string) : undefined,
@@ -43,6 +43,7 @@ export class DiaryController {
         status: status as string,
         vendorId: vendorId as string,
         search: search as string,
+        diaryType: diaryType as string,
       });
 
       return sendResponse(res, 200, "Diaries retrieved successfully", result);
@@ -258,6 +259,37 @@ export class DiaryController {
       return sendResponse(res, 200, "Diary request rejected", request);
     } catch (error: any) {
       return sendError(res, 500, "Failed to reject diary request", error.message);
+    }
+  }
+
+  async cancelDiaryRequest(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user.id;
+
+      const request = await diaryService.cancelDiaryRequest(id, userId);
+
+      return sendResponse(res, 200, "Diary request cancelled", request);
+    } catch (error: any) {
+      return sendError(res, error.message?.includes("not found") ? 404 : 400, error.message || "Failed to cancel diary request");
+    }
+  }
+
+  /**
+   * GET /api/v1/generated-diaries/download-doc - Download diaries as DOCX
+   */
+  async downloadDiariesDoc(req: Request, res: Response) {
+    try {
+      const { diaryIds } = req.query;
+      const ids = diaryIds ? (diaryIds as string).split(",") : undefined;
+
+      const buffer = await diaryService.generateDiariesDoc(ids);
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", "attachment; filename=Diary-QR-Codes.docx");
+      return res.send(buffer);
+    } catch (error: any) {
+      return sendError(res, 500, "Failed to generate document", error.message);
     }
   }
 }

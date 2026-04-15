@@ -11,6 +11,7 @@ import {
 } from "sequelize-typescript";
 import bcrypt from "bcrypt";
 import { Patient } from "./Patient";
+import { generateReferralCode } from "../utils/referralUtils";
 
 @Table({
   tableName: "app-users",
@@ -36,6 +37,22 @@ export class AppUser extends Model {
     allowNull: true,
   })
   phone?: string;
+  @Column({
+    type: DataType.STRING(50),
+    allowNull: true,
+  })
+  landLinePhone?: string;
+
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  bankDetails?: {
+    accountHolder?: string;
+    accountNumber?: string;
+    ifsc?: string;
+    bankName?: string;
+  };
 
   @Column({
     type: DataType.STRING(255),
@@ -88,6 +105,25 @@ export class AppUser extends Model {
     allowNull: true,
   })
   location!: string;
+
+  @Column({
+    type: DataType.STRING(500),
+    allowNull: true,
+  })
+  address?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  city?: string;
+
+  @Column({
+    type: DataType.STRING(100),
+    allowNull: true,
+  })
+  state?: string;
+
   @Column({
     type: DataType.STRING(255),
     allowNull: true,
@@ -106,6 +142,13 @@ export class AppUser extends Model {
     allowNull: true,
   })
   isActive!: boolean;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  })
+  tokenVersion!: number;
 
   @Column({
     type: DataType.ENUM("SUPER_ADMIN", "VENDOR", "DOCTOR", "ASSISTANT"),
@@ -133,6 +176,13 @@ export class AppUser extends Model {
     callPatients?: boolean;
     exportData?: boolean;
     sendNotifications?: boolean;
+    sendAppointments?: boolean;
+    deactivatePatients?: boolean;
+    markReviewed?: boolean;
+    manageOnboardingRequests?: boolean;
+    advancedAnalysis?: boolean;
+    sellDiary?: boolean;
+    fillReport?: boolean;
   };
 
   // Assistant status: ACTIVE (working), ON_HOLD (temporarily inactive), DELETED (soft-deleted)
@@ -159,6 +209,22 @@ export class AppUser extends Model {
   })
   assignedPatientIds?: string[];
 
+  // Unique referral code for this user — used by others to credit them when onboarding new doctors
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+    unique: true,
+  })
+  referralCode?: string;
+
+  // True for doctors who self-registered and are awaiting super admin approval
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  })
+  selfRegistered!: boolean;
+
   @Column({
     type: DataType.BOOLEAN,
     defaultValue: false,
@@ -183,6 +249,9 @@ export class AppUser extends Model {
   static async hashPasswordOnCreate(instance: AppUser) {
     if (instance.password) {
       instance.password = await bcrypt.hash(instance.password, 10);
+    }
+    if (!instance.referralCode) {
+      instance.referralCode = generateReferralCode();
     }
   }
 

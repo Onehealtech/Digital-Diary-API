@@ -1,17 +1,32 @@
-import dotenv from 'dotenv';
-dotenv.config();
-console.log('DB HOST:', process.env.DATABASE_HOST);
+import dotenv from "dotenv";
+import path from "path";
 
+// ─── Environment Loading ────────────────────────────────────────────────
+// NODE_ENV is set by PM2 (ecosystem.config.js) or the deploy script.
+// Mapping: "production" → .env.production, anything else → .env.staging
+const NODE_ENV = process.env.NODE_ENV || "staging";
+const envFile = NODE_ENV === "production" ? ".env.production" : ".env.staging";
+const envPath = path.resolve(process.cwd(), envFile);
+
+const result = dotenv.config({ path: envPath });
+if (result.error) {
+  console.error(`[ENV] Failed to load ${envFile}:`, result.error.message);
+  process.exit(1);
+}
+
+console.log(`[ENV] Environment: ${NODE_ENV}`);
+console.log(`[ENV] Loaded: ${envFile}`);
+console.log(`[ENV] Port: ${process.env.PORT}`);
 import 'reflect-metadata';
 import express, { Application, Request, Response, NextFunction } from 'express';
 
-import path from 'path';
 import cors from 'cors';
 import routes from './routes';
 
 import bodyParser from "body-parser";
 import { initializeDatabase } from './config/Dbconnetion';
 import { fcmService } from './service/fcm.service';
+import { reminderCronService } from './service/reminderCron.service';
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
@@ -32,8 +47,13 @@ app.use(
 
 
 
-// Parse JSON request bodies
-app.use(express.json());
+// Capture raw body for webhook signature verification, then parse JSON
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    // Store raw body for webhook routes that need signature verification
+    req.rawBody = buf.toString();
+  },
+}));
 
 // Parse URL-encoded request bodies
 app.use(express.urlencoded({ extended: true }));
@@ -94,6 +114,9 @@ const startServer = async () => {
 
     // Initialize Firebase Admin SDK for push notifications
     fcmService.initialize();
+
+    // Start background jobs/cron intervals
+    reminderCronService.start();
 
     // Start Express server
     app.listen(PORT, () => {

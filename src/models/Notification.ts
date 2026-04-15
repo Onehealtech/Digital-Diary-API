@@ -3,7 +3,11 @@ import {
   Column,
   Model,
   DataType,
+  ForeignKey,
+  BelongsTo,
 } from "sequelize-typescript";
+import { AppUser } from "./Appuser";
+import { Patient } from "./Patient";
 
 @Table({
   tableName: "notifications",
@@ -29,11 +33,15 @@ export class Notification extends Model {
   })
   recipientType!: "patient" | "staff";
 
+  @ForeignKey(() => AppUser)
   @Column({
     type: DataType.UUID,
     allowNull: false,
   })
   senderId!: string;
+
+  @BelongsTo(() => AppUser, { foreignKey: "senderId", as: "sender" })
+  sender?: AppUser;
 
   @Column({
     type: DataType.ENUM("alert", "info", "reminder", "task-assigned", "test-result"),
@@ -91,4 +99,38 @@ export class Notification extends Model {
     defaultValue: false,
   })
   delivered!: boolean;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  responseMessage?: string;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  respondedAt?: Date;
+
+  @ForeignKey(() => Patient)
+  @Column({
+    type: DataType.UUID,
+    allowNull: true,
+  })
+  responseId?: string; // patientId
+
+  @BelongsTo(() => Patient, { foreignKey: "responseId", as: "responseBy" })
+  responseBy?: Patient;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  isResponded!: boolean;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  attachmentUrl?: string;
 }

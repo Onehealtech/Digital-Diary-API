@@ -1,8 +1,14 @@
 import { Request, Response } from "express";
+import path from "path";
 import { notificationService } from "../service/notification.service";
 import { sendResponse, sendError } from "../utils/response";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { AppUser } from "../models/Appuser";
+import { uploadBufferToS3 } from "../utils/s3Upload";
+import {
+  patientNotificationHistoryParamsSchema,
+  patientNotificationHistoryQuerySchema,
+} from "../schemas/notification.schemas";
 
 class NotificationController {
   /**
@@ -108,6 +114,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         relatedTaskId,
         relatedTestName,
         actionUrl,
@@ -119,6 +126,16 @@ class NotificationController {
         return sendError(res, "recipientId, type, title, and message are required", 400);
       }
 
+      let attachmentUrl: string | undefined =
+        (req.body.attachmentUrl as string | undefined) || undefined;
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (file) {
+        const ext = path.extname(file.originalname).toLowerCase() || ".bin";
+        const s3Key = `notifications/attachments/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+        attachmentUrl = await uploadBufferToS3(file.buffer, file.mimetype, s3Key);
+      }
+
       const notification = await notificationService.createNotification({
         senderId,
         recipientId,
@@ -127,10 +144,12 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         relatedTaskId,
         relatedTestName,
         actionUrl,
         deliveryMethod,
+        attachmentUrl,
       });
 
       return sendResponse(res, notification, "Notification sent successfully", 201);
@@ -157,6 +176,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         actionUrl,
         deliveryMethod,
         filters,
@@ -173,6 +193,7 @@ class NotificationController {
         severity,
         title,
         message,
+        language,
         actionUrl,
         deliveryMethod,
         filters,
@@ -300,6 +321,147 @@ class NotificationController {
       return sendResponse(res, { success: true }, "FCM token updated successfully");
     } catch (error: any) {
       return sendError(res, error.message);
+    }
+  }
+
+  /**
+   * GET /api/v1/notifications/patient/:patientId/history
+   * Get notification history sent to a specific patient (for Doctor/Assistant)
+   */
+  async getPatientNotificationHistory(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return sendError(res, "Unauthorized", 401);
+      }
+
+      // Validate params with Zod
+      const paramsParsed = patientNotificationHistoryParamsSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
+        return sendError(res, paramsParsed.error.issues[0].message, 400);
+      }
+
+      const queryParsed = patientNotificationHistoryQuerySchema.safeParse(req.query);
+      if (!queryParsed.success) {
+        return sendError(res, queryParsed.error.issues[0].message, 400);
+      }
+
+      const { patientId } = paramsParsed.data;
+      const { page, limit } = queryParsed.data;
+
+      const result = await notificationService.getPatientNotificationHistory(
+        patientId,
+        { page, limit }
+      );
+
+      return sendResponse(res, result, "Patient notification history fetched successfully");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return sendError(res, message);
+    }
+  }
+  /**
+   * POST /api/v1/notifications/translate
+   * Translate notification title and message to target language (Hindi by default)
+   */
+  async translateText(req: AuthRequest, res: Response) {
+    try {
+      const { title, message, targetLanguage = "hi" } = req.body;
+
+      if (!title && !message) {
+        return sendError(res, "At least one of title or message is required", 400);
+      }
+
+      // Dynamic import because google-translate-api-x is ESM-only
+      const { default: translate } = await (Function('return import("google-translate-api-x")')() as Promise<any>);
+
+      const results: { translatedTitle?: string; translatedMessage?: string } = {};
+
+      if (title) {
+        const titleResult = await translate(title, { to: targetLanguage });
+        results.translatedTitle = titleResult.text;
+      }
+
+      if (message) {
+        const messageResult = await translate(message, { to: targetLanguage });
+        results.translatedMessage = messageResult.text;
+      }
+
+      return sendResponse(res, results, "Translation successful");
+    } catch (error: any) {
+      console.error("Translation error:", error);
+      return sendError(res, error.message || "Translation failed");
+    }
+  }
+
+  /**
+   * POST /api/v1/notifications/transliterate
+   * Transliterate English text to Hindi script (phonetic conversion)
+   * Uses Google Input Tools API for accurate transliteration
+   */
+  async transliterateText(req: AuthRequest, res: Response) {
+    try {
+      const { text } = req.body;
+
+      if (!text || typeof text !== "string" || !text.trim()) {
+        return sendError(res, "text is required", 400);
+      }
+
+      const url = `https://inputtools.google.com/request?text=${encodeURIComponent(text.trim())}&itc=hi-t-i0-und&num=5&cp=0&cs=1&ie=utf-8&oe=utf-8`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      // Google Input Tools returns [status, [[input, suggestions, ...]]]
+      if (data[0] === "SUCCESS" && data[1]?.[0]?.[1]?.length > 0) {
+        return sendResponse(res, {
+          input: text.trim(),
+          suggestions: data[1][0][1],
+        }, "Transliteration successful");
+      }
+
+      // Fallback: return the original text if no suggestions
+      return sendResponse(res, {
+        input: text.trim(),
+        suggestions: [text.trim()],
+      }, "No transliteration available");
+    } catch (error: any) {
+      console.error("Transliteration error:", error);
+      return sendError(res, error.message || "Transliteration failed");
+    }
+  }
+
+  /**
+ * POST /api/v1/notifications/:id/respond
+ * Patient responds to a notification
+ */
+  async respondToNotification(req: AuthRequest, res: Response) {
+    try {
+      const notificationId = req.params.id;
+      const patientId = req.user?.id;
+
+      if (!patientId) {
+        return sendError(res, "Only patients can respond to notifications", 403);
+      }
+
+      const { message } = req.body;
+
+      if (!message) {
+        return sendError(res, "Response message is required", 400);
+      }
+
+      const result = await notificationService.respondToNotification(
+        notificationId,
+        patientId,
+        message
+      );
+
+      return sendResponse(res, result, "Response sent successfully");
+    } catch (error: any) {
+      return sendError(
+        res,
+        error.message,
+        error.message.includes("not found") ? 404 : 500
+      );
     }
   }
 }

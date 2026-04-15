@@ -25,7 +25,7 @@ const dateString = z.string().refine(
 );
 
 export const uploadScanSchema = z.object({
-    pageNumber: coercedPageNumber,
+    pageNumber: coercedPageNumber.optional(),
 });
 
 export const manualSubmitSchema = z.object({

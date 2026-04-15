@@ -52,6 +52,40 @@ export const bubbleScanUpload = multer({
   },
 });
 
+// Notification attachment upload (images + PDFs, 10MB) — memory storage for S3 upload
+export const notificationAttachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req: any, file: any, cb: any) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "application/pdf", "image/gif", "image/webp"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images (JPEG, PNG, GIF, WebP) and PDF files are allowed"));
+    }
+  },
+});
+
+// Report upload — memory storage, supports PDF + DOC/DOCX + images, up to 25 MB each, max 5 files
+const REPORT_ALLOWED_TYPES = [
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "application/pdf",
+  "application/msword",                                                        // .doc
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  // .docx
+];
+
+export const reportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB per file
+  fileFilter: (req: any, file: any, cb: any) => {
+    if (REPORT_ALLOWED_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG, PNG, WebP images, PDF, and DOC/DOCX files are allowed for reports"));
+    }
+  },
+});
+
 // Vision scan upload — memory storage (no local file, buffer goes to S3)
 export const visionScanUpload = multer({
   storage: multer.memoryStorage(),

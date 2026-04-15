@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { Patient } from "../models/Patient";
+import { GeneratedDiary } from "../models/GeneratedDiary";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 
 /**
@@ -23,7 +24,7 @@ export const registerPatient = async (
             return;
         }
 
-        // Check if sticker already exists
+        // Check if sticker already exists on any patient row
         const existingPatient = await Patient.findOne({
             where: { diaryId },
         });
@@ -32,6 +33,23 @@ export const registerPatient = async (
             res.status(409).json({
                 success: false,
                 message: "This sticker ID is already registered",
+            });
+            return;
+        }
+
+        // Check GeneratedDiary: sticker must exist and must NOT be already sold
+        const generatedDiary = await GeneratedDiary.findOne({ where: { id: diaryId } });
+        if (!generatedDiary) {
+            res.status(404).json({
+                success: false,
+                message: "Diary sticker not found in the system. Please use a valid issued diary.",
+            });
+            return;
+        }
+        if (generatedDiary.status === "sold") {
+            res.status(409).json({
+                success: false,
+                message: "This diary sticker is already assigned to another patient.",
             });
             return;
         }

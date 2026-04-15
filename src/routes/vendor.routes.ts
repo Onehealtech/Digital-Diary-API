@@ -2,7 +2,9 @@ import { Router } from "express";
 import { VendorController } from "../controllers/vendor.controller";
 import * as dashboardController from "../controllers/dashboard.controller";
 import { authCheck } from "../middleware/authMiddleware";
+import { validate } from "../middleware/validate.middleware";
 import { UserRole } from "../utils/constants";
+import { createVendorSchema } from "../schemas/staff.schemas";
 
 const router = Router();
 const vendorController = new VendorController();
@@ -37,6 +39,7 @@ router.get(
 router.post(
   "/",
   authCheck([UserRole.SUPER_ADMIN]),
+  validate({ body: createVendorSchema }),
   vendorController.createVendor.bind(vendorController)
 );
 
@@ -66,6 +69,13 @@ router.get(
   "/:id/sales",
   authCheck([UserRole.SUPER_ADMIN, UserRole.VENDOR]),
   vendorController.getVendorSales.bind(vendorController)
+);
+
+// PUT /api/v1/vendors/:id/sales/:diaryId/mark-transferred - Mark fund as transferred
+router.put(
+  "/:id/sales/:diaryId/mark-transferred",
+  authCheck([UserRole.VENDOR]),
+  vendorController.markFundTransferred.bind(vendorController)
 );
 
 // GET /api/v1/vendors/:id/inventory - Get assigned diaries

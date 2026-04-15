@@ -15,6 +15,7 @@ import { createCashfreeOrder } from "./cashfree.service";
 import { creditWallet, creditWalletsOnSale } from "./wallet.service";
 import { Diary } from "../models/Diary";
 import { GeneratedDiary } from "../models/GeneratedDiary";
+import { DIARY_STATUS } from "../utils/diaryStatus";
 
 interface CreateOrderParams {
     patientId: string;
@@ -289,7 +290,7 @@ export const createDiaryOrder = async (params: CreateOrderParams) => {
                 patientId,
                 doctorId,
                 vendorId,
-                status: "pending",
+                status: DIARY_STATUS.PENDING,
                 activationDate: null,
                 approvedBy: null,
                 approvedAt: null,
@@ -378,7 +379,7 @@ export const processPaymentSuccess = async (
                 transaction: t,
             });
 
-            if (platformAdmin) {
+            if (platformAdmin && order.vendorId && order.doctorId) {
                 await creditWalletsOnSale({
                     orderId: order.orderId,
                     vendorId: order.vendorId,
