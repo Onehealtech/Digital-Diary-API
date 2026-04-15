@@ -107,15 +107,35 @@ export class DoctorAuthController {
    */
   static async forgotPassword(req: Request, res: Response) {
     try {
-      const { email, currentPassword } = req.body;
+      const { email } = req.body;
 
       if (!email) {
         return sendError(res, "Email is required", 400);
       }
 
-      const result = await DoctorAuthService.forgotPassword(email, currentPassword);
+      const result = await DoctorAuthService.forgotPassword(email);
 
-      return sendResponse(res, result, "Identity verified");
+      return sendResponse(res, result, "If the email exists, a password reset link has been sent");
+    } catch (error: any) {
+      return sendError(res, error.message, 400);
+    }
+  }
+
+  /**
+   * GET /api/v1/auth/verify-reset-token
+   * Validate reset token before showing password reset form
+   */
+  static async verifyResetToken(req: Request, res: Response) {
+    try {
+      const resetToken = String(req.query.token || "");
+
+      if (!resetToken) {
+        return sendError(res, "Reset token is required", 400);
+      }
+
+      const result = await DoctorAuthService.verifyResetToken(resetToken);
+
+      return sendResponse(res, result, "Reset token is valid");
     } catch (error: any) {
       return sendError(res, error.message, 400);
     }

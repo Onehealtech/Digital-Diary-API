@@ -94,6 +94,79 @@ export const sendPasswordEmail = async (
 };
 
 /**
+ * Send password reset email with a secure one-time link
+ */
+export const sendPasswordResetEmail = async (
+  email: string,
+  fullName: string,
+  resetToken: string
+): Promise<void> => {
+  const appUrl = (process.env.FRONTEND_URL || process.env.BASE_URL || "").replace(/\/$/, "");
+  const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+  const mailOptions = {
+    from: `"OneHeal Support" <${process.env.SMTP_USER}>`,
+    to: email,
+    subject: "OneHeal Password Reset Request",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0E2F5A 0%, #007787 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #007787; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-weight: bold; margin: 20px 0; }
+          .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .link-box { word-break: break-all; font-size: 13px; color: #555; background: white; padding: 12px; border-radius: 6px; border: 1px solid #ddd; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Password Reset Request</h1>
+          </div>
+          <div class="content">
+            <p>Hello <strong>${fullName}</strong>,</p>
+            <p>We received a request to reset your OneHeal account password.</p>
+
+            <p>
+              <a class="button" href="${resetUrl}">Reset Password</a>
+            </p>
+
+            <div class="link-box">
+              If the button does not work, copy and paste this link into your browser:<br />
+              ${resetUrl}
+            </div>
+
+            <div class="note">
+              <strong>Important:</strong> This link will expire in 1 hour and can only be used once. If you did not request this reset, please ignore this email.
+            </div>
+
+            <p>Best regards,<br><strong>OneHeal Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>&copy; ${new Date().getFullYear()} OneHeal. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Password reset email sent to ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send password reset email to ${email}:`, error);
+    throw new Error("Failed to send password reset email");
+  }
+};
+
+/**
  * Send OTP email for 2FA
  * @param email - Recipient email address
  * @param otp - 6-digit OTP code

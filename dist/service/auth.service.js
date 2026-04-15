@@ -9,6 +9,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Appuser_1 = require("../models/Appuser");
 const Wallet_1 = require("../models/Wallet");
 const wallet_service_1 = require("./wallet.service");
+const emailService_1 = require("./emailService");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config(); // ✅ MUST be first
 class DoctorAuthService {
@@ -130,29 +131,61 @@ class DoctorAuthService {
     /**
      * Forgot password - Generate reset token
      */
-    static async forgotPassword(email, currentPassword) {
+    static async forgotPassword(email) {
         const user = await Appuser_1.AppUser.findOne({
             where: { email: email.toLowerCase() },
         });
         if (!user) {
-            throw new Error("Invalid email or current password");
-        }
-        // Verify current password if provided
-        if (currentPassword) {
-            const isMatch = await bcrypt_1.default.compare(currentPassword.trim(), user.password);
-            if (!isMatch) {
-                throw new Error("Invalid email or current password");
-            }
+            // Avoid account enumeration by returning the same response even when the account does not exist.
+            return {
+                message: "If the email exists, a password reset link has been sent.",
+            };
         }
         // Generate password reset token
         const resetToken = jsonwebtoken_1.default.sign({
             id: user.id,
             type: "password-reset",
+            tokenVersion: user.tokenVersion ?? 0,
         }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        await (0, emailService_1.sendPasswordResetEmail)(user.email, user.fullName, resetToken);
         return {
-            message: "Identity verified. You can now reset your password.",
-            resetToken,
+            message: "If the email exists, a password reset link has been sent.",
         };
+    }
+    /**
+     * Validate password reset token before showing the reset form
+     */
+    static async verifyResetToken(resetToken) {
+        try {
+            const decoded = jsonwebtoken_1.default.verify(resetToken, process.env.JWT_SECRET);
+            if (decoded.type !== "password-reset") {
+                throw new Error("Invalid reset token");
+            }
+            const user = await Appuser_1.AppUser.findByPk(decoded.id, {
+                attributes: ["id", "email", "fullName", "tokenVersion"],
+            });
+            if (!user) {
+                throw new Error("User not found");
+            }
+            const currentTokenVersion = user.tokenVersion ?? 0;
+            if ((decoded.tokenVersion ?? -1) !== currentTokenVersion) {
+                throw new Error("Reset token is no longer valid");
+            }
+            return {
+                valid: true,
+                email: user.email,
+                fullName: user.fullName,
+            };
+        }
+        catch (error) {
+            if (error.name === "TokenExpiredError") {
+                throw new Error("Reset token has expired");
+            }
+            if (error.name === "JsonWebTokenError") {
+                throw new Error("Invalid reset token");
+            }
+            throw error;
+        }
     }
     /**
      * Reset password using reset token
@@ -169,8 +202,15 @@ class DoctorAuthService {
             if (!user) {
                 throw new Error("User not found");
             }
+            const currentTokenVersion = user.tokenVersion ?? 0;
+            if ((decoded.tokenVersion ?? -1) !== currentTokenVersion) {
+                throw new Error("Reset token is no longer valid");
+            }
             // Update password — the @BeforeUpdate hook in AppUser hashes it automatically
-            await user.update({ password: newPassword.trim() });
+            await user.update({
+                password: newPassword.trim(),
+                tokenVersion: currentTokenVersion + 1,
+            });
             return {
                 message: "Password reset successfully",
             };

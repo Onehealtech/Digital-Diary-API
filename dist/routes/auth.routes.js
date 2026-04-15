@@ -56,6 +56,7 @@ router.get("/auth/me", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUP
 router.post("/auth/logout", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.logout);
 router.post("/auth/refresh", auth_controller_1.DoctorAuthController.refreshToken);
 router.post("/auth/forgot-password", auth_controller_1.DoctorAuthController.forgotPassword);
+router.get("/auth/verify-reset-token", auth_controller_1.DoctorAuthController.verifyResetToken);
 router.post("/auth/reset-password", auth_controller_1.DoctorAuthController.resetPassword);
 router.put("/auth/change-password", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.changePassword);
 router.put("/user/profile", (0, authMiddleware_1.authCheck)([constants_1.UserRole.SUPER_ADMIN, constants_1.UserRole.DOCTOR, constants_1.UserRole.ASSISTANT, constants_1.UserRole.VENDOR]), auth_controller_1.DoctorAuthController.updateProfile);
