@@ -8,6 +8,7 @@ const visionScan_repository_1 = require("./visionScan.repository");
 const visionScan_prompts_1 = require("./visionScan.prompts");
 const visionScan_config_1 = require("./visionScan.config");
 const documentAI_service_1 = require("./documentAI.service");
+const anthropic_service_1 = require("./anthropic.service");
 const visionScan_types_1 = require("./visionScan.types");
 class VisionScanService {
     constructor() {
@@ -162,12 +163,30 @@ class VisionScanService {
             return null;
         }
         try {
-            const useDocAI = process.env.USE_DOCUMENT_AI === "true" && (0, documentAI_service_1.isDocumentAIConfigured)();
+            const useAnthropic = process.env.USE_ANTHROPIC === "true" && (0, anthropic_service_1.isAnthropicConfigured)();
+            const useDocAI = !useAnthropic && process.env.USE_DOCUMENT_AI === "true" && (0, documentAI_service_1.isDocumentAIConfigured)();
             let enrichedResults;
             let rawConfidenceScores;
             let lowConfidenceFields;
             let metadata;
-            if (useDocAI) {
+            if (useAnthropic) {
+                // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                const result = await (0, anthropic_service_1.extractWithAnthropic)(imageBuffer, data.detectedPageNumber, diaryPage.title, diaryPage.questions);
+                const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                enrichedResults = built.enrichedResults;
+                rawConfidenceScores = built.rawConfidenceScores;
+                lowConfidenceFields = built.lowConfidenceFields;
+                metadata = {
+                    model: "anthropic/claude-sonnet-4-20250514",
+                    promptTokens: 0,
+                    responseTokens: 0,
+                    totalTokens: 0,
+                    processingTimeMs: result.processingTimeMs,
+                    lowConfidenceFields,
+                };
+            }
+            else if (useDocAI) {
                 // ─── Google Document AI (trained custom extractor) ───────────
                 const imageBuffer = Buffer.from(data.base64, "base64");
                 const docResult = await (0, documentAI_service_1.extractWithDocumentAI)(imageBuffer, data.mimeType, diaryPage.questions);
@@ -183,7 +202,6 @@ class VisionScanService {
                     processingTimeMs: docResult.usage.processingTimeMs,
                     lowConfidenceFields,
                 };
-                console.log(`[VisionScan] Document AI extraction complete — ${docResult.usage.entityCount} entities, ${docResult.usage.processingTimeMs}ms`);
             }
             else {
                 // ─── OpenRouter LLM (prompt-based fallback) ─────────────────

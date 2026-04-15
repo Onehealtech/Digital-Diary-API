@@ -6,6 +6,7 @@ import { visionScanRepository } from "./visionScan.repository";
 import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT } from "./visionScan.prompts";
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
 import { extractWithDocumentAI, isDocumentAIConfigured } from "./documentAI.service";
+import { extractWithAnthropic, isAnthropicConfigured } from "./anthropic.service";
 import {
     AIExtractionResult,
     DiaryQuestion,
@@ -230,14 +231,39 @@ class VisionScanService {
         }
 
         try {
-            const useDocAI = process.env.USE_DOCUMENT_AI === "true" && isDocumentAIConfigured();
+            const useAnthropic = process.env.USE_ANTHROPIC === "true" && isAnthropicConfigured();
+            const useDocAI     = !useAnthropic && process.env.USE_DOCUMENT_AI === "true" && isDocumentAIConfigured();
 
             let enrichedResults: Record<string, EnrichedResult>;
             let rawConfidenceScores: Record<string, number>;
             let lowConfidenceFields: string[];
             let metadata: ProcessingMetadata;
 
-            if (useDocAI) {
+            if (useAnthropic) {
+                // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                const result = await extractWithAnthropic(
+                    imageBuffer,
+                    data.detectedPageNumber,
+                    diaryPage.title,
+                    diaryPage.questions
+                );
+
+                const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
+
+                metadata = {
+                    model: "anthropic/claude-sonnet-4-20250514",
+                    promptTokens:    0,
+                    responseTokens:  0,
+                    totalTokens:     0,
+                    processingTimeMs: result.processingTimeMs,
+                    lowConfidenceFields,
+                };
+
+            } else if (useDocAI) {
                 // ─── Google Document AI (trained custom extractor) ───────────
                 const imageBuffer = Buffer.from(data.base64, "base64");
                 const docResult = await extractWithDocumentAI(
@@ -247,20 +273,19 @@ class VisionScanService {
                 );
 
                 const built = this.buildEnrichedResults(diaryPage.questions, docResult.extraction);
-                enrichedResults = built.enrichedResults;
-                rawConfidenceScores = built.rawConfidenceScores;
-                lowConfidenceFields = built.lowConfidenceFields;
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
 
                 metadata = {
                     model: "google-document-ai-custom",
-                    promptTokens: 0,
-                    responseTokens: 0,
-                    totalTokens: 0,
+                    promptTokens:    0,
+                    responseTokens:  0,
+                    totalTokens:     0,
                     processingTimeMs: docResult.usage.processingTimeMs,
                     lowConfidenceFields,
                 };
 
-                console.log(`[VisionScan] Document AI extraction complete — ${docResult.usage.entityCount} entities, ${docResult.usage.processingTimeMs}ms`);
             } else {
                 // ─── OpenRouter LLM (prompt-based fallback) ─────────────────
                 const prompt = buildExtractionPrompt(diaryPage);
@@ -269,15 +294,15 @@ class VisionScanService {
                 const processingTimeMs = Date.now() - startTime;
 
                 const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
-                enrichedResults = built.enrichedResults;
-                rawConfidenceScores = built.rawConfidenceScores;
-                lowConfidenceFields = built.lowConfidenceFields;
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
 
                 metadata = {
                     model: VISION_SCAN_CONFIG.MODEL,
-                    promptTokens: aiResult.usage.prompt_tokens,
+                    promptTokens:   aiResult.usage.prompt_tokens,
                     responseTokens: aiResult.usage.completion_tokens,
-                    totalTokens: aiResult.usage.total_tokens,
+                    totalTokens:    aiResult.usage.total_tokens,
                     processingTimeMs,
                     lowConfidenceFields,
                 };
