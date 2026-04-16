@@ -1,11 +1,10 @@
 /**
  * Anthropic Claude Vision Extraction Service
  *
- * Ports the cantrac-omr image processing + Anthropic API approach into the
- * Digital Diary API pipeline. Uses:
- *   - Sharp preprocessing  (auto-rotate, resize, normalize, sharpen)
- *   - Anthropic claude-sonnet-4-6 via direct HTTP (same as cantrac-omr)
- *   - Diary page questions from the database (not hardcoded templates)
+ * Ported from cantrac-omr-updated-2 into the Digital Diary API pipeline.
+ *   - Sharp preprocessing: auto-rotate + force landscape + normalize + sharpen
+ *   - Anthropic claude-sonnet-4-6 via direct HTTP
+ *   - Schedule pages: chain-of-thought reasoning + 3000px high-res
  *   - Returns AIExtractionResult — identical format to the existing pipeline
  */
 
@@ -15,12 +14,12 @@ import { AIExtractionResult, DiaryQuestion } from "./visionScan.types";
 // ─── Config ────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
-const MAX_TOKENS        = 2048;
+const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+const MAX_TOKENS        = 4096; // increased for reasoning field on schedule pages
 
 // Standard pages: 1600px / q=85  |  Schedule pages (tiny date bubbles): 3000px / q=95
-const STD_MAX_DIM  = 1600;
-const STD_QUALITY  = 85;
+const STD_MAX_DIM   = 1600;
+const STD_QUALITY   = 85;
 const SCHED_MAX_DIM = 3000;
 const SCHED_QUALITY = 95;
 
@@ -42,35 +41,52 @@ interface AnthropicRawResult {
     pageNumber?: number;
     pageType?:   string;
     title?:      string;
+    reasoning?:  Record<string, string>;
     fields:      Record<string, AnthropicField>;
 }
 
 export interface AnthropicExtractionResult {
-    extraction:    AIExtractionResult;
-    processingTimeMs: number;
+    extraction:        AIExtractionResult;
+    processingTimeMs:  number;
     overallConfidence: number;
-    warnings: string[];
+    warnings:          string[];
 }
 
 // ─── Image Preprocessing ──────────────────────────────────────────────────
 
 /**
  * Preprocess phone photo for optimal vision API extraction.
- * Ported directly from cantrac-omr/src/utils/image-preprocessor.js
+ * Ported from cantrac-omr-updated-2/src/utils/image-preprocessor.js
+ *
+ * Steps:
+ *   1. Auto-rotate via EXIF
+ *   2. Force landscape — all CANTrac pages are landscape; portrait photos
+ *      are rotated 90° clockwise so the form reads correctly
+ *   3. Resize, normalize contrast, sharpen, compress
  */
 async function preprocessForVision(
     imageBuffer: Buffer,
     maxDimension: number = STD_MAX_DIM,
     quality: number = STD_QUALITY
 ): Promise<Buffer> {
-    return sharp(imageBuffer)
-        .rotate()                                    // Auto-rotate via EXIF
+    // Step 1: Auto-rotate via EXIF
+    let rotatedBuffer = await sharp(imageBuffer).rotate().toBuffer();
+    let rotatedMeta   = await sharp(rotatedBuffer).metadata();
+
+    // Step 2: Force landscape — rotate portrait images 90° clockwise
+    if (rotatedMeta.height && rotatedMeta.width && rotatedMeta.height > rotatedMeta.width) {
+        console.log("[Preprocessor] Portrait image detected — rotating to landscape");
+        rotatedBuffer = await sharp(rotatedBuffer).rotate(90).toBuffer();
+    }
+
+    // Step 3: Resize, enhance, compress
+    return sharp(rotatedBuffer)
         .resize(maxDimension, maxDimension, {
             fit: "inside",
             withoutEnlargement: true,
         })
-        .normalize()                                 // Stretch contrast
-        .sharpen({ sigma: 1.0 })                    // Mild sharpening
+        .normalize()
+        .sharpen({ sigma: 1.0 })
         .jpeg({ quality })
         .toBuffer();
 }
@@ -90,19 +106,7 @@ CRITICAL RULES:
 6. For status fields: return one of the exact option strings.
 7. The page number is printed at the top center of every page.
 8. Photos may be taken at an angle, rotated sideways, or on a textured background — mentally rotate the image if needed to read the form correctly. Focus on the white paper area.
-9. For DATE ROWS (DD/MM/YY): these have rows of small bubbles numbered 01-31, or labeled Jan-Dec, or 2026/2027/2028. You MUST scan each bubble carefully. Exactly ONE bubble per row will be filled dark. The rest will be empty (light outline). Report the value next to the filled bubble. DD values must be zero-padded: "01", "05", "14", "31".`;
-}
-
-function buildPageIdentificationPrompt(): string {
-    return `Look at this CANTrac breast cancer diary page.
-
-Read ONLY the page number printed at the top center and the page title.
-
-Respond with ONLY this JSON (no markdown, no backticks):
-{
-  "pageNumber": <number>,
-  "title": "<English title>"
-}`;
+9. For DATE ROWS (DD/MM/YY): each value label has a bubble circle to its LEFT. The filled dark bubble has the answer printed to its RIGHT. Exactly ONE bubble per row will be filled dark. DD values must be zero-padded: "01", "05", "14", "31".`;
 }
 
 function buildExtractionPrompt(
@@ -152,39 +156,53 @@ ${exampleFields}
 }`;
 }
 
+/**
+ * Specialized prompt for schedule pages.
+ * Ported from cantrac-omr-updated-2/src/utils/prompt-builder.js buildSchedulePrompt()
+ *
+ * Key improvement: requires a "reasoning" field (chain-of-thought) so the model
+ * describes what it sees in each row before committing to a value — greatly
+ * improves accuracy on tiny date bubbles.
+ */
 function buildSchedulePrompt(pageNumber: number, pageTitle: string): string {
     return `This is CANTrac page ${pageNumber}: "${pageTitle}"
 
-This is a SCHEDULE PAGE with appointment dates. It has TWO appointment sections and a final question.
+This is a SCHEDULE PAGE with appointment dates filled by a patient using dark blue/purple ink.
 
-Look at this form carefully. For each section, tell me what date and status are selected by reading which bubbles are filled in with dark ink.
+STEP-BY-STEP ANALYSIS REQUIRED:
+For each section, you must carefully analyze each row of bubbles and describe what you see before giving the answer.
 
-BUBBLE POSITION RULE — CRITICAL:
-For DD (day) rows: the bubble appears to the LEFT of the number. Read the number to the RIGHT of the filled bubble.
-Example: "○ 06  ● 07  ○ 08" → answer is "07" because 07 is printed to the RIGHT of the filled bubble.
+SECTION 1: "First Appointment" (first/top section on the page)
+1. DD row: Bubbles and numbers are arranged as: ○01 ○02 ○03 ○04 ●05 ○06... The bubble is ALWAYS to the LEFT of its number. So if you see a filled bubble, read the number IMMEDIATELY TO THE RIGHT of that filled bubble. That is the selected day. Split across two lines: 01-16 on first line, 17-31 on second line. Report as two digits like "05", "14", "22".
+2. MM row: Same pattern — bubble is to the LEFT of each month name: ○Jan ○Feb ○Mar ●Apr... Read the month name to the RIGHT of the filled bubble.
+3. YY row: Three bubbles next to 2026, 2027, 2028. Which year has the dark filled bubble?
+4. Status row: Four bubbles next to "Scheduled", "Completed", "Missed", "Cancelled". Which one is filled?
 
-SECTION 1: "First Appointment" (top section)
-- DD row: Numbers 01-31 are printed left to right. Each number has a bubble to its LEFT. The filled dark bubble has the answer number printed to its RIGHT. Report that number as two digits e.g. "05", "14", "22".
-- MM row: Jan, Feb, Mar ... Dec. Each month has a bubble to its RIGHT. Which month has its RIGHT-SIDE bubble filled dark?
-- YY row: 2026, 2027, 2028. Each year has a bubble to its RIGHT. Which year has its RIGHT-SIDE bubble filled dark?
-- Status row: Scheduled, Completed, Missed, Cancelled. Each option has a bubble to its RIGHT. Which has its RIGHT-SIDE bubble filled dark?
+SECTION 2: "Second Attempt (If First Missed/Cancelled)" (second/bottom section)
+Same structure as Section 1. This section may be completely empty (all bubbles unfilled) if no second attempt was needed.
 
-SECTION 2: "Second Attempt (If First Missed/Cancelled)" (bottom section)
-- Same layout: bubble is always to the RIGHT of the value label.
-- DD (01-31), MM (Jan-Dec), YY (2026/2027/2028), Status (Scheduled/Completed/Missed/Cancelled)
-- This section may be blank if no second attempt was needed.
+FINAL QUESTION: "Next Appointment Required" at the very bottom — Yes or No.
 
-FINAL QUESTION: "Next Appointment Required" — Yes or No, each with a bubble to its RIGHT.
+HOW TO TELL FILLED vs EMPTY:
+- FILLED: The circle is SOLID dark (blue, purple, or near-black). It is clearly different from all the others around it.
+- EMPTY: The circle is just an outline — light pink or light gray. Most bubbles on the page look like this.
+- In each row, there will be many empty bubbles and exactly ONE filled bubble (or zero if the row was not answered).
 
-TIPS FOR READING BUBBLES:
-- FILLED = dark solid circle (blue, purple, or black ink) to the RIGHT of the value text
-- EMPTY = light circle with just an outline
-- The filled bubble is clearly darker than all other bubbles in the same row
-
-Respond with ONLY this JSON (no markdown, no backticks):
+Respond with this JSON. The "reasoning" field is REQUIRED — describe what you see for each row before giving the value:
 {
   "pageNumber": ${pageNumber},
+  "pageType": "schedule",
   "title": "${pageTitle}",
+  "reasoning": {
+    "first_dd": "Scanning DD row 01-16... [describe which bubble looks dark]. Scanning 17-31... [describe]. The filled bubble is next to number XX.",
+    "first_mm": "Scanning month row... [describe which month bubble is dark].",
+    "first_yy": "Looking at 2026, 2027, 2028... [describe which is filled].",
+    "first_status": "Looking at Scheduled, Completed, Missed, Cancelled... [describe which is filled].",
+    "second_dd": "Scanning second attempt DD row... [describe or 'all empty'].",
+    "second_mm": "Scanning second attempt month row... [describe or 'all empty'].",
+    "second_yy": "Looking at second attempt year... [describe or 'all empty'].",
+    "second_status": "Looking at second attempt status... [describe or 'all empty']."
+  },
   "fields": {
     "q1_date": { "value": "<DD/MM/YY or null>", "confidence": "high|medium|low" },
     "q1_status": { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
@@ -214,9 +232,9 @@ async function callAnthropicAPI(
                     {
                         type: "image",
                         source: {
-                            type:       "base64",
-                            media_type: "image/jpeg",
-                            data:       base64Image,
+                            type:        "base64",
+                            media_type:  "image/jpeg",
+                            data:        base64Image,
                         },
                     },
                     {
@@ -225,14 +243,20 @@ async function callAnthropicAPI(
                     },
                 ],
             },
+            // Prefill assistant response with "{" — forces JSON output,
+            // no preamble text regardless of model
+            {
+                role:    "assistant",
+                content: "{",
+            },
         ],
     };
 
     const response = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
         headers: {
-            "Content-Type":    "application/json",
-            "x-api-key":       apiKey,
+            "Content-Type":      "application/json",
+            "x-api-key":         apiKey,
             "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify(body),
@@ -253,9 +277,11 @@ async function callAnthropicAPI(
 
     if (!text) throw new Error("Anthropic API returned empty response");
 
-    const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    // Prepend the "{" we used as prefill
+    const raw     = "{" + text;
+    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
     // Fix leading zeros in JSON number values (e.g. "value": 012 → "value": 12)
-    const fixed = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
+    const fixed   = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
 
     try {
         return JSON.parse(fixed) as AnthropicRawResult;
@@ -268,16 +294,6 @@ async function callAnthropicAPI(
 
 // ─── Main Export ──────────────────────────────────────────────────────────
 
-/**
- * Extract diary page fields using Anthropic Claude Vision.
- * Drop-in replacement for the OpenRouter LLM path in visionScan.service.ts.
- *
- * @param imageBuffer  Raw image buffer from upload
- * @param pageNumber   Detected page number
- * @param pageTitle    Page title (from DB)
- * @param questions    Diary page questions (from DB)
- * @returns AnthropicExtractionResult with extraction in AIExtractionResult format
- */
 export async function extractWithAnthropic(
     imageBuffer: Buffer,
     pageNumber: number,
@@ -289,8 +305,8 @@ export async function extractWithAnthropic(
         throw new Error("ANTHROPIC_API_KEY is not set in environment variables");
     }
 
-    const startTime = Date.now();
-    const warnings: string[] = [];
+    const startTime  = Date.now();
+    const warnings:  string[] = [];
     const isSchedule = questions.some(q => q.type === "date" || q.type === "select");
 
     // Preprocess image — higher resolution for schedule pages
@@ -306,7 +322,13 @@ export async function extractWithAnthropic(
     const userPrompt   = buildExtractionPrompt(pageNumber, pageTitle, questions);
     const rawResult    = await callAnthropicAPI(base64Image, systemPrompt, userPrompt, apiKey);
 
-    // Map cantrac-omr field format → AIExtractionResult format
+    // Log chain-of-thought reasoning (schedule pages only) then discard
+    if (rawResult.reasoning) {
+        console.log("[Anthropic] Model reasoning:", JSON.stringify(rawResult.reasoning, null, 2));
+        delete rawResult.reasoning;
+    }
+
+    // Map Anthropic field format → AIExtractionResult format
     const extraction: AIExtractionResult = {};
 
     for (const question of questions) {
@@ -316,20 +338,20 @@ export async function extractWithAnthropic(
 
         if (raw) {
             const confidenceStr = raw.confidence || "medium";
-            const confidence = CONFIDENCE_MAP[confidenceStr] ?? 0.75;
+            const confidence    = CONFIDENCE_MAP[confidenceStr] ?? 0.75;
 
-            // Normalize yes/no values to lowercase
             let value: string | null = raw.value ?? null;
+            // Normalise yes/no to lowercase
             if (question.type === "yes_no" && value) {
                 const lower = value.toLowerCase().trim();
-                if (["yes", "हाँ", "y", "true"].includes(lower)) value = "yes";
-                else if (["no", "नहीं", "n", "false"].includes(lower)) value = "no";
+                if (["yes", "हाँ", "y", "true"].includes(lower))        value = "yes";
+                else if (["no", "नहीं", "n", "false"].includes(lower))  value = "no";
             }
 
             extraction[question.id] = { value, confidence };
 
             if (confidenceStr === "low") {
-                warnings.push(`Low confidence on field "${question.id}": ${question.text}`);
+                warnings.push(`Low confidence on "${question.id}": ${question.text}`);
             }
         } else {
             warnings.push(`Field "${question.id}" not returned by Anthropic`);
@@ -339,7 +361,6 @@ export async function extractWithAnthropic(
 
     const processingTimeMs = Date.now() - startTime;
 
-    // Overall confidence
     const scores = Object.values(extraction).map(f => f.confidence);
     const overallConfidence = scores.length
         ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
@@ -353,9 +374,6 @@ export async function extractWithAnthropic(
     return { extraction, processingTimeMs, overallConfidence, warnings };
 }
 
-/**
- * Check if Anthropic is configured.
- */
 export function isAnthropicConfigured(): boolean {
     return !!process.env.ANTHROPIC_API_KEY;
 }
