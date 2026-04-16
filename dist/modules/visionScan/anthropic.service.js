@@ -5,7 +5,7 @@
  * Ports the cantrac-omr image processing + Anthropic API approach into the
  * Digital Diary API pipeline. Uses:
  *   - Sharp preprocessing  (auto-rotate, resize, normalize, sharpen)
- *   - Anthropic claude-sonnet-4-20250514 via direct HTTP (same as cantrac-omr)
+ *   - Anthropic claude-sonnet-4-6 via direct HTTP (same as cantrac-omr)
  *   - Diary page questions from the database (not hardcoded templates)
  *   - Returns AIExtractionResult — identical format to the existing pipeline
  */
@@ -17,7 +17,7 @@ exports.isAnthropicConfigured = exports.extractWithAnthropic = void 0;
 const sharp_1 = __importDefault(require("sharp"));
 // ─── Config ────────────────────────────────────────────────────────────────
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 2048;
 // Standard pages: 1600px / q=85  |  Schedule pages (tiny date bubbles): 3000px / q=95
 const STD_MAX_DIM = 1600;
@@ -60,7 +60,8 @@ CRITICAL RULES:
 5. For Yes/No fields: return "Yes" or "No" (or null if unreadable).
 6. For status fields: return one of the exact option strings.
 7. The page number is printed at the top center of every page.
-8. Photos may be taken at an angle or on a textured background — focus on the white paper area and the bubbles within it.`;
+8. Photos may be taken at an angle, rotated sideways, or on a textured background — mentally rotate the image if needed to read the form correctly. Focus on the white paper area.
+9. For DATE ROWS (DD/MM/YY): these have rows of small bubbles numbered 01-31, or labeled Jan-Dec, or 2026/2027/2028. You MUST scan each bubble carefully. Exactly ONE bubble per row will be filled dark. The rest will be empty (light outline). Report the value next to the filled bubble. DD values must be zero-padded: "01", "05", "14", "31".`;
 }
 function buildPageIdentificationPrompt() {
     return `Look at this CANTrac breast cancer diary page.
@@ -116,22 +117,25 @@ function buildSchedulePrompt(pageNumber, pageTitle) {
 
 This is a SCHEDULE PAGE with appointment dates. It has TWO appointment sections and a final question.
 
-SECTION 1: "First Appointment" (top section)
-- What DAY (DD) is selected? The DD row has numbers 01-31. Which number has a DARK FILLED bubble? Report as two digits e.g. "05", "14".
-- What MONTH (MM) is selected? Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec. Which has a dark filled bubble?
-- What YEAR (YY) is selected? Options: 2026, 2027, 2028. Which has a dark filled bubble?
-- What STATUS is selected? Scheduled, Completed, Missed, Cancelled. Which has a dark filled bubble?
+Look at this form carefully. For each section, tell me what date and status are selected by reading which bubbles are filled in with dark ink.
 
-SECTION 2: "Second Attempt" (bottom section)
+SECTION 1: "First Appointment" (top section)
+- What DAY (DD) is selected? The DD row has numbers 01-31. Which number has a DARK FILLED bubble? Report as two digits, e.g. "05", "14", "22".
+- What MONTH (MM) is selected? The month row shows: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec. Which month has a dark filled bubble?
+- What YEAR (YY) is selected? Options are 2026, 2027, 2028. Which year has a dark filled bubble?
+- What STATUS is selected? Options are: Scheduled, Completed, Missed, Cancelled. Which one has a dark filled bubble?
+
+SECTION 2: "Second Attempt (If First Missed/Cancelled)" (bottom section)
 - Same structure: DD (01-31), MM (Jan-Dec), YY (2026/2027/2028), Status (Scheduled/Completed/Missed/Cancelled)
-- May be blank if no second attempt was needed.
+- This section may be blank if no second attempt was needed.
 
 FINAL QUESTION: "Next Appointment Required" — Yes or No bubble at the very bottom.
 
-TIPS:
+IMPORTANT TIPS FOR READING BUBBLES:
 - FILLED = dark solid circle (blue, purple, or black ink inside)
-- EMPTY = light circle with just an outline
-- Count DD positions from 01 to find the selected number
+- EMPTY = light circle with just an outline, or very faint gray
+- The filled bubbles are SMALL but clearly darker than the empty ones around them
+- Some DD numbers may be hard to read — count the position from 01 to determine which number it is
 
 Respond with ONLY this JSON (no markdown, no backticks):
 {
@@ -194,8 +198,10 @@ async function callAnthropicAPI(base64Image, systemPrompt, userPrompt, apiKey) {
     if (!text)
         throw new Error("Anthropic API returned empty response");
     const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    // Fix leading zeros in JSON number values (e.g. "value": 012 → "value": 12)
+    const fixed = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
     try {
-        return JSON.parse(cleaned);
+        return JSON.parse(fixed);
     }
     catch {
         throw new Error(`Failed to parse Anthropic response as JSON: ${cleaned.substring(0, 500)}`);
