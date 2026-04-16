@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import { DiaryPage } from "../models/DiaryPage";
 
 const DIARY_TYPE = "CanTRAC-Breast";
@@ -30,7 +31,7 @@ function scheduleQuestions(): Question[] {
         { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
         { id: "q2_date", text: "Second Attempt Date (If First Missed/Cancelled)", textHi: "दूसरे प्रयास की तारीख (यदि पहला छूट गया/रद्द हो गया)", type: "date", category: "schedule" },
         { id: "q2_status", text: "Second Attempt Status", textHi: "दूसरे प्रयास की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-        { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+        // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
     ];
 }
 
@@ -366,7 +367,7 @@ const PAGES: PageDef[] = [
             { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
             { id: "q2_date", text: "Get A Redate For Clip Placement", textHi: "क्लिप लगाने की नई तारीख", type: "date", category: "schedule" },
             { id: "q2_status", text: "Redate Status", textHi: "नई तारीख की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
         ],
     },
 
@@ -406,7 +407,7 @@ const PAGES: PageDef[] = [
         questions: [
             { id: "q1_date", text: "Chemotherapy/Systemic Therapy Cycle Start Date", textHi: "कीमोथेरेपी/सिस्टमिक थेरेपी चक्र प्रारंभ तिथि", type: "date", category: "chemotherapy" },
             { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "chemotherapy" },
-            { id: "q2", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "chemotherapy" },
+            // { id: "q2", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "chemotherapy" },
         ],
     },
 
@@ -431,7 +432,7 @@ const PAGES: PageDef[] = [
         questions: [
             { id: "q1_date", text: "Last Chemotherapy/Systemic Therapy Cycle Date", textHi: "पिछली कीमोथेरेपी/सिस्टमिक थेरेपी साइकिल की तारीख", type: "date", category: "chemotherapy" },
             { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "chemotherapy" },
-            { id: "q2", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "chemotherapy" },
+            // { id: "q2", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "chemotherapy" },
         ],
     },
 
@@ -446,7 +447,7 @@ const PAGES: PageDef[] = [
             { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
             { id: "q2_date", text: "Got a reappointment date", textHi: "दोबारा अपॉइंटमेंट की तारीख मिल गई है", type: "date", category: "schedule" },
             { id: "q2_status", text: "Reappointment Status", textHi: "दोबारा अपॉइंटमेंट की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
         ],
     },
 
@@ -461,7 +462,7 @@ const PAGES: PageDef[] = [
             { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "surgery" },
             { id: "q2_date", text: "Get A Redate For Admission For Surgery", textHi: "सर्जरी के लिए एडमिशन की नई तारीख", type: "date", category: "surgery" },
             { id: "q2_status", text: "Redate Status", textHi: "नई तारीख की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "surgery" },
-            { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "surgery" },
+            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "surgery" },
         ],
     },
 
@@ -494,9 +495,13 @@ const PAGES: PageDef[] = [
  * Drops all existing CANTrac-Breast pages first, then re-seeds fresh.
  */
 export async function seedDiaryPages(): Promise<number> {
-    // Drop all existing pages for this diary type
+    // Drop all existing pages for this diary type (covers old and new casing)
     await DiaryPage.destroy({
-        where: { diaryType: DIARY_TYPE },
+        where: {
+            diaryType: {
+                [Op.in]: ["CanTRAC-Breast", "CANTrac-Breast", "breast-cancer-treatment"],
+            },
+        },
     });
 
     // Re-seed all pages

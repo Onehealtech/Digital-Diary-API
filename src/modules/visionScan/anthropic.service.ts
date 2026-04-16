@@ -159,23 +159,27 @@ This is a SCHEDULE PAGE with appointment dates. It has TWO appointment sections 
 
 Look at this form carefully. For each section, tell me what date and status are selected by reading which bubbles are filled in with dark ink.
 
+BUBBLE POSITION RULE — CRITICAL:
+For DD (day) rows: the bubble appears to the LEFT of the number. Read the number to the RIGHT of the filled bubble.
+Example: "○ 06  ● 07  ○ 08" → answer is "07" because 07 is printed to the RIGHT of the filled bubble.
+
 SECTION 1: "First Appointment" (top section)
-- What DAY (DD) is selected? The DD row has numbers 01-31. Which number has a DARK FILLED bubble? Report as two digits, e.g. "05", "14", "22".
-- What MONTH (MM) is selected? The month row shows: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec. Which month has a dark filled bubble?
-- What YEAR (YY) is selected? Options are 2026, 2027, 2028. Which year has a dark filled bubble?
-- What STATUS is selected? Options are: Scheduled, Completed, Missed, Cancelled. Which one has a dark filled bubble?
+- DD row: Numbers 01-31 are printed left to right. Each number has a bubble to its LEFT. The filled dark bubble has the answer number printed to its RIGHT. Report that number as two digits e.g. "05", "14", "22".
+- MM row: Jan, Feb, Mar ... Dec. Each month has a bubble to its RIGHT. Which month has its RIGHT-SIDE bubble filled dark?
+- YY row: 2026, 2027, 2028. Each year has a bubble to its RIGHT. Which year has its RIGHT-SIDE bubble filled dark?
+- Status row: Scheduled, Completed, Missed, Cancelled. Each option has a bubble to its RIGHT. Which has its RIGHT-SIDE bubble filled dark?
 
 SECTION 2: "Second Attempt (If First Missed/Cancelled)" (bottom section)
-- Same structure: DD (01-31), MM (Jan-Dec), YY (2026/2027/2028), Status (Scheduled/Completed/Missed/Cancelled)
+- Same layout: bubble is always to the RIGHT of the value label.
+- DD (01-31), MM (Jan-Dec), YY (2026/2027/2028), Status (Scheduled/Completed/Missed/Cancelled)
 - This section may be blank if no second attempt was needed.
 
-FINAL QUESTION: "Next Appointment Required" — Yes or No bubble at the very bottom.
+FINAL QUESTION: "Next Appointment Required" — Yes or No, each with a bubble to its RIGHT.
 
-IMPORTANT TIPS FOR READING BUBBLES:
-- FILLED = dark solid circle (blue, purple, or black ink inside)
-- EMPTY = light circle with just an outline, or very faint gray
-- The filled bubbles are SMALL but clearly darker than the empty ones around them
-- Some DD numbers may be hard to read — count the position from 01 to determine which number it is
+TIPS FOR READING BUBBLES:
+- FILLED = dark solid circle (blue, purple, or black ink) to the RIGHT of the value text
+- EMPTY = light circle with just an outline
+- The filled bubble is clearly darker than all other bubbles in the same row
 
 Respond with ONLY this JSON (no markdown, no backticks):
 {
