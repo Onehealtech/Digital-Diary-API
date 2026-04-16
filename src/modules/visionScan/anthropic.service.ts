@@ -15,7 +15,7 @@ import { AIExtractionResult, DiaryQuestion } from "./visionScan.types";
 // ─── Config ────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL   = "claude-sonnet-4-6";
+const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
 const MAX_TOKENS        = 2048;
 
 // Standard pages: 1600px / q=85  |  Schedule pages (tiny date bubbles): 3000px / q=95
