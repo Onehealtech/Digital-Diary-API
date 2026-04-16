@@ -223,9 +223,7 @@ async function callAnthropicAPI(base64Image, systemPrompt, userPrompt, apiKey) {
         .trim();
     if (!text)
         throw new Error("Anthropic API returned empty response");
-    // Prepend the "{" we used as prefill
-    const raw = "{" + text;
-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
     // Fix leading zeros in JSON number values (e.g. "value": 012 → "value": 12)
     const fixed = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
     try {
