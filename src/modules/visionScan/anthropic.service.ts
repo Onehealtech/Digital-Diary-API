@@ -245,10 +245,10 @@ async function callAnthropicAPI(
             },
             // Prefill assistant response with "{" — forces JSON output,
             // no preamble text regardless of model
-            {
-                role:    "assistant",
-                content: "{",
-            },
+            // {
+            //     role:    "assistant",
+            //     content: "{",
+            // },
         ],
     };
 

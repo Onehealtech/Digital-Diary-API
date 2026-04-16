@@ -196,10 +196,10 @@ async function callAnthropicAPI(base64Image, systemPrompt, userPrompt, apiKey) {
             },
             // Prefill assistant response with "{" — forces JSON output,
             // no preamble text regardless of model
-            {
-                role: "assistant",
-                content: "{",
-            },
+            // {
+            //     role:    "assistant",
+            //     content: "{",
+            // },
         ],
     };
     const response = await fetch(ANTHROPIC_API_URL, {
