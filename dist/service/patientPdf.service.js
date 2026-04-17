@@ -391,22 +391,27 @@ async function buildPatientPDF(data) {
                     });
                 }
                 // Report files
-                if (s.reportUrls && s.reportUrls.length > 0) {
+                const reportFiles = Array.isArray(s.reportFiles)
+                    ? s.reportFiles
+                    : Array.isArray(s.reportUrls)
+                        ? s.reportUrls.map((url) => ({ url, name: url.split("/").pop() || "Uploaded file" }))
+                        : [];
+                if (reportFiles.length > 0) {
                     guard(7 * MM);
                     doc.fontSize(7.5).font("Helvetica-Bold").fillColor([DARK.r, DARK.g, DARK.b])
-                        .text(`Report Files (${s.reportUrls.length}):`, M + 2 * MM, curY, { lineBreak: false });
+                        .text(`Report Files (${reportFiles.length}):`, M + 2 * MM, curY, { lineBreak: false });
                     curY += 5 * MM;
-                    s.reportUrls.slice(0, 3).forEach((url, ui) => {
+                    reportFiles.slice(0, 3).forEach((file, ui) => {
                         guard(5.5 * MM);
-                        const fname = url.split("/").pop() || `Report ${ui + 1}`;
+                        const fname = file.name || `Report ${ui + 1}`;
                         doc.fontSize(7.5).font("Helvetica").fillColor([0, 100, 200])
                             .text(`\u2022 ${fname}`, M + 6 * MM, curY, { lineBreak: false });
                         curY += 5.5 * MM;
                     });
-                    if (s.reportUrls.length > 3) {
+                    if (reportFiles.length > 3) {
                         guard(5.5 * MM);
                         doc.fillColor([GRAY.r, GRAY.g, GRAY.b])
-                            .text(`  \u2026and ${s.reportUrls.length - 3} more files`, M + 6 * MM, curY, { lineBreak: false });
+                            .text(`  \u2026and ${reportFiles.length - 3} more files`, M + 6 * MM, curY, { lineBreak: false });
                         curY += 5.5 * MM;
                     }
                 }

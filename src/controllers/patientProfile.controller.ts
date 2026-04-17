@@ -9,6 +9,7 @@ import { DoctorPatientHistory } from "../models/DoctorPatientHistory";
 import { generateAndUploadPatientPDF } from "../service/patientPdf.service";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { generateOTP, verifyOTP } from "../service/otpService";
+import { normalizeQuestionReports, normalizeReportFiles } from "../utils/reportFiles";
 import {
     t, translateStatus, translateCaseType, translateFields,
     SupportedLanguage,
@@ -313,12 +314,21 @@ export const getMyData = async (
             isCurrent: !h.unassignedAt,
         }));
 
+        const normalizedScanResults = scanResults.map((scan) => {
+            const data = scan.toJSON() as any;
+            return {
+                ...data,
+                reportFiles: normalizeReportFiles(data.reportUrls),
+                questionReports: normalizeQuestionReports(data.questionReports),
+            };
+        });
+
         const pdfPayload = {
             exportedAt,
             patient: patient.toJSON(),
             subscription: subscriptionData,
             reminders: reminders.map((r) => r.toJSON()),
-            scanResults: scanResults.map((s) => s.toJSON()),
+            scanResults: normalizedScanResults,
             doctorHistory: doctorHistoryData,
         };
 
