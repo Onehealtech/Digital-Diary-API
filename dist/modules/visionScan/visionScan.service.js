@@ -165,26 +165,57 @@ class VisionScanService {
         try {
             const useAnthropic = process.env.USE_ANTHROPIC === "true" && (0, anthropic_service_1.isAnthropicConfigured)();
             const useDocAI = !useAnthropic && process.env.USE_DOCUMENT_AI === "true" && (0, documentAI_service_1.isDocumentAIConfigured)();
-            let enrichedResults;
-            let rawConfidenceScores;
-            let lowConfidenceFields;
-            let metadata;
+            let enrichedResults = {};
+            let rawConfidenceScores = {};
+            let lowConfidenceFields = [];
+            let metadata = {
+                model: "", promptTokens: 0, responseTokens: 0,
+                totalTokens: 0, processingTimeMs: 0, lowConfidenceFields: [],
+            };
             if (useAnthropic) {
                 // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
                 const imageBuffer = Buffer.from(data.base64, "base64");
-                const result = await (0, anthropic_service_1.extractWithAnthropic)(imageBuffer, data.detectedPageNumber, diaryPage.title, diaryPage.questions);
-                const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
-                enrichedResults = built.enrichedResults;
-                rawConfidenceScores = built.rawConfidenceScores;
-                lowConfidenceFields = built.lowConfidenceFields;
-                metadata = {
-                    model: "anthropic/claude-sonnet-4-20250514",
-                    promptTokens: 0,
-                    responseTokens: 0,
-                    totalTokens: 0,
-                    processingTimeMs: result.processingTimeMs,
-                    lowConfidenceFields,
-                };
+                let anthropicFailed = false;
+                try {
+                    const result = await (0, anthropic_service_1.extractWithAnthropic)(imageBuffer, data.detectedPageNumber, diaryPage.title, diaryPage.questions);
+                    const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                    enrichedResults = built.enrichedResults;
+                    rawConfidenceScores = built.rawConfidenceScores;
+                    lowConfidenceFields = built.lowConfidenceFields;
+                    metadata = {
+                        model: "anthropic/claude-sonnet-4-20250514",
+                        promptTokens: 0,
+                        responseTokens: 0,
+                        totalTokens: 0,
+                        processingTimeMs: result.processingTimeMs,
+                        lowConfidenceFields,
+                    };
+                }
+                catch (anthropicErr) {
+                    // Auth / network failures fall back to OpenRouter so the scan isn't lost.
+                    // Configuration errors (invalid key, timeout) are logged clearly.
+                    console.error(`[VisionScan] Anthropic failed — falling back to OpenRouter. Reason: ${anthropicErr.message}`);
+                    anthropicFailed = true;
+                }
+                if (anthropicFailed) {
+                    // ─── OpenRouter fallback ─────────────────────────────────────
+                    const prompt = (0, visionScan_prompts_1.buildExtractionPrompt)(diaryPage);
+                    const startTime = Date.now();
+                    const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+                    const processingTimeMs = Date.now() - startTime;
+                    const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+                    enrichedResults = built.enrichedResults;
+                    rawConfidenceScores = built.rawConfidenceScores;
+                    lowConfidenceFields = built.lowConfidenceFields;
+                    metadata = {
+                        model: `${visionScan_config_1.VISION_SCAN_CONFIG.MODEL} (anthropic-fallback)`,
+                        promptTokens: aiResult.usage.prompt_tokens,
+                        responseTokens: aiResult.usage.completion_tokens,
+                        totalTokens: aiResult.usage.total_tokens,
+                        processingTimeMs,
+                        lowConfidenceFields,
+                    };
+                }
             }
             else if (useDocAI) {
                 // ─── Google Document AI (trained custom extractor) ───────────
