@@ -51,6 +51,18 @@ export interface ProcessingMetadata {
     totalTokens: number;
     processingTimeMs: number;
     lowConfidenceFields: string[];
+    // Scan analysis (rescan / rejection decision)
+    action?:            "success" | "rescan_required" | "rejected";
+    rescanRequired?:    boolean;
+    rescanReasons?:     string[];
+    rejectionRequired?: boolean;
+    rejectionReasons?:  string[];
+    dataError?:         string | null;
+    alertMessage?:      string | null;
+    userMessage?:       string;
+    dataReliable?:      boolean;
+    overallConfidence?: number;
+    warnings?:          string[];
 }
 
 export interface EnrichedResult {

@@ -7,6 +7,7 @@ import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
 import { extractWithDocumentAI, isDocumentAIConfigured } from "./documentAI.service";
 import { extractWithAnthropic, isAnthropicConfigured } from "./anthropic.service";
+import { computeScanAnalysis } from "./scanAnalysis";
 import {
     AIExtractionResult,
     DiaryQuestion,
@@ -342,12 +343,38 @@ class VisionScanService {
                 };
             }
 
+            // ── Scan analysis: rescan / rejection decision ────────────────
+            const warnings: string[] = [
+                ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
+            ];
+            const analysis = computeScanAnalysis(
+                enrichedResults,
+                diaryPage.questions,
+                warnings
+            );
+
+            // Merge analysis into metadata so it's stored and returned in the response
+            metadata = {
+                ...metadata,
+                action:            analysis.action,
+                rescanRequired:    analysis.rescanRequired,
+                rescanReasons:     analysis.rescanReasons,
+                rejectionRequired: analysis.rejectionRequired,
+                rejectionReasons:  analysis.rejectionReasons,
+                dataError:         analysis.dataError,
+                alertMessage:      analysis.alertMessage,
+                userMessage:       analysis.userMessage,
+                dataReliable:      analysis.dataReliable,
+                overallConfidence: analysis.overallConfidence,
+                warnings,
+            };
+
             await Promise.all([
                 visionScanRepository.updateScanCompleted(scanRecord, {
                     scanResults: enrichedResults,
                     rawConfidenceScores,
                     processingMetadata: metadata,
-                    flagged: lowConfidenceFields.length > 0,
+                    flagged: analysis.rescanRequired || analysis.rejectionRequired,
                 }),
                 visionScanRepository.syncToScanLog(
                     data.patientId,

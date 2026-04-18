@@ -9,6 +9,7 @@ const visionScan_prompts_1 = require("./visionScan.prompts");
 const visionScan_config_1 = require("./visionScan.config");
 const documentAI_service_1 = require("./documentAI.service");
 const anthropic_service_1 = require("./anthropic.service");
+const scanAnalysis_1 = require("./scanAnalysis");
 const visionScan_types_1 = require("./visionScan.types");
 class VisionScanService {
     constructor() {
@@ -253,12 +254,32 @@ class VisionScanService {
                     lowConfidenceFields,
                 };
             }
+            // ── Scan analysis: rescan / rejection decision ────────────────
+            const warnings = [
+                ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
+            ];
+            const analysis = (0, scanAnalysis_1.computeScanAnalysis)(enrichedResults, diaryPage.questions, warnings);
+            // Merge analysis into metadata so it's stored and returned in the response
+            metadata = {
+                ...metadata,
+                action: analysis.action,
+                rescanRequired: analysis.rescanRequired,
+                rescanReasons: analysis.rescanReasons,
+                rejectionRequired: analysis.rejectionRequired,
+                rejectionReasons: analysis.rejectionReasons,
+                dataError: analysis.dataError,
+                alertMessage: analysis.alertMessage,
+                userMessage: analysis.userMessage,
+                dataReliable: analysis.dataReliable,
+                overallConfidence: analysis.overallConfidence,
+                warnings,
+            };
             await Promise.all([
                 visionScan_repository_1.visionScanRepository.updateScanCompleted(scanRecord, {
                     scanResults: enrichedResults,
                     rawConfidenceScores,
                     processingMetadata: metadata,
-                    flagged: lowConfidenceFields.length > 0,
+                    flagged: analysis.rescanRequired || analysis.rejectionRequired,
                 }),
                 visionScan_repository_1.visionScanRepository.syncToScanLog(data.patientId, data.detectedPageNumber, enrichedResults),
             ]);
