@@ -11,6 +11,7 @@ import { Op } from "sequelize";
 import { getDiaryTypeForCaseType } from "../utils/constants";
 import { AppError } from "../utils/AppError";
 import { uploadBufferToS3, buildReportS3Key, buildQuestionReportS3Key } from "../utils/s3Upload";
+import { normalizeQuestionReports, normalizeReportFiles, ReportFile } from "../utils/reportFiles";
 import {
     assertApprovedDiaryAccess,
     filterPatientsWithApprovedDiaries,
@@ -72,6 +73,32 @@ class BubbleScanService {
             "../../python/omr_scanner.py"
         );
         this.templatesDir = path.join(__dirname, "../../python/templates");
+    }
+
+    private enrichScanReportMetadata(
+        scan: BubbleScanResult,
+        options: { reportUrlsMode?: "keep" | "urls" | "objects" } = {}
+    ): BubbleScanResult {
+        const reportFiles = normalizeReportFiles(scan.reportUrls as any);
+        const questionReports = normalizeQuestionReports(scan.questionReports as any);
+
+        scan.setDataValue("reportFiles", reportFiles);
+        scan.setDataValue("questionReports", questionReports);
+
+        if (options.reportUrlsMode === "objects") {
+            scan.setDataValue("reportUrls", reportFiles);
+        } else if (options.reportUrlsMode === "urls") {
+            scan.setDataValue("reportUrls", reportFiles.map((file) => file.url));
+        }
+
+        return scan;
+    }
+
+    private enrichManyScanReportMetadata(
+        scans: BubbleScanResult[],
+        options: { reportUrlsMode?: "keep" | "urls" | "objects" } = {}
+    ): BubbleScanResult[] {
+        return scans.map((scan) => this.enrichScanReportMetadata(scan, options));
     }
 
     private async resolveDoctorId(requesterId: string, role: string): Promise<string> {
@@ -180,12 +207,12 @@ class BubbleScanService {
         }
 
         // Build questionReports map by uploading files to S3
-        const questionReports: Record<string, string[]> = {};
+        const questionReports: Record<string, ReportFile[]> = {};
         for (const { questionId, file } of questionReportPairs) {
             const qid = questionId.trim();
             const key = buildQuestionReportS3Key(patientId, "pending", qid, file.originalname, file.mimetype);
             const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
-            questionReports[qid] = [...(questionReports[qid] ?? []), url];
+            questionReports[qid] = [...(questionReports[qid] ?? []), { url, name: file.originalname }];
         }
 
         const record = await BubbleScanResult.create({
@@ -202,7 +229,7 @@ class BubbleScanService {
 
         // Re-upload with the real scanId in the S3 key if reports were attached
         if (questionReportPairs.length > 0) {
-            const fixedReports: Record<string, { url: string; name: string }[]> = {};
+            const fixedReports: Record<string, ReportFile[]> = {};
             for (const { questionId, file } of questionReportPairs) {
                 const qid = questionId.trim();
                 const key = buildQuestionReportS3Key(patientId, record.id, qid, file.originalname, file.mimetype);
@@ -214,7 +241,7 @@ class BubbleScanService {
             await record.save();
         }
 
-        return record;
+        return this.enrichScanReportMetadata(record, { reportUrlsMode: "urls" });
     }
 
     /**
@@ -482,7 +509,7 @@ class BubbleScanService {
             offset,
         });
         return {
-            scans: rows,
+            scans: this.enrichManyScanReportMetadata(rows, { reportUrlsMode: "urls" }),
             pagination: {
                 total: count,
                 page,
@@ -511,7 +538,7 @@ class BubbleScanService {
             if (scan.patientId !== requesterId) {
                 throw new AppError(403, "Bubble scan result not found or access denied");
             }
-            return scan;
+            return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
         }
 
         // If doctor context provided, enforce date cutoff for old doctors
@@ -523,7 +550,7 @@ class BubbleScanService {
             }
         }
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "objects" });
     }
 
     /**
@@ -617,7 +644,7 @@ class BubbleScanService {
         }
 
         await scan.update(updateData);
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "objects" });
     }
 
     /**
@@ -678,7 +705,7 @@ class BubbleScanService {
             });
 
             return {
-                scans: rows,
+                scans: this.enrichManyScanReportMetadata(rows, { reportUrlsMode: "objects" }),
                 pagination: { total: count, page, limit, totalPages: Math.ceil(count / limit) },
             };
         }
@@ -760,7 +787,7 @@ class BubbleScanService {
         });
 
         return {
-            scans: rows,
+            scans: this.enrichManyScanReportMetadata(rows, { reportUrlsMode: "objects" }),
             pagination: {
                 total: count,
                 page,
@@ -863,7 +890,7 @@ class BubbleScanService {
             }
         }
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
     }
 
     /**
@@ -1133,19 +1160,19 @@ class BubbleScanService {
         if (!scan) throw new AppError(404, "Scan entry not found");
         if (files.length === 0) throw new AppError(400, "No report files provided");
 
-        const uploadedUrls: string[] = [];
+        const uploadedFiles: ReportFile[] = [];
         for (const file of files) {
             const key = buildReportS3Key(patientId, scanId, file.originalname, file.mimetype);
             const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
-            uploadedUrls.push(url);
+            uploadedFiles.push({ url, name: file.originalname });
         }
 
-        const existing = Array.isArray(scan.reportUrls) ? (scan.reportUrls as string[]) : [];
-        scan.reportUrls = [...existing, ...uploadedUrls];
+        const existing = normalizeReportFiles(scan.reportUrls as any);
+        scan.reportUrls = [...existing, ...uploadedFiles];
         scan.changed("reportUrls", true);
         await scan.save();
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
     }
 
     /**
@@ -1163,7 +1190,7 @@ class BubbleScanService {
         });
         if (!scan) throw new AppError(404, "Scan entry not found");
 
-        const existing = Array.isArray(scan.reportUrls) ? (scan.reportUrls as string[]) : [];
+        const existing = normalizeReportFiles(scan.reportUrls as any).map((file) => file.url);
         const updated = existing.filter((u) => u !== reportUrl);
         if (updated.length === existing.length) {
             throw new AppError(404, "Report URL not found on this scan entry");
@@ -1173,7 +1200,7 @@ class BubbleScanService {
         scan.changed("reportUrls", true);
         await scan.save();
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
     }
 
     /**
@@ -1195,13 +1222,13 @@ class BubbleScanService {
         if (!scan) throw new AppError(404, "Scan entry not found");
         if (pairs.length === 0) throw new AppError(400, "No question-file pairs provided");
 
-        const updated = { ...((scan.questionReports ?? {}) as Record<string, Array<{ url: string; name: string }>>) };
+        const updated = { ...((scan.questionReports ?? {}) as Record<string, Array<string | ReportFile>>) };
 
         for (const { questionId, file } of pairs) {
             const qid = questionId.trim();
             const key = buildQuestionReportS3Key(patientId, scanId, qid, file.originalname, file.mimetype);
             const url = await uploadBufferToS3(file.buffer, file.mimetype, key);
-            const existing = Array.isArray(updated[qid]) ? updated[qid] : [];
+            const existing = Array.isArray(updated[qid]) ? normalizeReportFiles(updated[qid] as any) : [];
             updated[qid] = [...existing, { url, name: file.originalname }];
         }
 
@@ -1209,7 +1236,7 @@ class BubbleScanService {
         scan.changed("questionReports", true);
         await scan.save();
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
     }
 
     /**
@@ -1236,18 +1263,18 @@ class BubbleScanService {
             throw new AppError(404, "Report URL not found for this question");
         }
 
-        const newMap = { ...existing } as Record<string, Array<{ url: string; name: string }>>;
+        const newMap = { ...existing } as Record<string, Array<string | ReportFile>>;
         if (updated.length === 0) {
             delete newMap[questionId];
         } else {
-            newMap[questionId] = updated as Array<{ url: string; name: string }>;
+            newMap[questionId] = updated as Array<string | ReportFile>;
         }
 
         scan.questionReports = newMap;
         scan.changed("questionReports", true);
         await scan.save();
 
-        return scan;
+        return this.enrichScanReportMetadata(scan, { reportUrlsMode: "urls" });
     }
 }
 

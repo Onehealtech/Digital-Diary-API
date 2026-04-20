@@ -41,6 +41,15 @@ const MIME_EXT_MAP: Record<string, string> = {
   "image/webp": ".webp",
 };
 
+function sanitizeFileStem(originalname: string): string {
+  const stem = path.basename(originalname, path.extname(originalname))
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^[_\-.]+|[_\-.]+$/g, "")
+    .slice(0, 80);
+
+  return stem || "report";
+}
+
 /**
  * Builds an S3 key for a patient report file.
  * Pattern: patient-reports/{patientId}/{scanId}/{timestamp}-{random}.{ext}
@@ -55,8 +64,9 @@ export function buildReportS3Key(
     path.extname(originalname).toLowerCase() ||
     MIME_EXT_MAP[mimeType] ||
     `.${mimeType.split("/")[1] ?? "bin"}`;
+  const fileStem = sanitizeFileStem(originalname);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `patient-reports/${patientId}/${scanId}/${unique}${ext}`;
+  return `patient-reports/${patientId}/${scanId}/${fileStem}-${unique}${ext}`;
 }
 
 /**
@@ -74,6 +84,7 @@ export function buildQuestionReportS3Key(
     path.extname(originalname).toLowerCase() ||
     MIME_EXT_MAP[mimeType] ||
     `.${mimeType.split("/")[1] ?? "bin"}`;
+  const fileStem = sanitizeFileStem(originalname);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `patient-reports/${patientId}/${scanId}/questions/${questionId}/${unique}${ext}`;
+  return `patient-reports/${patientId}/${scanId}/questions/${questionId}/${fileStem}-${unique}${ext}`;
 }

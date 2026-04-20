@@ -8,6 +8,7 @@ import {
 } from "sequelize-typescript";
 import { Patient } from "./Patient";
 import { DiaryPage } from "./DiaryPage";
+import { ReportFile } from "../utils/reportFiles";
 
 @Table({
     tableName: "bubble_scan_results",
@@ -158,12 +159,12 @@ export class BubbleScanResult extends Model {
         allowNull: true,
         defaultValue: [],
     })
-    reportUrls?: string[]; // S3 URLs of patient-uploaded report files (PDFs / images)
+    reportUrls?: Array<string | ReportFile>; // Legacy string[] or normalized [{ url, name }]
 
     @Column({
         type: DataType.JSONB,
         allowNull: true,
         defaultValue: {},
     })
-    questionReports?: Record<string, Array<{ url: string; name: string }>>; // { "q1": [{ url, name }] }
+    questionReports?: Record<string, Array<string | ReportFile>>; // { "q1": [{ url, name }] }
 }
