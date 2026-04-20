@@ -10,7 +10,6 @@ const SubscriptionPlan_1 = require("../models/SubscriptionPlan");
 const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
 const patientPdf_service_1 = require("../service/patientPdf.service");
 const otpService_1 = require("../service/otpService");
-const reportFiles_1 = require("../utils/reportFiles");
 const translations_1 = require("../utils/translations");
 /**
  * POST /api/v1/patient/request-edit-otp
@@ -275,20 +274,12 @@ const getMyData = async (req, res) => {
             unassignedAt: h.unassignedAt ?? null,
             isCurrent: !h.unassignedAt,
         }));
-        const normalizedScanResults = scanResults.map((scan) => {
-            const data = scan.toJSON();
-            return {
-                ...data,
-                reportFiles: (0, reportFiles_1.normalizeReportFiles)(data.reportUrls),
-                questionReports: (0, reportFiles_1.normalizeQuestionReports)(data.questionReports),
-            };
-        });
         const pdfPayload = {
             exportedAt,
             patient: patient.toJSON(),
             subscription: subscriptionData,
             reminders: reminders.map((r) => r.toJSON()),
-            scanResults: normalizedScanResults,
+            scanResults: scanResults.map((s) => s.toJSON()),
             doctorHistory: doctorHistoryData,
         };
         // Generate PDF in background and upload to S3
