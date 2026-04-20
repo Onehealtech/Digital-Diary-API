@@ -324,24 +324,37 @@ class BubbleScanService {
         });
     }
     /**
-     * Get scan history for a patient (paginated)
+     * Get scan history for a patient (paginated, deduplicated by pageNumber).
+     * When the patient uploads the same page multiple times, only the latest
+     * submission is returned — older re-submissions are hidden from history.
      */
     async getPatientScanHistory(patientId, page = 1, limit = 20) {
         await (0, diaryAccess_service_1.assertApprovedDiaryAccess)(patientId);
-        const offset = (page - 1) * limit;
-        const { rows, count } = await BubbleScanResult_1.BubbleScanResult.findAndCountAll({
+        // Fetch all scans newest-first so the first entry per pageNumber is always
+        // the most recent upload. We skip DB-level LIMIT here intentionally.
+        const allScans = await BubbleScanResult_1.BubbleScanResult.findAll({
             where: { patientId },
             order: [["scannedAt", "DESC"]],
-            limit,
-            offset,
         });
+        // Keep only the first (latest) entry per pageNumber.
+        const seen = new Set();
+        const deduplicated = allScans.filter((scan) => {
+            const pg = scan.pageNumber ?? -1;
+            if (seen.has(pg)) return false;
+            seen.add(pg);
+            return true;
+        });
+        // Paginate the deduplicated list.
+        const total = deduplicated.length;
+        const offset = (page - 1) * limit;
+        const scans = deduplicated.slice(offset, offset + limit);
         return {
-            scans: rows,
+            scans,
             pagination: {
-                total: count,
+                total,
                 page,
                 limit,
-                totalPages: Math.ceil(count / limit),
+                totalPages: Math.ceil(total / limit),
             },
         };
     }
