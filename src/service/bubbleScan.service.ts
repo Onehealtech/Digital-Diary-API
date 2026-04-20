@@ -474,20 +474,37 @@ class BubbleScanService {
     async getPatientScanHistory(patientId: string, page = 1, limit = 20) {
         await assertApprovedDiaryAccess(patientId);
 
-        const offset = (page - 1) * limit;
-        const { rows, count } = await BubbleScanResult.findAndCountAll({
+        // Fetch all scans for this patient, newest first.
+        // We intentionally skip DB-level pagination here so we can deduplicate
+        // by pageNumber before slicing — the patient should only see the LATEST
+        // upload for each page, not every re-submission of the same page.
+        const allScans = await BubbleScanResult.findAll({
             where: { patientId },
             order: [["scannedAt", "DESC"]],
-            limit,
-            offset,
         });
+
+        // Deduplicate: for each pageNumber keep only the first entry, which is
+        // the most recent (due to DESC ordering above).
+        const seen = new Set<number>();
+        const deduplicated = allScans.filter((scan) => {
+            const pg = scan.pageNumber ?? -1;
+            if (seen.has(pg)) return false;
+            seen.add(pg);
+            return true;
+        });
+
+        // Apply pagination to the deduplicated list.
+        const total  = deduplicated.length;
+        const offset = (page - 1) * limit;
+        const scans  = deduplicated.slice(offset, offset + limit);
+
         return {
-            scans: rows,
+            scans,
             pagination: {
-                total: count,
+                total,
                 page,
                 limit,
-                totalPages: Math.ceil(count / limit),
+                totalPages: Math.ceil(total / limit),
             },
         };
     }
