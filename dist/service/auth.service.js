@@ -9,6 +9,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Appuser_1 = require("../models/Appuser");
 const Wallet_1 = require("../models/Wallet");
 const wallet_service_1 = require("./wallet.service");
+const emailService_1 = require("./emailService");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config(); // ✅ MUST be first
 class DoctorAuthService {
@@ -149,9 +150,9 @@ class DoctorAuthService {
             id: user.id,
             type: "password-reset",
         }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        await (0, emailService_1.sendPasswordResetEmail)(user.email, user.fullName || user.email, resetToken);
         return {
-            message: "Identity verified. You can now reset your password.",
-            resetToken,
+            message: "If the email exists, a password reset link has been sent to your inbox.",
         };
     }
     /**
