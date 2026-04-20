@@ -54,8 +54,8 @@ class DiarySaleService {
                 registeredDate: new Date(),
             }, { transaction });
             // 4️⃣ Create Diary
-            // Super Admin sales are auto-approved — no separate approval step required.
-            // Vendor/Doctor/Assistant sales remain PENDING until a Super Admin approves.
+            // Super Admin sales are auto-approved immediately — no separate approval step required.
+            // Vendor / Doctor / Assistant sales stay PENDING until a Super Admin approves them.
             const isSuperAdminSale = sellerRole === "SUPER_ADMIN";
             const now = new Date();
             const diary = await Diary_1.Diary.create({
@@ -65,10 +65,10 @@ class DiarySaleService {
                 vendorId,
                 soldBy: sellerId,
                 soldByRole: sellerRole,
-                status:         isSuperAdminSale ? diaryStatus_1.DIARY_STATUS.APPROVED : diaryStatus_1.DIARY_STATUS.PENDING,
+                status: isSuperAdminSale ? diaryStatus_1.DIARY_STATUS.APPROVED : diaryStatus_1.DIARY_STATUS.PENDING,
                 activationDate: isSuperAdminSale ? now : null,
-                approvedBy:     isSuperAdminSale ? sellerId : null,
-                approvedAt:     isSuperAdminSale ? now : null,
+                approvedBy: isSuperAdminSale ? sellerId : null,
+                approvedAt: isSuperAdminSale ? now : null,
                 saleAmount: params.paymentAmount || 0,
                 commissionAmount: 0,
                 commissionPaid: false,
@@ -80,8 +80,8 @@ class DiarySaleService {
             await generatedDiary.save({ transaction });
             await transaction.commit();
             console.info(`[DIARY_CREATE] sellerRole=${sellerRole} sellerId=${sellerId} diaryId=${diaryId} status=${diary.status}`);
-            // Only notify Super Admins when a Vendor/Doctor/Assistant sells —
-            // they need to approve it. No notification when Super Admin sells (auto-approved).
+            // Only notify Super Admins when a Vendor/Doctor/Assistant sells — they need to approve it.
+            // No notification needed when Super Admin sells their own diary (auto-approved).
             if (!isSuperAdminSale) {
                 this.notifySuperAdminsOfSale(sellerId, sellerRole, diaryId).catch((err) => {
                     const message = err instanceof Error ? err.message : "Unknown error";

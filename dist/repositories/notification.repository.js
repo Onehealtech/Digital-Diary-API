@@ -8,8 +8,6 @@ class NotificationRepository {
     /**
      * Find all notifications sent to a specific patient, with sender info.
      * Ordered by createdAt DESC (newest first).
-     * reminderDate is attached from the linked Reminder (via relatedTaskId)
-     * so the frontend can show the actual appointment date.
      */
     async findByPatientId(patientId, filters = {}) {
         const { page = 1, limit = 20 } = filters;
@@ -30,8 +28,9 @@ class NotificationRepository {
             limit,
             offset,
         });
-        // Attach reminderDate from the linked Reminder so the frontend shows the
-        // actual appointment date instead of createdAt (when the notification was sent).
+        // Attach reminderDate from the linked Reminder (stored in relatedTaskId).
+        // This allows the frontend to show the actual appointment date instead of
+        // the notification creation date (createdAt = the date the doctor sent it).
         const reminderIds = result.rows
             .filter((n) => n.type === "reminder" && n.relatedTaskId)
             .map((n) => n.relatedTaskId);
