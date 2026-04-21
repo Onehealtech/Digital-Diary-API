@@ -1,11 +1,17 @@
 /**
  * Anthropic Claude Vision Extraction Service
  *
- * Ported from cantrac-omr into the Digital Diary API pipeline.
- *   - Sharp preprocessing: EXIF rotation + pink-header orientation + form crop + normalize + sharpen
- *   - Anthropic claude-sonnet-4-6 via direct HTTP
- *   - Schedule pages: chain-of-thought reasoning + 3000px high-res + DD/MM/YY retries
- *   - Returns AIExtractionResult — identical format to the existing pipeline
+ * Ported and enhanced from cantrac-omr/src/services/vision-extraction.js
+ *
+ * Key improvements over the previous version:
+ *   - Prompt caching (cache_control: ephemeral) — retries cost ~10% of normal price
+ *   - Claude Haiku for cheap image-quality + form-validity checks
+ *   - Granular DD / MM / YY component retries (separate focused prompts per component)
+ *   - Near-end DD bias correction (positions 14-16, 26-31 prone to off-by-1)
+ *   - Combined DD+MM retry in a single API call when both components are bad
+ *   - Combined YY retry for both sections in one API call
+ *   - Cross-validation: same-month misread, future-year for terminal statuses
+ *   - Image quality assessment via Haiku
  */
 
 import sharp from "sharp";
@@ -15,32 +21,32 @@ import { AIExtractionResult, DiaryQuestion } from "./visionScan.types";
 
 const ANTHROPIC_API_URL    = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL      = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+const HAIKU_MODEL          = "claude-haiku-4-5-20251001";
 const MAX_TOKENS           = 4096;
-const ANTHROPIC_TIMEOUT_MS = 60_000; // 60 s — handles slow large-image uploads
+const ANTHROPIC_TIMEOUT_MS = 60_000;
 
-// Standard pages: 1600px / q=85  |  Schedule pages (tiny date bubbles): 3000px / q=95
 const STD_MAX_DIM   = 1600;
 const STD_QUALITY   = 85;
-const SCHED_MAX_DIM = 3000;
-const SCHED_QUALITY = 95;
+const SCHED_MAX_DIM = 2400;   // cantrac-omr: 2400px @ 90% — ~30% fewer tokens than 3000px @ 95%
+const SCHED_QUALITY = 90;
+const LOWRES_MAX    = 800;
+const LOWRES_QUAL   = 70;
 
-const CONFIDENCE_MAP: Record<string, number> = {
-    high:   0.95,
-    medium: 0.75,
-    low:    0.45,
+const CONFIDENCE_MAP: Record<string, number> = { high: 0.95, medium: 0.75, low: 0.45 };
+
+const MONTH_TO_NUM: Record<string, string> = {
+    jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06",
+    jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12",
 };
+
+const VALID_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const VALID_YEARS  = ["2026","2027","2028"];
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-interface AnthropicField {
-    value: string | null;
-    confidence: "high" | "medium" | "low";
-}
-
+interface AnthropicField  { value: string | null; confidence: "high" | "medium" | "low"; }
 interface AnthropicRawResult {
-    pageNumber?: number;
-    pageType?:   string;
-    title?:      string;
+    pageNumber?: number; pageType?: string; title?: string;
     reasoning?:  Record<string, string>;
     fields:      Record<string, AnthropicField>;
 }
@@ -52,441 +58,507 @@ export interface AnthropicExtractionResult {
     warnings:          string[];
 }
 
-// ─── Image Preprocessing ──────────────────────────────────────────────────
+// ─── Image Preprocessing (unchanged — already matches cantrac-omr exactly) ─
 
-/**
- * Measure fraction of pink pixels in the top 12% of an image.
- * Used to detect which rotation puts the pink CANTrac header banner at the top.
- */
 async function pinkAtTop(buf: Buffer): Promise<number> {
     const m = await sharp(buf).metadata();
     if (!m.width || !m.height) return 0;
     const h = Math.floor(m.height * 0.12);
     const { data, info } = await sharp(buf)
         .extract({ left: 0, top: 0, width: m.width, height: h })
-        .resize(80, undefined)
-        .raw()
-        .toBuffer({ resolveWithObject: true });
+        .resize(80, undefined).raw().toBuffer({ resolveWithObject: true });
     let n = 0;
-    for (let i = 0; i < data.length; i += info.channels) {
+    for (let i = 0; i < data.length; i += info.channels)
         if (data[i] > 160 && data[i + 1] < 140 && data[i + 2] < 160) n++;
-    }
     return n / (data.length / info.channels);
 }
 
-/**
- * Crop the image to the white paper form, removing background (bedsheet, table, etc.).
- * A strip counts as "form" only when >30% of its pixels are clearly white.
- * Ported from cantrac-omr/src/utils/image-preprocessor.js
- */
-async function cropToForm(
-    buffer: Buffer,
-    meta: sharp.Metadata,
-    skipAspectGuard = false
-): Promise<Buffer> {
+async function cropToForm(buffer: Buffer, meta: sharp.Metadata, skipAspectGuard = false): Promise<Buffer> {
     const ANALYSIS_SIZE = 300;
-    const DENSITY       = 0.30;   // >30% white = clearly form paper
-    const EDGE_DENSITY  = 0.05;   // >5%  white = any form content (outer boundary)
-    const PADDING       = 20;
-
-    const { data, info } = await sharp(buffer)
-        .grayscale()
-        .normalize()
-        .resize(ANALYSIS_SIZE, ANALYSIS_SIZE, { fit: "inside" })
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-
-    const mWidth  = meta.width  || info.width;
-    const mHeight = meta.height || info.height;
-    const scaleX  = mWidth  / info.width;
-    const scaleY  = mHeight / info.height;
-
-    // Adaptive threshold: 20 below the 80th-percentile brightness
-    const sorted    = Buffer.from(data).sort();
+    const DENSITY = 0.30; const EDGE_DENSITY = 0.05; const PADDING = 20;
+    const { data, info } = await sharp(buffer).grayscale().normalize()
+        .resize(ANALYSIS_SIZE, ANALYSIS_SIZE, { fit: "inside" }).raw().toBuffer({ resolveWithObject: true });
+    const mWidth = meta.width || info.width; const mHeight = meta.height || info.height;
+    const scaleX = mWidth / info.width; const scaleY = mHeight / info.height;
+    const sorted = Buffer.from(data).sort();
     const threshold = Math.max(180, sorted[Math.floor(sorted.length * 0.80)] - 20);
-
-    const colWhite = new Float32Array(info.width);
-    const rowWhite = new Float32Array(info.height);
-    for (let r = 0; r < info.height; r++) {
-        for (let c = 0; c < info.width; c++) {
-            if (data[r * info.width + c] >= threshold) {
-                colWhite[c] += 1 / info.height;
-                rowWhite[r] += 1 / info.width;
-            }
-        }
-    }
-
-    let minCol = 0, maxCol = info.width  - 1;
-    let minRow = 0, maxRow = info.height - 1;
-    for (let c = 0;             c < info.width;  c++) if (colWhite[c] >= DENSITY)      { minCol = c; break; }
-    for (let c = info.width-1;  c >= 0;          c--) if (colWhite[c] >= EDGE_DENSITY) { maxCol = c; break; }
-    for (let r = 0;             r < info.height; r++) if (rowWhite[r] >= DENSITY)      { minRow = r; break; }
-    for (let r = info.height-1; r >= 0;          r--) if (rowWhite[r] >= EDGE_DENSITY) { maxRow = r; break; }
-
-    minCol = Math.max(0, minCol - PADDING);
-    maxCol = Math.min(info.width  - 1, maxCol + PADDING);
-    minRow = Math.max(0, minRow - PADDING);
-    maxRow = Math.min(info.height - 1, maxRow + PADDING);
-
-    // Only crop when background is substantial (>30%); smaller crops risk cutting the form.
+    const colWhite = new Float32Array(info.width); const rowWhite = new Float32Array(info.height);
+    for (let r = 0; r < info.height; r++)
+        for (let c = 0; c < info.width; c++)
+            if (data[r * info.width + c] >= threshold) { colWhite[c] += 1 / info.height; rowWhite[r] += 1 / info.width; }
+    let minCol = 0, maxCol = info.width - 1, minRow = 0, maxRow = info.height - 1;
+    for (let c = 0;            c < info.width;  c++) if (colWhite[c] >= DENSITY)      { minCol = c; break; }
+    for (let c = info.width-1; c >= 0;          c--) if (colWhite[c] >= EDGE_DENSITY) { maxCol = c; break; }
+    for (let r = 0;            r < info.height; r++) if (rowWhite[r] >= DENSITY)      { minRow = r; break; }
+    for (let r = info.height-1; r >= 0;         r--) if (rowWhite[r] >= EDGE_DENSITY) { maxRow = r; break; }
+    minCol = Math.max(0, minCol - PADDING); maxCol = Math.min(info.width  - 1, maxCol + PADDING);
+    minRow = Math.max(0, minRow - PADDING); maxRow = Math.min(info.height - 1, maxRow + PADDING);
     const cropFrac = 1 - ((maxRow - minRow) * (maxCol - minCol)) / (info.height * info.width);
-    if (cropFrac < 0.30) {
-        console.log("[Preprocessor] Background too small to crop safely — skipping");
-        return buffer;
-    }
-
-    const left   = Math.max(0, Math.floor(minCol * scaleX));
-    const top    = Math.max(0, Math.floor(minRow * scaleY));
-    const right  = Math.min(mWidth,  Math.ceil(maxCol * scaleX));
-    const bottom = Math.min(mHeight, Math.ceil(maxRow * scaleY));
-    const width  = right  - left;
-    const height = bottom - top;
-
-    // Skip if crop would drastically change landscape aspect ratio (>1.5× change).
+    if (cropFrac < 0.30) { console.log("[Preprocessor] Background too small — skipping crop"); return buffer; }
+    const left = Math.max(0, Math.floor(minCol * scaleX)); const top = Math.max(0, Math.floor(minRow * scaleY));
+    const right = Math.min(mWidth, Math.ceil(maxCol * scaleX)); const bottom = Math.min(mHeight, Math.ceil(maxRow * scaleY));
+    const width = right - left; const height = bottom - top;
     if (!skipAspectGuard) {
-        const originalAspect = mWidth / mHeight;
-        const cropAspect     = width  / height;
-        const aspectRatio    = Math.max(originalAspect, cropAspect) / Math.min(originalAspect, cropAspect);
-        if (originalAspect > 1 && aspectRatio > 1.5) {
-            console.log("[Preprocessor] Crop would distort landscape aspect — skipping");
-            return buffer;
+        const oA = mWidth / mHeight; const cA = width / height;
+        if (oA > 1 && Math.max(oA, cA) / Math.min(oA, cA) > 1.5) {
+            console.log("[Preprocessor] Crop would distort landscape aspect — skipping"); return buffer;
         }
     }
-
     console.log(`[Preprocessor] Cropping to form: ${left},${top} → ${width}×${height} (was ${mWidth}×${mHeight})`);
     return sharp(buffer).extract({ left, top, width, height }).toBuffer();
 }
 
-/**
- * Preprocess a phone photo for optimal vision API extraction.
- *
- * Steps:
- *   1. Auto-rotate via EXIF
- *   2. Portrait image: pick rotation direction that puts pink header at top
- *   3. Verify form itself is landscape (form might be portrait-oriented within a landscape frame)
- *   4. Crop to white paper area, removing background
- *   5. Resize, normalize contrast, sharpen, compress
- */
-async function preprocessForVision(
-    imageBuffer: Buffer,
-    maxDimension: number = STD_MAX_DIM,
-    quality: number = STD_QUALITY
-): Promise<Buffer> {
-    // Step 1: Auto-rotate via EXIF
+async function preprocessForVision(imageBuffer: Buffer, maxDimension = STD_MAX_DIM, quality = STD_QUALITY): Promise<Buffer> {
     let rotatedBuffer = await sharp(imageBuffer).rotate().toBuffer();
     let rotatedMeta   = await sharp(rotatedBuffer).metadata();
-
-    // Step 2: Portrait → pick the rotation direction that puts the pink header at the top
-    let wasPortrait = false;
+    let wasPortrait   = false;
     if (rotatedMeta.height && rotatedMeta.width && rotatedMeta.height > rotatedMeta.width) {
         wasPortrait = true;
-        console.log("[Preprocessor] Portrait image detected — detecting correct rotation direction");
-        const cw90  = await sharp(rotatedBuffer).rotate(90).toBuffer();
+        const cw90 = await sharp(rotatedBuffer).rotate(90).toBuffer();
         const cw270 = await sharp(rotatedBuffer).rotate(270).toBuffer();
         const [pink90, pink270] = await Promise.all([pinkAtTop(cw90), pinkAtTop(cw270)]);
         rotatedBuffer = pink270 > pink90 ? cw270 : cw90;
-        console.log(`[Preprocessor] Chose ${pink270 > pink90 ? "270°" : "90°"} CW (pink90=${pink90.toFixed(3)} pink270=${pink270.toFixed(3)})`);
+        console.log(`[Preprocessor] Portrait → ${pink270 > pink90 ? "270°" : "90°"} CW (pink90=${pink90.toFixed(3)} pink270=${pink270.toFixed(3)})`);
         rotatedMeta = await sharp(rotatedBuffer).metadata();
     }
-
-    // Step 3: Verify the form itself is landscape (aspect ratio of the cropped form should be >1.15)
     if (wasPortrait && rotatedMeta.width && rotatedMeta.height && rotatedMeta.width > rotatedMeta.height) {
-        const prelim     = await cropToForm(rotatedBuffer, rotatedMeta, true);
-        const prelimMeta = await sharp(prelim).metadata();
-        if (prelimMeta.width && prelimMeta.height && (prelimMeta.width / prelimMeta.height) < 1.15) {
+        const prelim = await cropToForm(rotatedBuffer, rotatedMeta, true);
+        const pMeta  = await sharp(prelim).metadata();
+        if (pMeta.width && pMeta.height && pMeta.width / pMeta.height < 1.15) {
             rotatedBuffer = await sharp(rotatedBuffer).rotate(90).toBuffer();
             rotatedMeta   = await sharp(rotatedBuffer).metadata();
-            console.log("[Preprocessor] Form appears portrait-shaped in landscape frame — rotating +90° CW");
+            console.log("[Preprocessor] Form portrait-shaped in landscape frame — rotating +90°");
         }
     }
-
-    // Step 4: Crop to the white paper form area
     rotatedBuffer = await cropToForm(rotatedBuffer, rotatedMeta);
     rotatedMeta   = await sharp(rotatedBuffer).metadata();
-
-    // Step 5: Resize, enhance, compress
     return sharp(rotatedBuffer)
         .resize(maxDimension, maxDimension, { fit: "inside", withoutEnlargement: true })
-        .normalize()
-        .sharpen({ sigma: 1.0 })
-        .jpeg({ quality })
-        .toBuffer();
+        .normalize().sharpen({ sigma: 1.0 }).jpeg({ quality }).toBuffer();
 }
 
 // ─── Prompt Building ──────────────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
-    return `You are a medical form OCR specialist for the CANTrac breast cancer surgery tracker.
-Your job is to examine photos of paper diary pages and extract which bubbles are filled.
+    return `You are a medical OCR specialist for the CANTrac breast cancer diary.
+Your job is to examine photos of diary pages and extract which bubbles are filled.
 
 CRITICAL RULES:
-1. A FILLED bubble is dark (blue/purple ink, fully colored in). An EMPTY bubble is light gray or has just an outline. The contrast between filled and empty is VERY clear — filled bubbles are noticeably darker.
+1. FILLED bubble: interior is COMPLETELY SOLID dark (blue/purple ink, no light center visible). EMPTY bubble: thin ring outline only, white/light interior — the vast majority of bubbles look like this. Exactly ONE bubble per row is filled (zero if unanswered). If two look similarly dark, pick the darker one and set confidence "medium". Never mistake printed border lines or box edges for bubbles.
 2. Return ONLY valid JSON — no markdown, no backticks, no explanation.
 3. If a bubble appears partially filled or ambiguous, mark it as filled and set confidence to "low".
 4. If you cannot determine a field at all (image too blurry, cut off), set value to null.
 5. For Yes/No fields: return "Yes" or "No" (or null if unreadable).
 6. For status fields: return one of the exact option strings.
 7. The page number is printed at the top center of every page.
-8. Photos may be taken at an angle, rotated sideways, or on a textured background — mentally rotate the image if needed to read the form correctly. Focus on the white paper area.
-9. For DATE ROWS (DD/MM/YY): these have rows of small bubbles numbered 01-31, or labeled Jan-Dec, or 2026/2027/2028. You MUST scan each bubble carefully. Exactly ONE bubble per row will be filled dark. The rest will be empty (light outline). Report the value next to the filled bubble. DD values must be zero-padded: "01", "05", "14", "31".`;
+8. Photos may be taken at an angle, rotated sideways, or on a textured background — mentally rotate the image if needed. Focus on the white paper area.
+9. DATE ROWS (DD/MM/YY): rows of small bubbles numbered 01-31, or labeled Jan-Dec, or 2026/2027/2028. Exactly ONE per row is filled. DD values must be zero-padded: "01", "05", "14", "31".`;
 }
 
-function buildExtractionPrompt(
-    pageNumber: number,
-    pageTitle: string,
-    questions: DiaryQuestion[]
-): string {
+function buildExtractionPrompt(pageNumber: number, pageTitle: string, questions: DiaryQuestion[]): string {
     const isSchedule = questions.some(q => q.type === "date" || q.type === "select");
     if (isSchedule) return buildSchedulePrompt(pageNumber, pageTitle);
-
-    const fieldLines = questions
-        .filter(q => q.type !== "info")
-        .map((q, i) => {
-            if (q.type === "yes_no") return `  ${i + 1}. "${q.id}" (yes_no): "${q.text}" → options: [Yes | No]`;
-            if (q.type === "text")   return `  ${i + 1}. "${q.id}" (text): "${q.text}" → read handwritten text or ""`;
-            const opts = q.options?.join(" | ") || "Yes | No";
-            return `  ${i + 1}. "${q.id}" (${q.type}): "${q.text}" → options: [${opts}]`;
-        })
-        .join("\n");
-
-    const exampleFields = questions
-        .filter(q => q.type !== "info")
-        .map(q => `    "${q.id}": { "value": <extracted_value_or_null>, "confidence": "high"|"medium"|"low" }`)
-        .join(",\n");
-
+    const fieldLines = questions.filter(q => q.type !== "info").map((q, i) => {
+        if (q.type === "yes_no") return `  ${i + 1}. "${q.id}" (yes_no): "${q.text}" → options: [Yes | No]`;
+        if (q.type === "text")   return `  ${i + 1}. "${q.id}" (text): "${q.text}" → read handwritten text or ""`;
+        const opts = q.options?.join(" | ") || "Yes | No";
+        return `  ${i + 1}. "${q.id}" (${q.type}): "${q.text}" → options: [${opts}]`;
+    }).join("\n");
+    const exampleFields = questions.filter(q => q.type !== "info")
+        .map(q => `    "${q.id}": { "value": <extracted_value_or_null>, "confidence": "high"|"medium"|"low" }`).join(",\n");
     return `This is CANTrac page ${pageNumber}: "${pageTitle}"
-
-Extract the value of each field by examining which bubble is filled (dark/colored) next to each question.
-
-Fields to extract:
-${fieldLines}
-
+Extract the value of each field by examining which bubble is filled next to each question.
+Fields to extract:\n${fieldLines}
 Respond with ONLY this JSON (no markdown, no backticks):
-{
-  "pageNumber": ${pageNumber},
-  "title": "${pageTitle}",
-  "fields": {
-${exampleFields}
-  }
-}`;
+{\n  "pageNumber": ${pageNumber},\n  "title": "${pageTitle}",\n  "fields": {\n${exampleFields}\n  }\n}`;
 }
 
 function buildSchedulePrompt(pageNumber: number, pageTitle: string): string {
-    return `This is CANTrac page ${pageNumber}: "${pageTitle}"
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE.
 
-This is a SCHEDULE PAGE with appointment dates filled by a patient using dark blue/purple ink.
+Read TWO sections (First Appointment at the top, Second Attempt at the bottom). For each section extract:
 
-STEP-BY-STEP ANALYSIS REQUIRED:
-For each section, carefully analyze each row of bubbles and describe what you see before giving the answer.
+1. DD row: TWO lines — Line 1 has 16 bubbles (days 01-16), Line 2 has 15 bubbles (days 17-31).
+   Count N empty left + R empty right of the filled bubble.
+   Line 1: day=N+1, verify N+R+1=16. Line 2: day=N+17, verify N+R+1=15.
+   Near-end (N≥13): count from BOTH sides and confirm both agree.
+   Always return a value; zero-pad: "01", "15", "31". Return null only if the section is entirely blank.
+2. MM row: 12 bubbles — Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. Count N empty left of filled → N=0→Jan…N=11→Dec. The LAST bubble (Dec, rightmost) is easy to miss.
+3. YY row: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Assess each bubble individually — which one is solid dark?
+4. Status: Scheduled / Completed / Missed / Cancelled.
 
-SECTION 1: "First Appointment" (first/top section on the page)
-1. DD row: There are TWO separate lines of bubbles.
-   - Line 1 has EXACTLY 16 bubbles for days 01 through 16. No more, no fewer.
-   - Line 2 has EXACTLY 15 bubbles for days 17 through 31.
-   Find the ONE dark filled bubble. Count empty bubbles to its LEFT (N) and RIGHT (R) on the same line.
-   - Filled on Line 1: day = N + 1. Sanity check: N+R+1 should equal 16.
-   - Filled on Line 2: day = N + 17. Sanity check: N+R+1 should equal 15.
-   EDGE-POSITION WARNING: If N ≥ 13 (bubble is in positions 14-16), ALSO count from the right (R). Verify: day = N+1 from left AND day = 16-R or 31-R from right — both must agree.
-   Report as zero-padded two digits: "01", "05", "15", "29".
-2. MM row: 12 bubbles in order Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec.
-   Count N empty bubbles to the LEFT of the filled bubble → month = (N+1)th in sequence:
-   N=0→Jan, N=1→Feb, N=2→Mar, N=3→Apr, N=4→May, N=5→Jun,
-   N=6→Jul, N=7→Aug, N=8→Sep, N=9→Oct, N=10→Nov, N=11→Dec.
-   NOTE: December is the RIGHTMOST bubble — easy to miss, check it carefully.
-3. YY row: Three bubbles — LEFTMOST is 2026, MIDDLE is 2027, RIGHTMOST is 2028. Which is SOLID dark?
-4. Status row: Scheduled, Completed, Missed, Cancelled. Which is filled?
+The Second Attempt section may be completely blank if no second appointment was needed.
+Also read "Next Appointment Required" (Yes/No) at the very bottom of the page.
 
-SECTION 2: "Second Attempt (If First Missed/Cancelled)" (second/bottom section)
-Same structure as Section 1. May be completely empty if no second attempt was needed.
-
-FINAL QUESTION: "Next Appointment Required" at the very bottom — Yes or No.
-
-HOW TO TELL FILLED vs EMPTY:
-- FILLED: Circle interior is COMPLETELY SOLID — dark blue or dark purple. No light center. Stands out from all neighbors.
-- EMPTY: Circle has only a thin ring outline (light pink or gray). Center is white/light — you can see through it.
-- Exactly ONE filled bubble per row (or zero). If two look similar, pick the darker one, confidence "medium".
-
-Respond with this JSON. The "reasoning" field is REQUIRED — describe what you see before committing:
+Reasoning must show your count in compact form (e.g. "L1:N=4,R=11,sum=16→05"):
 {
   "pageNumber": ${pageNumber},
   "pageType": "schedule",
   "title": "${pageTitle}",
   "reasoning": {
-    "first_dd": "Line 1 (16 bubbles): N=[?] empty left, R=[?] empty right, N+R+1=[?]. Day=N+1=[?]. OR Line 2: same. Final: day=[?].",
-    "first_mm": "N=[?] empty to left of filled bubble → month=[?]. Label to right: [label]. Confirmed: [yes/no].",
-    "first_yy": "2026 bubble: [filled|empty]. 2027: [filled|empty]. 2028: [filled|empty]. Chose: [year].",
-    "first_status": "Scheduled: [filled|empty]. Completed: [filled|empty]. Missed: [filled|empty]. Cancelled: [filled|empty].",
-    "second_dd": "Second attempt DD: [describe or 'section blank'].",
-    "second_mm": "Second attempt MM: [describe or 'section blank'].",
-    "second_yy": "Second attempt YY: [describe or 'section blank'].",
-    "second_status": "Second attempt status: [describe or 'section blank']."
+    "first_dd": "<L1:N=?,R=?,sum=?→DD  or  L2:N=?,R=?,sum=?→DD>",
+    "first_mm": "<N=?→Mon>",
+    "first_yy": "<2026/2027/2028 — which is solid>",
+    "first_status": "<which bubble is solid>",
+    "second_dd": "<same format or blank>",
+    "second_mm": "<N=?→Mon or blank>",
+    "second_yy": "<which is solid or blank>",
+    "second_status": "<which or blank>"
   },
   "fields": {
-    "q1_date": { "value": "<DD/Mon/YYYY or null>", "confidence": "high|medium|low" },
-    "q1_status": { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
-    "q2_date": { "value": "<DD/Mon/YYYY or null>", "confidence": "high|medium|low" },
-    "q2_status": { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
-    "q3": { "value": "<Yes|No or null>", "confidence": "high|medium|low" }
+    "first_appointment_dd":     { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "first_appointment_mm":     { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "first_appointment_yy":     { "value": "<2026|2027|2028 or null>", "confidence": "high|medium|low" },
+    "first_appointment_status": { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "second_attempt_dd":        { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "second_attempt_mm":        { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "second_attempt_yy":        { "value": "<2026|2027|2028 or null>", "confidence": "high|medium|low" },
+    "second_attempt_status":    { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "next_appointment_required": { "value": "<Yes|No or null>", "confidence": "high|medium|low" }
   }
 }`;
 }
 
-function buildDateRetryPrompt(section: "first" | "second", pageTitle: string): string {
-    const label   = section === "first" ? "First Appointment" : "Second Attempt (If First Missed/Cancelled)";
-    const fieldId = section === "first" ? "q1_date" : "q2_date";
-    return `Look at this CANTrac schedule page: "${pageTitle}".
-Focus ONLY on the "${label}" section.
+// ─── Anthropic API Caller ─────────────────────────────────────────────────
 
-Read the DATE by analyzing THREE bubble rows:
+interface CallOptions { model?: string; maxTokens?: number; }
 
-DD row (two lines):
-- Line 1: EXACTLY 16 bubbles, days 01-16
-- Line 2: EXACTLY 15 bubbles, days 17-31
-Count empty bubbles to the LEFT of the dark filled bubble (N).
-Line 1: day = N+1. Line 2: day = N+17.
-If the bubble is near position 14-16 or 26-31, also count from the right to confirm.
-
-MM row: 12 bubbles — Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
-N empty to the left → month = (N+1)th name.
-NOTE: December is the RIGHTMOST bubble — check it carefully.
-
-YY row: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Which is solid dark?
-
-If this section is completely blank (no bubbles filled at all), return null.
-
-Respond with ONLY this JSON (no markdown, no backticks):
-{ "${fieldId}": { "value": "<DD/Mon/YYYY or null>", "confidence": "high|medium|low" } }`;
-}
-
-function buildStatusRetryPrompt(section: "first" | "second", pageTitle: string): string {
-    const label   = section === "first" ? "First Appointment" : "Second Attempt";
-    const fieldId = section === "first" ? "q1_status" : "q2_status";
-    return `Look at this CANTrac schedule page: "${pageTitle}".
-Focus ONLY on the STATUS row of the "${label}" section.
-
-Four bubbles: Scheduled | Completed | Missed | Cancelled
-Which ONE bubble is SOLID dark (filled with dark blue/purple ink)?
-If none are filled, return null.
-
-Respond with ONLY this JSON (no markdown, no backticks):
-{ "${fieldId}": { "value": "<Scheduled|Completed|Missed|Cancelled|null>", "confidence": "high|medium|low" } }`;
-}
-
-// ─── Anthropic API Calls ──────────────────────────────────────────────────
-
-async function callAnthropicAPI(
+async function callAnthropic(
     base64Image: string,
-    systemPrompt: string,
     userPrompt: string,
-    apiKey: string
-): Promise<AnthropicRawResult> {
+    apiKey: string,
+    opts: CallOptions = {}
+): Promise<Record<string, any>> {
+    const model     = opts.model     || ANTHROPIC_MODEL;
+    const maxTokens = opts.maxTokens || MAX_TOKENS;
+
     const body = {
-        model:      ANTHROPIC_MODEL,
-        max_tokens: MAX_TOKENS,
-        system:     systemPrompt,
+        model,
+        max_tokens: maxTokens,
+        system: [{ type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } }],
         messages: [{
             role: "user",
             content: [
-                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Image } },
-                { type: "text",  text: userPrompt },
+                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Image },
+                  cache_control: { type: "ephemeral" } },
+                { type: "text", text: userPrompt },
             ],
         }],
     };
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), ANTHROPIC_TIMEOUT_MS);
-
     let response: Response;
     try {
         response = await fetch(ANTHROPIC_API_URL, {
-            method:  "POST",
+            method: "POST",
             headers: {
-                "Content-Type":      "application/json",
-                "x-api-key":         apiKey,
+                "Content-Type": "application/json",
+                "x-api-key": apiKey,
                 "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31",
             },
-            body:   JSON.stringify(body),
+            body: JSON.stringify(body),
             signal: abort.signal,
         });
     } catch (err: any) {
         clearTimeout(timer);
-        if (err.name === "AbortError") throw new Error("Anthropic API request timed out after 60 s");
-        // "terminated" / UND_ERR_SOCKET — server closed the connection mid-upload
-        // (usually an invalid API key that caused an early 4xx + connection close)
-        throw new Error(`Anthropic API network error: ${err.message}. Check ANTHROPIC_API_KEY in .env`);
+        if (err.name === "AbortError") throw new Error("Anthropic API timed out after 60 s");
+        throw new Error(`Anthropic API network error: ${err.message}`);
     }
     clearTimeout(timer);
 
     if (!response.ok) {
         const errText = await response.text();
-        if (response.status === 401) throw new Error("Anthropic API: invalid API key — set ANTHROPIC_API_KEY correctly in .env");
-        if (response.status === 429) throw new Error("Anthropic API: rate limit exceeded — retry later");
+        if (response.status === 401) throw new Error("Anthropic API: invalid API key — set ANTHROPIC_API_KEY in .env");
+        if (response.status === 429) throw new Error("Anthropic API: rate limit exceeded");
         throw new Error(`Anthropic API error (${response.status}): ${errText}`);
     }
 
-    const data = await response.json() as { content: Array<{ type: string; text: string }> };
+    const data = await response.json() as { content: Array<{ type: string; text: string }>; usage?: any };
+
+    // Log cache hits (visible in server logs for cost tracking)
+    if (data.usage?.cache_read_input_tokens > 0)
+        console.log(`[Anthropic] Cache hit: ${data.usage.cache_read_input_tokens} tokens (~$${((data.usage.cache_read_input_tokens / 1_000_000) * 0.30).toFixed(4)} saved)`);
+
     const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("").trim();
     if (!text) throw new Error("Anthropic API returned empty response");
 
     const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    // Fix bare leading zeros in JSON number literals (e.g. 012 → 12)
-    const fixed   = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
+    const fixed   = cleaned.replace(/:\s*0+(\d+)/g, ": $1");   // fix bare leading zeros in JSON numbers
+
+    try { return JSON.parse(fixed); }
+    catch { throw new Error(`Failed to parse Anthropic response: ${cleaned.substring(0, 400)}`); }
+}
+
+// Haiku caller — for cheap utility checks (image quality, form validity)
+async function callHaiku(base64Image: string, userPrompt: string, apiKey: string): Promise<Record<string, any>> {
+    return callAnthropic(base64Image, userPrompt, apiKey, { model: HAIKU_MODEL, maxTokens: 512 });
+}
+
+// ─── Schedule: Helper to parse DD/MM/YY components from existing field map ─
+
+function parseDateComponents(fields: Record<string, AnthropicField>, prefix: "first_appointment" | "second_attempt") {
+    return {
+        dd:     fields[`${prefix}_dd`]?.value     ?? null,
+        mm:     fields[`${prefix}_mm`]?.value     ?? null,
+        yy:     fields[`${prefix}_yy`]?.value     ?? null,
+        status: fields[`${prefix}_status`]?.value ?? null,
+        ddConf: fields[`${prefix}_dd`]?.confidence     ?? null,
+        mmConf: fields[`${prefix}_mm`]?.confidence     ?? null,
+        yyConf: fields[`${prefix}_yy`]?.confidence     ?? null,
+    };
+}
+
+function assembleDateString(dd: string | null, mm: string | null, yy: string | null): string | null {
+    if (!dd || !mm || !yy) return null;
+    const mmNum = /^\d{2}$/.test(mm) ? mm : MONTH_TO_NUM[mm.toLowerCase()];
+    if (!mmNum) return null;
+    return `${dd.padStart(2, "0")}/${mmNum}/${yy}`;
+}
+
+// ─── Schedule: Component-level Retry Prompts (ported from cantrac-omr) ───
+
+function buildDDMMRetryPrompt(sectionLabel: string): string {
+    return `Look at this CANTrac diary page. Focus ONLY on the "${sectionLabel}" section.
+
+Read BOTH rows:
+
+DD row — TWO lines: Line 1 has 16 bubbles (days 01-16), Line 2 has 15 bubbles (days 17-31).
+Count N empty left + R empty right of the filled bubble.
+Line 1: day=N+1, verify N+R+1=16. Line 2: day=N+17, verify N+R+1=15. Zero-pad result.
+
+MM row — 12 bubbles: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec.
+Count N empty left of filled → N=0→Jan … N=11→Dec.
+Pay close attention to the last 3 (Oct, Nov, Dec) — easy to miss near the right edge.
+
+Respond with ONLY this JSON (no markdown, no backticks):
+{ "dd": "<01-31>", "dd_confidence": "high|medium|low", "mm": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|null>", "mm_confidence": "high|medium|low" }`;
+}
+
+function buildDDRetryPrompt(sectionLabel: string, ddValue: string | null, ddPlus1Str: string | null): string {
+    if (ddValue && ddPlus1Str) {
+        return `Look at this CANTrac diary page. Focus ONLY on the "${sectionLabel}" section.
+Compare ONLY these two adjacent DD bubbles: day ${ddValue} and day ${ddPlus1Str}.
+Which of the two is DARKER (solid ink, no light center)?
+Respond with ONLY this JSON (no markdown, no backticks):
+{ "dd": "<${ddValue}|${ddPlus1Str}>", "confidence": "high|medium|low" }`;
+    }
+    return `Look at this CANTrac diary page. Focus ONLY on the "${sectionLabel}" section.
+DD row — TWO lines: Line 1 has 16 bubbles (days 01-16), Line 2 has 15 bubbles (days 17-31).
+Count N empty left + R empty right of the filled bubble.
+Line 1: day=N+1, verify N+R+1=16. Line 2: day=N+17, verify N+R+1=15.
+Always return a value; return null only if every bubble in both lines is clearly empty.
+Respond with ONLY this JSON (no markdown, no backticks):
+{ "dd": "<01-31>", "confidence": "high|medium|low" }`;
+}
+
+function buildMMRetryPrompt(sectionLabel: string, hasOtherData: boolean): string {
+    return `Look at this CANTrac diary page. Focus ONLY on the "${sectionLabel}" section.
+Find the MM (month) row — 12 bubbles: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec.
+STEP 1 — Count N empty bubbles to the LEFT of the filled bubble: N=0→Jan … N=11→Dec.
+STEP 2 — If counting is unclear, identify the month by its printed label next to the filled bubble.
+Pay close attention to the last 3 positions (Oct, Nov, Dec) — easy to miss near the right edge.${hasOtherData ? "\nOther fields in this section are filled, so a month IS selected here." : ""}
+Return null only if the entire section appears completely blank.
+Respond with ONLY this JSON (no markdown, no backticks):
+{ "mm": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|null>", "confidence": "high|medium|low" }`;
+}
+
+function buildYYBothRetryPrompt(): string {
+    return `Look at the YEAR rows in BOTH appointment sections on this CANTrac schedule page.
+Each YY row has exactly THREE bubbles: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028.
+ONE bubble per row is SOLID dark (ink fills the circle — no light center). Others are ring outlines.
+WARNING: The leftmost (2026) and rightmost (2028) are easy to confuse — examine each position separately.
+
+FIRST APPOINTMENT section (TOP section, above the divider):
+- Is position 1 (LEFTMOST, 2026) solid dark?
+- Is position 2 (MIDDLE, 2027) solid dark?
+- Is position 3 (RIGHTMOST, 2028) solid dark?
+
+SECOND ATTEMPT section (BOTTOM section, below the divider):
+- Same — which of the 3 positions is solid dark?
+- Return null if the entire second section appears blank.
+
+Respond with ONLY this JSON (no markdown, no backticks):
+{
+  "first_yy": "<2026|2027|2028>",   "first_yy_confidence": "<high|medium|low>",
+  "second_yy": "<2026|2027|2028|null>", "second_yy_confidence": "<high|medium|low>"
+}`;
+}
+
+function buildYYSingleRetryPrompt(sectionLabel: string): string {
+    return `Look at the YEAR row in the "${sectionLabel}" section of this CANTrac schedule page.
+The YY row has exactly THREE bubbles in order, left to right:
+  Position 1 — LEFTMOST  = 2026
+  Position 2 — MIDDLE    = 2027
+  Position 3 — RIGHTMOST = 2028
+ONE bubble is SOLID dark (ink fills the entire circle, no light center visible). The other two are ring outlines.
+WARNING: The leftmost (2026) and rightmost (2028) sit at opposite ends and are easy to confuse. Examine each SEPARATELY:
+- Is the LEFTMOST circle (2026) solid dark, or just an outline?
+- Is the MIDDLE circle (2027) solid dark, or just an outline?
+- Is the RIGHTMOST circle (2028) solid dark, or just an outline?
+Respond with ONLY this JSON (no markdown, no backticks):
+{ "yy": "<2026|2027|2028>", "confidence": "high|medium|low" }`;
+}
+
+function buildSecondSectionRetryPrompt(firstDD: string, firstMM: string, firstYY: string): string {
+    return `Look at this CANTrac diary page. Re-read ONLY the SECOND ATTEMPT (bottom) section.
+
+First appointment: ${firstMM} ${firstDD}, ${firstYY}. Expect second attempt year to be ${firstYY} (or at most ${parseInt(firstYY) + 1}).
+
+Read each row for the SECOND ATTEMPT section only:
+- DD: Scan Line 2 (days 17-31, 15 bubbles) first, then Line 1 (days 01-16, 16 bubbles) if Line 2 is empty. Count N empty left → day=N+17 (Line 2) or N+1 (Line 1).
+- MM: 12 bubbles Jan-Dec. Count N empty left → N=0→Jan … N=11→Dec.
+- YY: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Expect ${firstYY}.
+- Status: Scheduled / Completed / Missed / Cancelled.
+
+If the entire section is blank, return null for all fields.
+
+Respond with ONLY this JSON (no markdown, no backticks):
+{
+  "second_attempt_dd":     { "value": "<01-31 or null>",                                           "confidence": "high|medium|low" },
+  "second_attempt_mm":     { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+  "second_attempt_yy":     { "value": "<2026|2027|2028 or null>",                                  "confidence": "high|medium|low" },
+  "second_attempt_status": { "value": "<Scheduled|Completed|Missed|Cancelled or null>",            "confidence": "high|medium|low" }
+}`;
+}
+
+// ─── Cross-validation (ported from cantrac-omr._crossValidateScheduleFields) ─
+
+async function crossValidateSchedule(
+    base64Image: string,
+    fields: Record<string, AnthropicField>,
+    apiKey: string,
+    warnings: string[]
+): Promise<boolean> {
+    const currentYear = new Date().getFullYear();
+    const fMM  = fields["first_appointment_mm"]?.value  ?? null;
+    const fYY  = fields["first_appointment_yy"]?.value  ?? null;
+    const sMM  = fields["second_attempt_mm"]?.value     ?? null;
+    const sYY  = fields["second_attempt_yy"]?.value     ?? null;
+    const fSts = fields["first_appointment_status"]?.value ?? null;
+
+    const issues: string[] = [];
+    if (["Completed","Missed","Cancelled"].includes(fSts ?? "") && fYY && parseInt(fYY) > currentYear)
+        issues.push("first_yy_future");
+    if (fMM && sMM && fMM === sMM) issues.push("same_mm");
+    if (fYY && sYY && fYY === sYY && ["Completed","Missed","Cancelled"].includes(fSts ?? ""))
+        issues.push("same_yy_terminal");
+
+    if (issues.length === 0) return false;
+
+    console.log(`[Anthropic] Cross-validation issues: ${issues.join(", ")} — re-reading MM+YY`);
+
+    const suspiciousNotes: string[] = [];
+    if (issues.includes("first_yy_future"))
+        suspiciousNotes.push(`ERROR: First appointment status is '${fSts}' with year ${fYY}. A ${fSts?.toLowerCase()} appointment MUST have already happened — year ${fYY} is STILL IN THE FUTURE (current: ${currentYear}). The LEFTMOST year bubble (2026) is almost certainly correct.`);
+    if (issues.includes("same_mm"))
+        suspiciousNotes.push(`ERROR: Both sections show the same month (${fMM}). Two appointments almost never share the same month — the model likely read the same MM bubble for both sections.`);
+    if (issues.includes("same_yy_terminal") && !issues.includes("first_yy_future"))
+        suspiciousNotes.push(`ERROR: Both sections show the same year (${fYY}) when first status is '${fSts}'. Read each section's YY row independently.`);
+
+    const cvPrompt = `Look at this CANTrac schedule page carefully.
+
+KNOWN EXTRACTION ERRORS — you must correct them:
+${suspiciousNotes.join("\n\n")}
+
+Re-read ONLY these 4 values. Read TOP and BOTTOM section rows COMPLETELY INDEPENDENTLY.
+
+FIRST APPOINTMENT (TOP section, above the divider):
+- MM row: 12 bubbles — Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. Which ONE is SOLID dark?
+- YY row: THREE bubbles. LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Which ONE is solid dark?
+
+SECOND ATTEMPT (BOTTOM section, below the divider):
+- MM row: Look at the BOTTOM section's OWN separate row of 12 month bubbles. Which ONE is solid dark? (null if completely empty)
+- YY row: Look at the BOTTOM section's OWN separate year row. Which is solid dark? (null if empty)
+
+Respond with ONLY this JSON (no markdown, no backticks):
+{
+  "reasoning": {
+    "first_mm":  "<describe what you see in the TOP section MM row>",
+    "first_yy":  "<describe each of the 3 year bubbles in the TOP section>",
+    "second_mm": "<describe what you see in the BOTTOM section MM row — reading independently>",
+    "second_yy": "<describe the 3 year bubbles in the BOTTOM section>"
+  },
+  "first_mm":  "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>",
+  "first_yy":  "<2026|2027|2028 or null>",
+  "second_mm": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>",
+  "second_yy": "<2026|2027|2028 or null>"
+}`;
 
     try {
-        return JSON.parse(fixed) as AnthropicRawResult;
-    } catch {
-        throw new Error(`Failed to parse Anthropic response as JSON: ${cleaned.substring(0, 500)}`);
+        const correction = await callAnthropic(base64Image, cvPrompt, apiKey);
+        if (correction.reasoning) {
+            console.log("[Anthropic] Cross-validation reasoning:", JSON.stringify(correction.reasoning, null, 2));
+        }
+
+        const applied: string[] = [];
+        if (correction.first_mm && VALID_MONTHS.includes(correction.first_mm) && correction.first_mm !== fMM) {
+            fields["first_appointment_mm"] = { value: correction.first_mm, confidence: "medium" };
+            applied.push(`first_mm=${correction.first_mm}`);
+        }
+        if (correction.first_yy && VALID_YEARS.includes(String(correction.first_yy))) {
+            const corrYY = String(correction.first_yy);
+            const fixesFuture = parseInt(corrYY) <= currentYear && parseInt(fYY || "0") > currentYear;
+            if (corrYY !== fYY && (fixesFuture || issues.includes("same_yy_terminal"))) {
+                fields["first_appointment_yy"] = { value: corrYY, confidence: "medium" };
+                applied.push(`first_yy=${corrYY}`);
+            }
+        }
+        if (correction.second_mm && VALID_MONTHS.includes(correction.second_mm) && correction.second_mm !== sMM) {
+            fields["second_attempt_mm"] = { value: correction.second_mm, confidence: "medium" };
+            applied.push(`second_mm=${correction.second_mm}`);
+        }
+        if (correction.second_yy && VALID_YEARS.includes(String(correction.second_yy)) && String(correction.second_yy) !== sYY) {
+            fields["second_attempt_yy"] = { value: String(correction.second_yy), confidence: "medium" };
+            applied.push(`second_yy=${correction.second_yy}`);
+        }
+
+        if (applied.length > 0) warnings.push(`Cross-validation corrected: ${applied.join(", ")}`);
+        else warnings.push("Cross-validation re-read did not change values — manual verification recommended");
+    } catch (err: any) {
+        console.log(`[Anthropic] Cross-validation failed: ${err.message}`);
+    }
+    return true;
+}
+
+// ─── Image Quality + Form Validity (via Haiku) ────────────────────────────
+
+async function assessImageQuality(lowResBase64: string, apiKey: string, warnings: string[]): Promise<void> {
+    const prompt = `Look at this photo of a CANTrac diary page and assess its photographic quality.
+Check for: patterned/textured background, severe angle/skew, blur/out-of-focus, poor lighting/glare, form edges cut off.
+Respond with ONLY this JSON (no markdown):
+{ "patterned_background": true|false, "severe_angle": true|false, "blurry": true|false, "poor_lighting": true|false, "form_cut_off": true|false, "overall_quality": "good"|"acceptable"|"poor" }`;
+    try {
+        const q = await callHaiku(lowResBase64, prompt, apiKey);
+        const issues: string[] = [];
+        if (q.patterned_background) issues.push("diary page on a patterned background — use a plain surface");
+        if (q.severe_angle)         issues.push("diary page at a severe angle — hold camera directly above");
+        if (q.blurry)               issues.push("image is blurry — hold steady and let it focus");
+        if (q.poor_lighting)        issues.push("poor lighting or glare — improve lighting");
+        if (q.form_cut_off)         issues.push("diary page edges cut off — ensure the whole page is in frame");
+        if (issues.length > 0) {
+            warnings.push("Image quality issues: " + issues.join("; ") + " — retake recommended");
+            console.log(`[Anthropic] Image quality issues: ${issues.join(", ")}`);
+        }
+        if (q.overall_quality === "poor") warnings.push("Overall image quality is poor — retake the photo");
+    } catch (err: any) {
+        console.log(`[Anthropic] Quality check failed: ${err.message}`);
     }
 }
 
-/**
- * Lightweight focused call for single-field retries.
- * Uses a lower max_tokens budget since the response is a tiny JSON object.
- */
-async function callAnthropicFocused(
-    base64Image: string,
-    userPrompt: string,
-    apiKey: string
-): Promise<Record<string, AnthropicField>> {
-    const body = {
-        model:      ANTHROPIC_MODEL,
-        max_tokens: 256,
-        system:     buildSystemPrompt(),
-        messages: [{
-            role: "user",
-            content: [
-                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Image } },
-                { type: "text",  text: userPrompt },
-            ],
-        }],
-    };
-
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), ANTHROPIC_TIMEOUT_MS);
-
-    let response: Response;
+async function checkFormValidity(lowResBase64: string, apiKey: string): Promise<{ valid: boolean; reason?: string }> {
+    const prompt = `Is this a CANTrac breast cancer tracking diary page?
+A valid CANTrac page has ALL of these: pink/red header banner, rows of bubble/circle options, page number at top center, breast cancer ribbon symbol, QR code.
+Respond with ONLY this JSON (no markdown):
+{ "isValid": true|false, "reason": "<one sentence>" }`;
     try {
-        response = await fetch(ANTHROPIC_API_URL, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-            body:    JSON.stringify(body),
-            signal:  abort.signal,
-        });
+        const result = await callHaiku(lowResBase64, prompt, apiKey);
+        if (typeof result.isValid === "boolean") return { valid: result.isValid, reason: result.reason };
     } catch (err: any) {
-        clearTimeout(timer);
-        if (err.name === "AbortError") throw new Error("Anthropic API retry timed out after 60 s");
-        throw new Error(`Anthropic API network error: ${err.message}`);
+        console.log(`[Anthropic] Form validity check failed: ${err.message}`);
     }
-    clearTimeout(timer);
-
-    if (!response.ok) throw new Error(`Focused retry API error (${response.status})`);
-
-    const data = await response.json() as { content: Array<{ type: string; text: string }> };
-    const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("").trim();
-    if (!text) throw new Error("Empty response from focused retry");
-
-    const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    return JSON.parse(cleaned) as Record<string, AnthropicField>;
+    return { valid: true }; // default to valid if check fails — don't block extraction
 }
 
 // ─── Main Export ──────────────────────────────────────────────────────────
@@ -504,112 +576,271 @@ export async function extractWithAnthropic(
     const warnings:  string[] = [];
     const isSchedule = questions.some(q => q.type === "date" || q.type === "select");
 
-    // Preprocess image — higher resolution for schedule pages (tiny date bubbles)
-    const processedBuffer = await preprocessForVision(
-        imageBuffer,
-        isSchedule ? SCHED_MAX_DIM : STD_MAX_DIM,
-        isSchedule ? SCHED_QUALITY : STD_QUALITY
-    );
-    const base64Image = processedBuffer.toString("base64");
+    // Preprocess — standard vs high-res for schedule pages
+    const [processedBuffer, lowResBuffer] = await Promise.all([
+        preprocessForVision(imageBuffer, isSchedule ? SCHED_MAX_DIM : STD_MAX_DIM, isSchedule ? SCHED_QUALITY : STD_QUALITY),
+        preprocessForVision(imageBuffer, LOWRES_MAX, LOWRES_QUAL),
+    ]);
+    const base64Image   = processedBuffer.toString("base64");
+    const lowResBase64  = lowResBuffer.toString("base64");
 
-    const rawResult = await callAnthropicAPI(
-        base64Image,
-        buildSystemPrompt(),
-        buildExtractionPrompt(pageNumber, pageTitle, questions),
-        apiKey
-    );
+    // Validity check — cheap Haiku call to avoid wasting Sonnet on non-diary images
+    const { valid: isValidForm, reason: invalidReason } = await checkFormValidity(lowResBase64, apiKey);
+    if (!isValidForm) {
+        warnings.push(`Image may not be a valid CANTrac diary page: ${invalidReason || "unknown reason"}`);
+        console.log(`[Anthropic] Form validity: INVALID — ${invalidReason}`);
+    }
 
+    // Main extraction
+    const rawResult = await callAnthropic(base64Image, buildExtractionPrompt(pageNumber, pageTitle, questions), apiKey) as AnthropicRawResult;
     if (rawResult.reasoning) {
-        console.log("[Anthropic] Model reasoning:", JSON.stringify(rawResult.reasoning, null, 2));
+        console.log("[Anthropic] Reasoning:", JSON.stringify(rawResult.reasoning, null, 2));
         delete rawResult.reasoning;
     }
 
-    // ── Schedule page retries ─────────────────────────────────────────────
-    // For each date/status field that came back null or low-confidence, fire
-    // a focused single-field prompt to get a better answer.
-    if (isSchedule && rawResult.fields) {
-        const sections: Array<{ dateId: string; statusId: string; section: "first" | "second" }> = [
-            { dateId: "q1_date", statusId: "q1_status", section: "first"  },
-            { dateId: "q2_date", statusId: "q2_status", section: "second" },
-        ];
+    // ── Schedule: component-level retries (DD / MM / YY separately) ──────
+    let crossValidationFired = false;
+    let secondRetryChanged   = false;
 
-        for (const { dateId, statusId, section } of sections) {
-            // Date retry
-            const dateField = rawResult.fields[dateId];
-            if (!dateField || dateField.value === null || dateField.confidence === "low") {
-                console.log(`[Anthropic] ${dateId}=${dateField?.value ?? "null"} (${dateField?.confidence ?? "none"}) — retrying with focused prompt`);
+    if (isSchedule && rawResult.fields) {
+        const SECTIONS = [
+            { prefix: "first_appointment"  as const, label: "First Appointment"                        },
+            { prefix: "second_attempt"     as const, label: "Second Attempt (If First Missed/Cancelled)" },
+        ];
+        const nearEndRetryApplied = new Set<string>();
+
+        for (const { prefix, label } of SECTIONS) {
+            const ddKey = `${prefix}_dd`; const mmKey = `${prefix}_mm`;
+            const ddF = rawResult.fields[ddKey]; const mmF = rawResult.fields[mmKey];
+            const ddVal   = parseInt(ddF?.value || "0");
+            const nearEnd = (ddVal >= 14 && ddVal <= 16) || (ddVal >= 26 && ddVal <= 31);
+            const ddBad   = !ddF || ddF.value === null || ddF.confidence === "low" || nearEnd;
+            const mmBad   = !mmF || mmF.value === null || mmF.confidence === "low";
+
+            // ── Combined DD+MM retry (one call if both are bad and not near-end) ─
+            if (ddBad && !nearEnd && mmBad) {
+                console.log(`[Anthropic] DD+MM both bad for ${label} — combined retry`);
                 try {
-                    const retryFields = await callAnthropicFocused(
-                        base64Image,
-                        buildDateRetryPrompt(section, pageTitle),
-                        apiKey
-                    );
-                    if (retryFields[dateId]?.value) {
-                        console.log(`[Anthropic] ${dateId} retry result: ${retryFields[dateId].value}`);
-                        rawResult.fields[dateId] = retryFields[dateId];
+                    const combined = await callAnthropic(base64Image, buildDDMMRetryPrompt(label), apiKey);
+                    if (combined.dd) {
+                        const padded = String(combined.dd).padStart(2, "0");
+                        rawResult.fields[ddKey] = { value: padded, confidence: combined.dd_confidence || "medium" };
+                        console.log(`[Anthropic] DD+MM combined → DD=${padded} MM=${combined.mm ?? "null"}`);
                     }
-                } catch (err: any) {
-                    console.log(`[Anthropic] ${dateId} retry failed: ${err.message}`);
-                }
+                    const mmVal = combined.mm && combined.mm !== "null" ? combined.mm : null;
+                    if (mmVal) rawResult.fields[mmKey] = { value: mmVal, confidence: combined.mm_confidence || "medium" };
+                    else warnings.push(`MM for ${label} could not be read — manual verification required`);
+                } catch (err: any) { console.log(`[Anthropic] DD+MM combined retry failed: ${err.message}`); }
+                continue; // don't do individual retries after combined
             }
 
-            // Status retry
-            const statusField = rawResult.fields[statusId];
-            if (!statusField || statusField.value === null || statusField.confidence === "low") {
-                console.log(`[Anthropic] ${statusId}=${statusField?.value ?? "null"} — retrying with focused prompt`);
+            // ── Individual DD retry ───────────────────────────────────────────
+            if (ddBad) {
+                const ddPlus1 = Math.min(ddVal + 1, ddVal <= 16 ? 16 : 31);
+                const ddPlus1Str = nearEnd && ddPlus1 > ddVal ? String(ddPlus1).padStart(2, "0") : null;
+                console.log(`[Anthropic] DD=${ddF?.value ?? "null"} (conf:${ddF?.confidence ?? "none"}) for ${label}${nearEnd ? " [near-end]" : ""} — retrying`);
                 try {
-                    const retryFields = await callAnthropicFocused(
-                        base64Image,
-                        buildStatusRetryPrompt(section, pageTitle),
-                        apiKey
-                    );
-                    if (retryFields[statusId]?.value) {
-                        console.log(`[Anthropic] ${statusId} retry result: ${retryFields[statusId].value}`);
-                        rawResult.fields[statusId] = retryFields[statusId];
+                    const ddResult = await callAnthropic(base64Image, buildDDRetryPrompt(label, ddF?.value ?? null, ddPlus1Str), apiKey);
+                    if (ddResult.dd) {
+                        const padded = String(ddResult.dd).padStart(2, "0");
+                        if (nearEnd && padded === ddF?.value && ddPlus1Str && ddPlus1 > ddVal) {
+                            // Near-end bias: if retry didn't change, apply +1 correction
+                            const corrected = ddPlus1Str;
+                            console.log(`[Anthropic] DD near-end retry unchanged (${padded}) — applying +1 correction → ${corrected}`);
+                            warnings.push(`DD=${padded} auto-corrected to ${corrected} (near-end bias) — verify manually`);
+                            rawResult.fields[ddKey] = { value: corrected, confidence: "low" };
+                        } else {
+                            console.log(`[Anthropic] DD retry → ${padded}`);
+                            rawResult.fields[ddKey] = { value: padded, confidence: ddResult.confidence || "medium" };
+                        }
+                        if (nearEnd) nearEndRetryApplied.add(ddKey);
                     }
-                } catch (err: any) {
-                    console.log(`[Anthropic] ${statusId} retry failed: ${err.message}`);
-                }
+                } catch (err: any) { console.log(`[Anthropic] DD retry failed: ${err.message}`); }
+            }
+
+            // ── Individual MM retry ───────────────────────────────────────────
+            if (mmBad) {
+                const hasOtherData = rawResult.fields[ddKey]?.value != null;
+                console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — retrying`);
+                try {
+                    const mmResult = await callAnthropic(base64Image, buildMMRetryPrompt(label, hasOtherData), apiKey);
+                    const mmVal = mmResult?.mm && mmResult.mm !== "null" ? mmResult.mm : null;
+                    if (mmVal) {
+                        rawResult.fields[mmKey] = { value: mmVal, confidence: mmResult.confidence || "medium" };
+                        console.log(`[Anthropic] MM retry → ${mmVal}`);
+                    } else warnings.push(`MM for ${label} could not be read — manual verification required`);
+                } catch (err: any) { console.log(`[Anthropic] MM retry failed: ${err.message}`); }
             }
         }
+
+        // ── YY retry (medium also triggered — wrong year is a critical error) ─
+        const hasSecondData = rawResult.fields["second_attempt_dd"]?.value != null ||
+                              rawResult.fields["second_attempt_mm"]?.value != null ||
+                              rawResult.fields["second_attempt_status"]?.value != null;
+        const firstYYF  = rawResult.fields["first_appointment_yy"];
+        const secondYYF = rawResult.fields["second_attempt_yy"];
+        const firstYYBad  = !firstYYF  || firstYYF.value  === null || firstYYF.confidence  !== "high";
+        const secondYYBad = hasSecondData && (!secondYYF || secondYYF.value === null || secondYYF.confidence !== "high");
+
+        if (firstYYBad && secondYYBad) {
+            console.log("[Anthropic] YY bad for both sections — combined retry");
+            try {
+                const combined = await callAnthropic(base64Image, buildYYBothRetryPrompt(), apiKey);
+                if (combined.first_yy  && VALID_YEARS.includes(String(combined.first_yy)))
+                    rawResult.fields["first_appointment_yy"] = { value: String(combined.first_yy),  confidence: combined.first_yy_confidence  || "medium" };
+                if (combined.second_yy && VALID_YEARS.includes(String(combined.second_yy)))
+                    rawResult.fields["second_attempt_yy"]    = { value: String(combined.second_yy), confidence: combined.second_yy_confidence || "medium" };
+            } catch (err: any) { console.log(`[Anthropic] YY combined retry failed: ${err.message}`); }
+        } else {
+            const yyRetries = [
+                firstYYBad  ? { key: "first_appointment_yy", label: "First Appointment", field: firstYYF  } : null,
+                secondYYBad ? { key: "second_attempt_yy",    label: "Second Attempt",    field: secondYYF } : null,
+            ].filter(Boolean) as Array<{ key: string; label: string; field: AnthropicField | undefined }>;
+
+            for (const { key, label, field } of yyRetries) {
+                console.log(`[Anthropic] YY=${field?.value ?? "null"} (conf:${field?.confidence ?? "none"}) for ${label} — retrying`);
+                try {
+                    const result = await callAnthropic(base64Image, buildYYSingleRetryPrompt(label), apiKey);
+                    if (result.yy && VALID_YEARS.includes(String(result.yy))) {
+                        rawResult.fields[key] = { value: String(result.yy), confidence: result.confidence || "medium" };
+                        console.log(`[Anthropic] YY retry → ${result.yy} for ${label}`);
+                    }
+                } catch (err: any) { console.log(`[Anthropic] YY retry failed: ${err.message}`); }
+            }
+        }
+
+        // ── Second attempt section retry (year gap / terminal status) ────────
+        const fComp = parseDateComponents(rawResult.fields, "first_appointment");
+        const sComp = parseDateComponents(rawResult.fields, "second_attempt");
+        const yearGap   = fComp.yy && sComp.yy && Math.abs(parseInt(sComp.yy) - parseInt(fComp.yy)) > 1;
+        const secondHasData = sComp.dd != null || sComp.mm != null;
+        const terminalFirst = ["Completed","Missed","Cancelled"].includes(fComp.status ?? "");
+        if (yearGap || (terminalFirst && secondHasData)) {
+            const reason = yearGap ? `Year gap (${fComp.yy} vs ${sComp.yy})` : `First status='${fComp.status}'`;
+            console.log(`[Anthropic] ${reason} — retrying second attempt section`);
+            try {
+                const retried = await callAnthropic(
+                    base64Image,
+                    buildSecondSectionRetryPrompt(fComp.dd || "", fComp.mm || "", fComp.yy || ""),
+                    apiKey
+                );
+                const origYY  = parseInt(sComp.yy || "0");
+                const retryYY = parseInt(retried["second_attempt_yy"]?.value || "0");
+                const anchorYY = parseInt(fComp.yy || "0");
+                const retryGap = anchorYY ? Math.abs(retryYY - anchorYY) : 0;
+                const currentYear = new Date().getFullYear();
+
+                if (yearGap && retryGap > Math.abs(origYY - anchorYY) && retryGap > 1) {
+                    warnings.push("Second attempt retry rejected — year gap worse than original");
+                } else if (retryYY > currentYear + 1) {
+                    warnings.push("Second attempt retry rejected — year implausibly far in future");
+                } else {
+                    for (const key of ["second_attempt_dd","second_attempt_mm","second_attempt_yy","second_attempt_status"] as const) {
+                        if (key === "second_attempt_dd" && nearEndRetryApplied.has(key)) continue;
+                        if (retried[key]?.value !== null && retried[key]?.value !== undefined) {
+                            if (retried[key].value !== rawResult.fields[key]?.value) secondRetryChanged = true;
+                            rawResult.fields[key] = retried[key];
+                        }
+                    }
+                    console.log(`[Anthropic] Second attempt retry applied: DD=${retried["second_attempt_dd"]?.value} MM=${retried["second_attempt_mm"]?.value} YY=${retried["second_attempt_yy"]?.value}`);
+                }
+            } catch (err: any) { console.log(`[Anthropic] Second attempt retry failed: ${err.message}`); }
+        }
+
+        // ── Cross-validation ───────────────────────────────────────────────
+        crossValidationFired = await crossValidateSchedule(base64Image, rawResult.fields, apiKey, warnings);
     }
 
-    // ── Map fields → AIExtractionResult ──────────────────────────────────
+    // ── Image quality (Haiku, non-blocking) ──────────────────────────────
+    assessImageQuality(lowResBase64, apiKey, warnings).catch(() => {});
+
+    if (crossValidationFired) warnings.push("Logical inconsistencies detected in date fields — values may still be inaccurate despite auto-correction");
+    if (secondRetryChanged)   warnings.push("Second attempt section required re-extraction — initial read was incorrect, verify values");
+
+    // ── Map fields → AIExtractionResult (DiaryPage question IDs) ─────────
+    //
+    // For schedule pages the extraction uses cantrac-omr field names
+    // (first_appointment_dd / _mm / _yy / _status, second_attempt_*, etc.)
+    // and we need to map them back to the DiaryPage question IDs (q1, q2, …).
+    // Strategy:
+    //   date-type questions (by position): 1st → first_appointment, 2nd → second_attempt
+    //   select-type questions (by position): 1st → first_appointment_status, 2nd → second_attempt_status
+    //   yes_no questions (non-schedule): mapped directly by question.id
+    // ──────────────────────────────────────────────────────────────────────
+
     const extraction: AIExtractionResult = {};
 
-    for (const question of questions) {
-        if (question.type === "info") continue;
+    if (isSchedule) {
+        const dateQs   = questions.filter(q => q.type === "date");
+        const statusQs = questions.filter(q => q.type === "select");
+        const yesNoQs  = questions.filter(q => q.type === "yes_no");
 
-        const raw = rawResult.fields?.[question.id];
-        if (raw) {
-            const confidenceStr = raw.confidence || "medium";
-            const confidence    = CONFIDENCE_MAP[confidenceStr] ?? 0.75;
+        const datePrefixes   = ["first_appointment", "second_attempt"] as const;
+        const statusPrefixes = ["first_appointment_status", "second_attempt_status"] as const;
 
-            let value: string | null = raw.value ?? null;
-            if (question.type === "yes_no" && value) {
-                const lower = value.toLowerCase().trim();
-                if      (["yes", "हाँ", "y", "true"].includes(lower))   value = "yes";
-                else if (["no",  "नहीं", "n", "false"].includes(lower)) value = "no";
+        for (let i = 0; i < dateQs.length; i++) {
+            const q      = dateQs[i];
+            const pfx    = datePrefixes[i];
+            if (!pfx) { extraction[q.id] = { value: null, confidence: 0 }; continue; }
+            const dd = rawResult.fields[`${pfx}_dd`]?.value  ?? null;
+            const mm = rawResult.fields[`${pfx}_mm`]?.value  ?? null;
+            const yy = rawResult.fields[`${pfx}_yy`]?.value  ?? null;
+            const ddC = rawResult.fields[`${pfx}_dd`]?.confidence;
+            const mmC = rawResult.fields[`${pfx}_mm`]?.confidence;
+            const yyC = rawResult.fields[`${pfx}_yy`]?.confidence;
+            const minConf = Math.min(
+                CONFIDENCE_MAP[ddC ?? ""] ?? 0,
+                CONFIDENCE_MAP[mmC ?? ""] ?? 0,
+                CONFIDENCE_MAP[yyC ?? ""] ?? 0
+            );
+            extraction[q.id] = { value: assembleDateString(dd, mm, yy), confidence: minConf || 0 };
+        }
+
+        for (let i = 0; i < statusQs.length; i++) {
+            const q    = statusQs[i];
+            const fKey = statusPrefixes[i];
+            if (!fKey) { extraction[q.id] = { value: null, confidence: 0 }; continue; }
+            const raw  = rawResult.fields[fKey];
+            extraction[q.id] = { value: raw?.value ?? null, confidence: CONFIDENCE_MAP[raw?.confidence ?? ""] ?? 0 };
+        }
+
+        // next_appointment_required → first yes_no question
+        const nextApptRaw = rawResult.fields["next_appointment_required"];
+        if (yesNoQs[0] && nextApptRaw) {
+            let val = nextApptRaw.value;
+            if (val) val = val.toLowerCase().includes("y") ? "yes" : val.toLowerCase().includes("n") ? "no" : val;
+            extraction[yesNoQs[0].id] = { value: val, confidence: CONFIDENCE_MAP[nextApptRaw.confidence ?? ""] ?? 0 };
+        }
+
+    } else {
+        // Yes/no and other pages — fields keyed by question.id in the prompt
+        for (const question of questions) {
+            if (question.type === "info") continue;
+            const raw = rawResult.fields?.[question.id];
+            if (raw) {
+                let value = raw.value ?? null;
+                if (question.type === "yes_no" && value) {
+                    const lower = value.toLowerCase().trim();
+                    if      (["yes","हाँ","y","true"].includes(lower))  value = "yes";
+                    else if (["no","नहीं","n","false"].includes(lower)) value = "no";
+                }
+                const conf = CONFIDENCE_MAP[raw.confidence ?? "medium"] ?? 0.75;
+                extraction[question.id] = { value, confidence: conf };
+                if (raw.confidence === "low") warnings.push(`Low confidence on "${question.id}": ${question.text}`);
+            } else {
+                warnings.push(`Field "${question.id}" not returned by Anthropic`);
+                extraction[question.id] = { value: null, confidence: 0 };
             }
-
-            extraction[question.id] = { value, confidence };
-            if (confidenceStr === "low") warnings.push(`Low confidence on "${question.id}": ${question.text}`);
-        } else {
-            warnings.push(`Field "${question.id}" not returned by Anthropic`);
-            extraction[question.id] = { value: null, confidence: 0 };
         }
     }
 
     const processingTimeMs = Date.now() - startTime;
-    const scores = Object.values(extraction).map(f => f.confidence);
+    const scores = Object.values(extraction).map(f => f.confidence).filter(c => c > 0);
     const overallConfidence = scores.length
         ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
         : 0;
 
-    console.log(
-        `[Anthropic] Page ${pageNumber} extracted — ${Object.keys(extraction).length} fields, ` +
-        `confidence=${overallConfidence}, ${processingTimeMs}ms`
-    );
+    console.log(`[Anthropic] Page ${pageNumber} done — ${Object.keys(extraction).length} fields, conf=${overallConfidence}, ${processingTimeMs}ms`);
 
     return { extraction, processingTimeMs, overallConfidence, warnings };
 }
