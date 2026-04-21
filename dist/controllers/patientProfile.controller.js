@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateLanguage = exports.getMyData = exports.getProfile = exports.updateProfile = exports.requestEditOTP = void 0;
 const Patient_1 = require("../models/Patient");
+const PatientPreferences_1 = require("../models/PatientPreferences");
 const Appuser_1 = require("../models/Appuser");
 const Reminder_1 = require("../models/Reminder");
 const BubbleScanResult_1 = require("../models/BubbleScanResult");
@@ -136,6 +137,8 @@ const getProfile = async (req, res) => {
         }
         const lang = (patient.language || "en");
         const patientData = patient.toJSON();
+        const prefs = await PatientPreferences_1.PatientPreferences.findByPk(patientId);
+        patientData.languageSource = prefs?.languageSource ?? "device";
         // Add static translated labels
         patientData.statusLabel = (0, translations_1.translateStatus)(patient.status, lang);
         patientData.caseTypeLabel = patient.caseType ? (0, translations_1.translateCaseType)(patient.caseType, lang) : null;
@@ -314,11 +317,18 @@ exports.getMyData = getMyData;
 const updateLanguage = async (req, res) => {
     try {
         const patientId = req.user.id;
-        const { language } = req.body;
+        const { language, languageSource } = req.body;
         if (!language || !["en", "hi"].includes(language)) {
             res.status(400).json({
                 success: false,
                 message: "Invalid language. Supported: en, hi",
+            });
+            return;
+        }
+        if (languageSource && !["device", "user"].includes(languageSource)) {
+            res.status(400).json({
+                success: false,
+                message: "Invalid languageSource. Supported: device, user",
             });
             return;
         }
@@ -329,10 +339,14 @@ const updateLanguage = async (req, res) => {
         }
         patient.language = language;
         await patient.save();
+        await PatientPreferences_1.PatientPreferences.upsert({
+            patientId,
+            languageSource: languageSource ?? "device",
+        });
         res.status(200).json({
             success: true,
             message: "Language updated successfully",
-            data: { language: patient.language },
+            data: { language: patient.language, languageSource: languageSource ?? "device" },
         });
     }
     catch (error) {

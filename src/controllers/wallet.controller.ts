@@ -264,21 +264,32 @@ export const createPayoutOrder = async (
       res.status(404).json({ success: false, message: "User not found" });
       return;
     }
-    const { amount }:any = req.body;
+    const amount = Number(req.body.amount);
+
+    if (isNaN(amount) || amount <= 0) {
+      res.status(400).json({ success: false, message: "A positive amount is required" });
+      return;
+    }
 
     const orderId = `payout_${uuidv3(`${userId}_${Date.now()}`, UUID_NAMESPACE)}`;
 
-     await axios.post(
-      process.env.CASHFREE_ENV === "PRODUCTION" ? "https://api.cashfree.com/pg/orders" :  
-      "https://sandbox.cashfree.com/pg/orders",
+    const baseUrl = process.env.CASHFREE_ENV === "PRODUCTION"
+      ? "https://api.cashfree.com/pg/orders"
+      : "https://sandbox.cashfree.com/pg/orders";
+
+    const response = await axios.post(
+      baseUrl,
       {
         order_id: orderId,
         order_amount: amount,
         order_currency: "INR",
+        order_note: "Wallet Payout",
+        order_meta: { return_url: "" },
         customer_details: {
           customer_id: UserData.id,
-          customer_phone: UserData.phone,
+          customer_phone: UserData.phone || "9999999999",
           customer_name: UserData.fullName,
+          customer_email: UserData.email || "",
         },
       },
       {
@@ -288,16 +299,13 @@ export const createPayoutOrder = async (
           "x-client-secret": process.env.CASHFREE_SECRET_KEY,
         },
       }
-    ).then((response) => {
-      console.log("Payout order created:", response.data);
-      res.json({
-        success: true,
-        paymentSessionId: response.data.payment_session_id,
-        orderId,
-      });
-    }).catch((error) => {
-      console.error("Error creating payout order:", error);
-      res.status(500).json({ success: false, message: "Failed to create payout order" });
+    );
+
+    console.log("Payout order created:", response.data);
+    res.json({
+      success: true,
+      paymentSessionId: response.data.payment_session_id,
+      orderId,
     });
 
   } catch (error) {

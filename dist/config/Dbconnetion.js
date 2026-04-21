@@ -37,6 +37,7 @@ const DoctorAssignmentRequest_1 = require("../models/DoctorAssignmentRequest");
 const PatientDoctorSuggestion_1 = require("../models/PatientDoctorSuggestion");
 const PaymentConfig_1 = require("../models/PaymentConfig");
 const DoctorPatientHistory_1 = require("../models/DoctorPatientHistory");
+const PatientPreferences_1 = require("../models/PatientPreferences");
 // Load environment variables from .env file
 dotenv_1.default.config();
 /**
@@ -92,6 +93,7 @@ exports.sequelize = new sequelize_typescript_1.Sequelize({
         PatientDoctorSuggestion_1.PatientDoctorSuggestion,
         PaymentConfig_1.PaymentConfig,
         DoctorPatientHistory_1.DoctorPatientHistory,
+        PatientPreferences_1.PatientPreferences,
     ],
     // Logging configuration
     logging: false,
@@ -577,6 +579,23 @@ const initializeDatabase = async () => {
         // `).catch((err: unknown) => {
         //   console.warn('⚠️ bubble_scan_results.questionReports migration warning:', err instanceof Error ? err.message : err);
         // });
+        // Create patient_preferences table for per-patient settings (languageSource, etc.)
+        await exports.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_patient_preferences_languageSource') THEN
+          CREATE TYPE "enum_patient_preferences_languageSource" AS ENUM ('device', 'user');
+        END IF;
+        CREATE TABLE IF NOT EXISTS "patient_preferences" (
+          "patientId" UUID PRIMARY KEY REFERENCES "patients"("id"),
+          "languageSource" "enum_patient_preferences_languageSource" NOT NULL DEFAULT 'device',
+          "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+      END $$;
+    `).catch((err) => {
+            console.warn('⚠️ patient_preferences migration warning:', err instanceof Error ? err.message : err);
+        });
         // Add isFree column to subscription_plans (free plan support)
         await exports.sequelize.query(`
       DO $$

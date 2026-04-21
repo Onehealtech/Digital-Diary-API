@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { Patient } from "../models/Patient";
+import { PatientPreferences } from "../models/PatientPreferences";
 import { AppUser } from "../models/Appuser";
 import { Reminder } from "../models/Reminder";
 import { BubbleScanResult } from "../models/BubbleScanResult";
@@ -159,6 +160,9 @@ export const getProfile = async (
 
         const lang = (patient.language || "en") as SupportedLanguage;
         const patientData = patient.toJSON() as any;
+
+        const prefs = await PatientPreferences.findByPk(patientId);
+        patientData.languageSource = prefs?.languageSource ?? "device";
 
         // Add static translated labels
         patientData.statusLabel = translateStatus(patient.status, lang);
@@ -360,12 +364,20 @@ export const updateLanguage = async (
 ): Promise<void> => {
     try {
         const patientId = req.user!.id;
-        const { language } = req.body;
+        const { language, languageSource } = req.body;
 
         if (!language || !["en", "hi"].includes(language)) {
             res.status(400).json({
                 success: false,
                 message: "Invalid language. Supported: en, hi",
+            });
+            return;
+        }
+
+        if (languageSource && !["device", "user"].includes(languageSource)) {
+            res.status(400).json({
+                success: false,
+                message: "Invalid languageSource. Supported: device, user",
             });
             return;
         }
@@ -380,10 +392,15 @@ export const updateLanguage = async (
         patient.language = language;
         await patient.save();
 
+        await PatientPreferences.upsert({
+            patientId,
+            languageSource: languageSource ?? "device",
+        });
+
         res.status(200).json({
             success: true,
             message: "Language updated successfully",
-            data: { language: patient.language },
+            data: { language: patient.language, languageSource: languageSource ?? "device" },
         });
     } catch (error: any) {
         console.error("Update language error:", error);
