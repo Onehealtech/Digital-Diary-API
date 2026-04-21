@@ -258,7 +258,9 @@ class VisionScanService {
             const warnings = [
                 ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
             ];
-            const analysis = (0, scanAnalysis_1.computeScanAnalysis)(enrichedResults, diaryPage.questions, warnings);
+            const historicalDates = await visionScan_repository_1.visionScanRepository.findHistoricalDatesForPage(data.patientId, data.detectedPageNumber, data.scanRecordId // exclude the record currently being processed
+            );
+            const analysis = (0, scanAnalysis_1.computeScanAnalysis)(enrichedResults, diaryPage.questions, warnings, historicalDates);
             // Merge analysis into metadata so it's stored and returned in the response
             metadata = {
                 ...metadata,
@@ -382,6 +384,34 @@ class VisionScanService {
     async getAllScans(doctorId, role, filters = {}) {
         return visionScan_repository_1.visionScanRepository.getDoctorPatientScans(doctorId, role, filters);
     }
+    /**
+     * Normalize any AI-returned date value to "DD/MM/YYYY" with a numeric month.
+     * Handles: "DD/Mon/YYYY" (legacy), "DD/MM/YYYY" (current), ISO "YYYY-MM-DD".
+     * Leaves non-date fields and null values untouched.
+     */
+    normalizeDateFormat(value, questionType) {
+        if (!value || questionType !== "date")
+            return value;
+        const MONTH_TO_NUM = {
+            jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+            jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+        };
+        // Already DD/MM/YYYY
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(value))
+            return value;
+        // DD/Mon/YYYY → DD/MM/YYYY
+        const nameMatch = value.match(/^(\d{2})\/([A-Za-z]{3})\/(\d{4})$/);
+        if (nameMatch) {
+            const mm = MONTH_TO_NUM[nameMatch[2].toLowerCase()];
+            if (mm)
+                return `${nameMatch[1]}/${mm}/${nameMatch[3]}`;
+        }
+        // ISO YYYY-MM-DD → DD/MM/YYYY
+        const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoMatch)
+            return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+        return value; // unrecognised — keep as-is
+    }
     buildEnrichedResults(questions, extraction) {
         const enrichedResults = {};
         const rawConfidenceScores = {};
@@ -392,7 +422,7 @@ class VisionScanService {
             const aiField = extraction[question.id];
             if (aiField) {
                 enrichedResults[question.id] = {
-                    answer: aiField.value,
+                    answer: this.normalizeDateFormat(aiField.value, question.type),
                     confidence: aiField.confidence,
                     questionText: question.text,
                     category: question.category,

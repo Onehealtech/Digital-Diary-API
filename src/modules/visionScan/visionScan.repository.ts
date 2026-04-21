@@ -161,6 +161,37 @@ export class VisionScanRepository {
         };
     }
 
+    /**
+     * Returns all distinct date strings (DD/MM/YYYY) found in previous COMPLETED
+     * scans for this patient + page, excluding the current scan being processed.
+     */
+    async findHistoricalDatesForPage(
+        patientId: string,
+        pageNumber: number,
+        excludeScanId?: string
+    ): Promise<string[]> {
+        const where: any = { patientId, pageNumber, processingStatus: ProcessingStatus.COMPLETED };
+        if (excludeScanId) where.id = { [Op.ne]: excludeScanId };
+
+        const previous = await BubbleScanResult.findAll({
+            where,
+            attributes: ["scanResults"],
+            order: [["scannedAt", "DESC"]],
+        });
+
+        const dates = new Set<string>();
+        for (const scan of previous) {
+            const results = scan.scanResults as Record<string, { answer: string | null }> | null;
+            if (!results) continue;
+            for (const field of Object.values(results)) {
+                if (field.answer && /^\d{2}\/\d{2}\/\d{4}$/.test(field.answer)) {
+                    dates.add(field.answer);
+                }
+            }
+        }
+        return [...dates];
+    }
+
     async resolveDoctorId(userId: string, role: string): Promise<string> {
         if (role === "ASSISTANT") {
             const assistant = await AppUser.findByPk(userId);

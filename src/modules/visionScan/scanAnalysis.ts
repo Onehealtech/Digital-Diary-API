@@ -30,7 +30,10 @@ export interface ScanAnalysis {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// Numeric months (DD/MM/YYYY — current format) and legacy month names (DD/Mon/YYYY)
 const MONTH_NUM: Record<string, number> = {
+    "01":1,  "02":2,  "03":3,  "04":4,  "05":5,  "06":6,
+    "07":7,  "08":8,  "09":9,  "10":10, "11":11, "12":12,
     Jan:1, Feb:2, Mar:3, Apr:4, May:5,  Jun:6,
     Jul:7, Aug:8, Sep:9, Oct:10,Nov:11, Dec:12,
 };
@@ -38,7 +41,9 @@ const MONTH_NUM: Record<string, number> = {
 interface ParsedDate { dd: number; mm: string; mmNum: number; yy: number }
 
 /**
- * Parse combined date string "DD/Mon/YYYY" (e.g. "07/Apr/2026").
+ * Parse combined date string.
+ * Accepts "DD/MM/YYYY" (e.g. "07/04/2026") — current format.
+ * Also accepts legacy "DD/Mon/YYYY" (e.g. "07/Apr/2026") for backward compat.
  * Returns null for any invalid / null input.
  */
 function parseCombinedDate(val: string | null): ParsedDate | null {
@@ -46,10 +51,10 @@ function parseCombinedDate(val: string | null): ParsedDate | null {
     const parts = val.split("/");
     if (parts.length !== 3) return null;
     const dd    = parseInt(parts[0], 10);
-    const mm    = parts[1];
+    const mm    = parts[1];   // "04" (new) or "Apr" (legacy)
     const yy    = parseInt(parts[2], 10);
     const mmNum = MONTH_NUM[mm];
-    if (isNaN(dd) || !mmNum || isNaN(yy)) return null;
+    if (isNaN(dd) || !mmNum || isNaN(yy) || dd < 1 || dd > 31) return null;
     return { dd, mm, mmNum, yy };
 }
 
@@ -69,9 +74,12 @@ function toDate(p: ParsedDate): Date {
 export function computeScanAnalysis(
     enrichedResults: Record<string, EnrichedResult>,
     questions: DiaryQuestion[],
-    processingWarnings: string[]
+    processingWarnings: string[],
+    historicalDates: string[] = []   // date strings already saved for this patient+page
 ): ScanAnalysis {
-    const currentYear   = new Date().getFullYear();
+    const now         = new Date();
+    const today       = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // midnight
+    const currentYear = now.getFullYear();
     const rescanReasons: string[] = [];
     const rejectionReasons: string[] = [];
 
@@ -195,6 +203,36 @@ export function computeScanAnalysis(
         }
         if (fDateField?.answer && !fStatusField?.answer) {
             rescanReasons.push(`First appointment date is filled but status could not be read`);
+        }
+
+        // ── Future-date validation ─────────────────────────────────────────
+        // A "Scheduled" appointment must be a future date — it hasn't happened yet.
+        if (firstDate && firstStatus === "Scheduled" && toDate(firstDate) < today) {
+            rescanReasons.push(
+                `First appointment is 'Scheduled' but date ${fDateField!.answer} is in the past — scheduled appointments must have a future date`
+            );
+            dataErrors.push("Scheduled appointment date cannot be in the past");
+        }
+        if (secondDate && sStatusField?.answer === "Scheduled" && toDate(secondDate) < today) {
+            rescanReasons.push(
+                `Second appointment is 'Scheduled' but date ${sDateField!.answer} is in the past — scheduled appointments must have a future date`
+            );
+            dataErrors.push("Second scheduled appointment date cannot be in the past");
+        }
+
+        // ── Duplicate-date check against history ───────────────────────────
+        // If this page has been scanned before, the new dates must be different
+        // from what's already recorded — otherwise it's likely a duplicate upload.
+        if (historicalDates.length > 0) {
+            const newDates = [fDateField?.answer, sDateField?.answer]
+                .filter((d): d is string => !!d);
+            for (const d of newDates) {
+                if (historicalDates.includes(d)) {
+                    rescanReasons.push(
+                        `Date ${d} was already recorded in a previous scan for this page — if this is the same appointment, no re-upload is needed; if it is a new appointment, please ensure a different date is marked`
+                    );
+                }
+            }
         }
     }
 
