@@ -108,7 +108,7 @@ router.post(
     "/:id/reports",
     patientAuthCheck,
     requireApprovedDiary,
-    reportUpload.array("reports", 5),
+    reportUpload.array("reports", 10),
     bubbleScanController.attachReportFiles
 );
 
@@ -126,7 +126,7 @@ router.post(
     "/:id/question-reports",
     patientAuthCheck,
     requireApprovedDiary,
-    reportUpload.array("reports", 5),
+    reportUpload.array("reports", 10),
     bubbleScanController.attachQuestionReportFiles
 );
 

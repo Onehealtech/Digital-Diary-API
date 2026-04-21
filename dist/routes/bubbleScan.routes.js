@@ -82,12 +82,12 @@ router.put("/:id/edit", authMiddleware_1.patientAuthCheck, diaryApproval_middlew
 // Retry a failed scan
 router.post("/:id/retry", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, bubbleScanController.retryBubbleScan);
 // Attach report files (PDF / images) to an existing scan or manual entry
-router.post("/:id/reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, upload_middleware_1.reportUpload.array("reports", 5), bubbleScanController.attachReportFiles);
+router.post("/:id/reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, upload_middleware_1.reportUpload.array("reports", 10), bubbleScanController.attachReportFiles);
 // Remove a previously attached report file
 router.delete("/:id/reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, bubbleScanController.removeReportFile);
 // Attach report files to a specific question (PDF, DOC, DOCX, images — max 5 files, 25 MB each)
 // multipart fields: questionId (text) + reports (files)
-router.post("/:id/question-reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, upload_middleware_1.reportUpload.array("reports", 5), bubbleScanController.attachQuestionReportFiles);
+router.post("/:id/question-reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, upload_middleware_1.reportUpload.array("reports", 10), bubbleScanController.attachQuestionReportFiles);
 // Remove a specific report from a question
 // Body: { questionId, reportUrl }
 router.delete("/:id/question-reports", authMiddleware_1.patientAuthCheck, diaryApproval_middleware_1.requireApprovedDiary, bubbleScanController.removeQuestionReportFile);
