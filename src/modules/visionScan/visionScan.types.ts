@@ -63,6 +63,20 @@ export interface ProcessingMetadata {
     dataReliable?:      boolean;
     overallConfidence?: number;
     warnings?:          string[];
+    // cantrac-omr enriched fields
+    rescanTip?:          { english: string; hindi: string } | null;
+    isValidCantracForm?: boolean;
+    cantracFields?:      Record<string, { value: string | null; confidence: string }>;
+    tokenUsage?:         {
+        apiCalls: number; inputTokens: number; outputTokens: number;
+        cacheWriteTokens: number; cacheReadTokens: number;
+        totalTokens: number; estimatedCostUSD: number;
+    };
+    imageMetadata?:      {
+        originalWidth: number; originalHeight: number; originalFormat: string;
+        originalSize: number; processedWidth: number; processedHeight: number;
+        processedSize: number; compressionRatio: string; wasPortrait: boolean;
+    };
 }
 
 export interface EnrichedResult {

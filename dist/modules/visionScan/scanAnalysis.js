@@ -12,7 +12,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeScanAnalysis = void 0;
 // ─── Helpers ──────────────────────────────────────────────────────────────
-// Numeric months (DD/MM/YYYY — current format) and legacy month names (DD/Mon/YYYY)
+// Month names for DD/MMM/YYYY format. Numeric keys kept for backward compat with old records.
 const MONTH_NUM = {
     "01": 1, "02": 2, "03": 3, "04": 4, "05": 5, "06": 6,
     "07": 7, "08": 8, "09": 9, "10": 10, "11": 11, "12": 12,
@@ -21,8 +21,8 @@ const MONTH_NUM = {
 };
 /**
  * Parse combined date string.
- * Accepts "DD/MM/YYYY" (e.g. "07/04/2026") — current format.
- * Also accepts legacy "DD/Mon/YYYY" (e.g. "07/Apr/2026") for backward compat.
+ * Accepts "DD/MMM/YYYY" (e.g. "07/Apr/2026") — current format.
+ * Also accepts legacy "DD/MM/YYYY" (e.g. "07/04/2026") for backward compat.
  * Returns null for any invalid / null input.
  */
 function parseCombinedDate(val) {
