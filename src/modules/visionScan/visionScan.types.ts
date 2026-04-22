@@ -57,7 +57,7 @@ export interface ProcessingMetadata {
     rescanReasons?:     string[];
     rejectionRequired?: boolean;
     rejectionReasons?:  string[];
-    dataError?:         string | null;
+    dataError?:         { english: string; hindi: string } | null;
     alertMessage?:      string | null;
     userMessage?:       string;
     dataReliable?:      boolean;
