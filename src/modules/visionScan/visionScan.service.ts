@@ -6,7 +6,7 @@ import { visionScanRepository } from "./visionScan.repository";
 import { buildExtractionPrompt, VISION_SCAN_SYSTEM_PROMPT, PAGE_DETECTION_PROMPT } from "./visionScan.prompts";
 import { VISION_SCAN_CONFIG } from "./visionScan.config";
 import { extractWithDocumentAI, isDocumentAIConfigured } from "./documentAI.service";
-import { extractWithAnthropic, isAnthropicConfigured } from "./anthropic.service";
+import { extractWithAnthropic, isAnthropicConfigured, generateRescanTip } from "./anthropic.service";
 import { computeScanAnalysis } from "./scanAnalysis";
 import {
     AIExtractionResult,
@@ -381,6 +381,10 @@ class VisionScanService {
                 dataReliable:      analysis.dataReliable,
                 overallConfidence: analysis.overallConfidence,
                 warnings,
+                // Generated for every backend path (Anthropic, OpenRouter, DocumentAI)
+                rescanTip: analysis.action !== "success"
+                    ? generateRescanTip(analysis.rescanReasons, warnings, [], analysis.action)
+                    : null,
             };
 
             await Promise.all([

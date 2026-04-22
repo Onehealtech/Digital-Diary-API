@@ -281,6 +281,10 @@ class VisionScanService {
                 dataReliable: analysis.dataReliable,
                 overallConfidence: analysis.overallConfidence,
                 warnings,
+                // Generated for every backend path (Anthropic, OpenRouter, DocumentAI)
+                rescanTip: analysis.action !== "success"
+                    ? (0, anthropic_service_1.generateRescanTip)(analysis.rescanReasons, warnings, [], analysis.action)
+                    : null,
             };
             await Promise.all([
                 visionScan_repository_1.visionScanRepository.updateScanCompleted(scanRecord, {
