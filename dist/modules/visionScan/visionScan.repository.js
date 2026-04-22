@@ -107,7 +107,7 @@ class VisionScanRepository {
         };
     }
     /**
-     * Returns all distinct date strings (DD/MM/YYYY) found in previous COMPLETED
+     * Returns all distinct date strings (DD/MMM/YYYY) found in previous COMPLETED
      * scans for this patient + page, excluding the current scan being processed.
      */
     async findHistoricalDatesForPage(patientId, pageNumber, excludeScanId) {
@@ -125,7 +125,7 @@ class VisionScanRepository {
             if (!results)
                 continue;
             for (const field of Object.values(results)) {
-                if (field.answer && /^\d{2}\/\d{2}\/\d{4}$/.test(field.answer)) {
+                if (field.answer && /^\d{2}\/[A-Za-z]{3}\/\d{4}$/.test(field.answer)) {
                     dates.add(field.answer);
                 }
             }

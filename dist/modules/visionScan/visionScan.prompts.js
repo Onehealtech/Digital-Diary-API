@@ -175,7 +175,7 @@ ${sections}
 OUTPUT FORMAT — every field must be:
 { "value": <selected option as a string, or null if nothing marked>, "confidence": <0.0–1.0> }
 
-- Date: combine day + month + year as "DD/MM/YYYY" using a 2-digit numeric month (e.g. "14/04/2027"). Month mapping: Jan=01 Feb=02 Mar=03 Apr=04 May=05 Jun=06 Jul=07 Aug=08 Sep=09 Oct=10 Nov=11 Dec=12. If any of the three rows (day/month/year) has no marked option → value = null.
+- Date: combine day + month + year as "DD/MMM/YYYY" using the 3-letter month name (e.g. "14/Apr/2027"). If any of the three rows (day/month/year) has no marked option → value = null.
 - Status: one of "Scheduled", "Completed", "Missed", "Cancelled", or null.
 - Yes/No: "yes", "no", or null.
 
@@ -203,7 +203,7 @@ ${dateId ? `
     Options are: 2026  2027  2028
     Which year has its circle marked by the user?
 
-  Combine the three answers as "DD/MM/YYYY" using the numeric month → e.g. "02/04/2026".
+  Combine the three answers as "DD/MMM/YYYY" using the 3-letter month name → e.g. "02/Apr/2026".
   If none of the options in a row are marked → value = null.` : ""}
 ${statusId ? `
 "${statusId}" — Look inside this same section's box for the row labeled "Status / स्थिति":
@@ -235,10 +235,10 @@ STEP 3 — YY ROW ("YY: साल"):
   Bubbles: 2026, 2027, 2028
   Which ONE is dark? The year to its RIGHT = year.
 
-Return JSON using "DD/MM/YYYY" format with numeric month:
-{ "${dateFieldId}": { "value": "DD/MM/YYYY", "confidence": 0.90 } }
+Return JSON using "DD/MMM/YYYY" format with 3-letter month name:
+{ "${dateFieldId}": { "value": "DD/MMM/YYYY", "confidence": 0.90 } }
 
-Example: { "${dateFieldId}": { "value": "22/09/2027", "confidence": 0.92 } }
+Example: { "${dateFieldId}": { "value": "22/Sep/2027", "confidence": 0.92 } }
 
 JSON only. No markdown. No explanation.`;
 }

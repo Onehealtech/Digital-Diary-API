@@ -262,12 +262,18 @@ class VisionScanService {
                     lowConfidenceFields  = built.lowConfidenceFields;
 
                     metadata = {
-                        model: "anthropic/claude-sonnet-4-20250514",
-                        promptTokens:    0,
-                        responseTokens:  0,
-                        totalTokens:     0,
+                        model:            process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+                        promptTokens:     result.tokenUsage?.inputTokens     ?? 0,
+                        responseTokens:   result.tokenUsage?.outputTokens    ?? 0,
+                        totalTokens:      result.tokenUsage?.totalTokens     ?? 0,
                         processingTimeMs: result.processingTimeMs,
                         lowConfidenceFields,
+                        // cantrac-omr enriched fields
+                        rescanTip:          result.rescanTip,
+                        isValidCantracForm: result.isValidCantracForm,
+                        cantracFields:      result.cantracFields,
+                        tokenUsage:         result.tokenUsage,
+                        imageMetadata:      result.imageMetadata,
                     };
                 } catch (anthropicErr: any) {
                     // Auth / network failures fall back to OpenRouter so the scan isn't lost.
@@ -536,31 +542,39 @@ class VisionScanService {
     }
 
     /**
-     * Normalize any AI-returned date value to "DD/MM/YYYY" with a numeric month.
-     * Handles: "DD/Mon/YYYY" (legacy), "DD/MM/YYYY" (current), ISO "YYYY-MM-DD".
+     * Normalize any AI-returned date value to "DD/MMM/YYYY" (3-letter month name).
+     * Handles: "DD/MMM/YYYY" (current), "DD/MM/YYYY" (numeric), ISO "YYYY-MM-DD".
      * Leaves non-date fields and null values untouched.
      */
     private normalizeDateFormat(value: string | null, questionType: string): string | null {
         if (!value || questionType !== "date") return value;
 
-        const MONTH_TO_NUM: Record<string, string> = {
-            jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06",
-            jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12",
+        const NUM_TO_MONTH: Record<string, string> = {
+            "01":"Jan","02":"Feb","03":"Mar","04":"Apr","05":"May","06":"Jun",
+            "07":"Jul","08":"Aug","09":"Sep","10":"Oct","11":"Nov","12":"Dec",
         };
+        const MONTH_NAMES = Object.values(NUM_TO_MONTH);
 
-        // Already DD/MM/YYYY
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
-
-        // DD/Mon/YYYY → DD/MM/YYYY
+        // Already DD/MMM/YYYY — normalize capitalization only
         const nameMatch = value.match(/^(\d{2})\/([A-Za-z]{3})\/(\d{4})$/);
         if (nameMatch) {
-            const mm = MONTH_TO_NUM[nameMatch[2].toLowerCase()];
-            if (mm) return `${nameMatch[1]}/${mm}/${nameMatch[3]}`;
+            const abbr = nameMatch[2].charAt(0).toUpperCase() + nameMatch[2].slice(1).toLowerCase();
+            if (MONTH_NAMES.includes(abbr)) return `${nameMatch[1]}/${abbr}/${nameMatch[3]}`;
         }
 
-        // ISO YYYY-MM-DD → DD/MM/YYYY
+        // DD/MM/YYYY (numeric) → DD/MMM/YYYY
+        const numMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (numMatch) {
+            const abbr = NUM_TO_MONTH[numMatch[2]];
+            if (abbr) return `${numMatch[1]}/${abbr}/${numMatch[3]}`;
+        }
+
+        // ISO YYYY-MM-DD → DD/MMM/YYYY
         const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+        if (isoMatch) {
+            const abbr = NUM_TO_MONTH[isoMatch[2]];
+            if (abbr) return `${isoMatch[3]}/${abbr}/${isoMatch[1]}`;
+        }
 
         return value; // unrecognised — keep as-is
     }
