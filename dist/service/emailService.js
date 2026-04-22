@@ -278,7 +278,7 @@ exports.sendAppointmentRejectionEmail = sendAppointmentRejectionEmail;
  */
 const sendDoctorRequestEmail = async (doctorEmail, doctorName, patientName, patientAge, patientGender, caseType, patientPhone) => {
     const mailOptions = {
-        from: `"Elvantia Alerts" <${process.env.SMTP_USER}>`,
+        from: `"CanTRAC Alert" <${process.env.SMTP_USER}>`,
         to: doctorEmail,
         subject: `New Patient Request - ${patientName}`,
         html: `
@@ -307,7 +307,7 @@ const sendDoctorRequestEmail = async (doctorEmail, doctorName, patientName, pati
           <div class="content">
             <p>Hello Dr. <strong>${doctorName}</strong>,</p>
 
-            <p>A new patient has signed up on Elvantia and selected you as their preferred doctor. Please review the details below:</p>
+            <p>A new patient has signed up on CanTRAC and selected you as their preferred doctor. Please review the details below:</p>
 
             <div class="details">
               <p><span class="label">Patient Name:</span> ${patientName}</p>
@@ -318,16 +318,16 @@ const sendDoctorRequestEmail = async (doctorEmail, doctorName, patientName, pati
             </div>
 
             <div class="note">
-              <strong>Action Required:</strong> Please log in to your Elvantia dashboard to accept or decline this request. The patient will be notified of your decision.
+              <strong>Action Required:</strong> Please log in to your CanTRAC dashboard to accept or decline this request. The patient will be notified of your decision.
             </div>
 
             <p>If you have any questions, please contact support.</p>
 
-            <p>Best regards,<br><strong>Elvantia Team</strong></p>
+            <p>Best regards,<br><strong>CanTRAC Team</strong></p>
           </div>
           <div class="footer">
             <p>This is an automated email. Please do not reply to this message.</p>
-            <p>&copy; ${new Date().getFullYear()} Elvantia. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} CanTRAC. All rights reserved.</p>
           </div>
         </div>
       </body>
