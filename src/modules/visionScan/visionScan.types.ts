@@ -54,7 +54,7 @@ export interface ProcessingMetadata {
     // Scan analysis (rescan / rejection decision)
     action?:            "success" | "rescan_required" | "rejected";
     rescanRequired?:    boolean;
-    rescanReasons?:     string[];
+    rescanReasons?:     Array<{ english: string; hindi: string }>;
     rejectionRequired?: boolean;
     rejectionReasons?:  string[];
     dataError?:         { english: string; hindi: string } | null;
