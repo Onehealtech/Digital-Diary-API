@@ -123,7 +123,10 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
             if (toDate(secondDate) <= toDate(firstDate)) {
                 const msg = `Second attempt date (${sDateField.answer}) is before first appointment (${fDateField.answer}) — impossible, likely a DD or MM misread`;
                 rescanReasons.push(msg);
-                dataErrors.push("Second Appointment should be after First Appointment");
+                dataErrors.push({
+                    english: "Second Appointment should be after First Appointment",
+                    hindi: "दूसरी अपॉइंटमेंट पहली अपॉइंटमेंट के बाद होनी चाहिए",
+                });
             }
         }
         // Completed / Missed / Cancelled in a future year → impossible
@@ -131,7 +134,10 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
         if (terminalStatuses.includes(firstStatus ?? "") && firstDate && firstDate.yy > currentYear) {
             const msg = `First appointment is '${firstStatus}' but year ${firstDate.yy} is in the future — impossible`;
             rescanReasons.push(msg);
-            dataErrors.push(`First appointment is marked as '${firstStatus}' but year ${firstDate.yy} is in the future — year appears to be misread`);
+            dataErrors.push({
+                english: `First appointment is marked as '${firstStatus}' but year ${firstDate.yy} is in the future — year appears to be misread`,
+                hindi: `पहली अपॉइंटमेंट '${firstStatus}' के रूप में चिह्नित है, लेकिन वर्ष ${firstDate.yy} भविष्य में है — वर्ष गलत पढ़ा गया लगता है`,
+            });
         }
         // Year gap > 1 between first and second attempt
         if (firstDate && secondDate && Math.abs(secondDate.yy - firstDate.yy) > 1) {
@@ -166,11 +172,17 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
             // (e.g. Page 36) record past events and must never be flagged here.
             if (firstDate && firstStatus === "Scheduled" && toDate(firstDate) < today) {
                 rescanReasons.push(`First appointment is 'Scheduled' but date ${fDateField.answer} is in the past — scheduled appointments must have a future date`);
-                dataErrors.push("Scheduled appointment date cannot be in the past");
+                dataErrors.push({
+                    english: "Scheduled appointment date cannot be in the past",
+                    hindi: "निर्धारित अपॉइंटमेंट की तारीख भूतकाल में नहीं हो सकती",
+                });
             }
             if (secondDate && sStatusField?.answer === "Scheduled" && toDate(secondDate) < today) {
                 rescanReasons.push(`Second appointment is 'Scheduled' but date ${sDateField.answer} is in the past — scheduled appointments must have a future date`);
-                dataErrors.push("Second scheduled appointment date cannot be in the past");
+                dataErrors.push({
+                    english: "Second scheduled appointment date cannot be in the past",
+                    hindi: "दूसरी निर्धारित अपॉइंटमेंट की तारीख भूतकाल में नहीं हो सकती",
+                });
             }
         }
         // ── Duplicate-date check against history ───────────────────────────
@@ -205,7 +217,12 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
         : action === "rescan_required"
             ? "The photo could not be read accurately. Please retake it on a plain surface, held directly above the form, and try again."
             : "Data extracted successfully.";
-    const dataError = dataErrors.length > 0 ? dataErrors.join("; ") : null;
+    const dataError = dataErrors.length > 0
+        ? {
+            english: dataErrors.map(e => e.english).join("; "),
+            hindi: dataErrors.map(e => e.hindi).join("; "),
+        }
+        : null;
     const alertMessage = action !== "success" ? "Rescan is required" : null;
     const dataReliable = action === "success" && dataError === null;
     return {
