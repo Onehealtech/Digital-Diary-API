@@ -278,7 +278,7 @@ Reasoning must show your count (e.g. "L1:N=4,R=11,sum=16→05"):
 // ─── Bilingual Rescan Tip (ported from cantrac-omr._generateRescanTip) ────
 
 export function generateRescanTip(
-    allRescanReasons: string[],
+    allRescanReasons: any[],
     warnings: string[],
     invalidFormReasons: string[],
     action: string
