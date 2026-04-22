@@ -315,6 +315,7 @@ class VisionScanService {
                 answer,
                 confidence: 1.0,
                 questionText: questionDef?.text || "Unknown question",
+                questionTextHi: questionDef?.textHi,
                 category: questionDef?.category || "uncategorized",
             };
         }
@@ -443,6 +444,7 @@ class VisionScanService {
                     answer: this.normalizeDateFormat(aiField.value, question.type),
                     confidence: aiField.confidence,
                     questionText: question.text,
+                    questionTextHi: question.textHi,
                     category: question.category,
                 };
                 rawConfidenceScores[question.id] = aiField.confidence;
@@ -456,6 +458,7 @@ class VisionScanService {
                     answer: null,
                     confidence: 0,
                     questionText: question.text,
+                    questionTextHi: question.textHi,
                     category: question.category,
                 };
                 lowConfidenceFields.push(`${question.id}: ${question.text} (missing from AI response)`);

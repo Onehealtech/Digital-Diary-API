@@ -83,6 +83,7 @@ export interface EnrichedResult {
     answer: string | null;
     confidence: number;
     questionText: string;
+    questionTextHi?: string;
     category: string;
 }
 

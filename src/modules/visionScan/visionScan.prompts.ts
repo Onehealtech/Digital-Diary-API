@@ -804,7 +804,7 @@
 //     }
 
 //     if (raw === undefined || raw === null) {
-//       results[q.id] = { answer: null, category, confidence: 0, questionText: q.text };
+//       results[q.id] = { answer: null, category, confidence: 0, questionText: q.text, questionTextHi: q.textHi };
 //       continue;
 //     }
 
@@ -1101,6 +1101,7 @@ import { DiaryPage } from "../../models/DiaryPage";
 interface DiaryQuestion {
   id: string;
   text: string;
+  textHi?: string;
   type: string;
   options?: string[];
 }
@@ -1110,6 +1111,7 @@ interface BackendScanResult {
   category: string;
   confidence: number;
   questionText: string;
+  questionTextHi?: string;
 }
 
 interface ValidationResult {
@@ -1579,7 +1581,7 @@ export function mapResponseToBackend(
     }
 
     if (raw === undefined || raw === null) {
-      results[q.id] = { answer: null, category, confidence: 0, questionText: q.text };
+      results[q.id] = { answer: null, category, confidence: 0, questionText: q.text, questionTextHi: q.textHi };
       continue;
     }
 
@@ -1653,7 +1655,8 @@ export function mapResponseToBackend(
       answer: value,
       category,
       confidence: Math.min(Math.max(confidence, 0), 1),
-      questionText: q.text,
+      questionText:   q.text,
+      questionTextHi: q.textHi,
     };
   }
 

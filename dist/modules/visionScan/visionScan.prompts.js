@@ -394,7 +394,7 @@ function mapResponseToBackend(parsed, diaryPage) {
                 raw = fieldData[fuzzyKey];
         }
         if (raw === undefined || raw === null) {
-            results[q.id] = { answer: null, category, confidence: 0, questionText: q.text };
+            results[q.id] = { answer: null, category, confidence: 0, questionText: q.text, questionTextHi: q.textHi };
             continue;
         }
         // ── Extract value + confidence ──
@@ -466,6 +466,7 @@ function mapResponseToBackend(parsed, diaryPage) {
             category,
             confidence: Math.min(Math.max(confidence, 0), 1),
             questionText: q.text,
+            questionTextHi: q.textHi,
         };
     }
     return results;
