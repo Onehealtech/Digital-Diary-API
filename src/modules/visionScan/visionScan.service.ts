@@ -433,7 +433,8 @@ class VisionScanService {
             enrichedResults[qId] = {
                 answer,
                 confidence: 1.0,
-                questionText: questionDef?.text || "Unknown question",
+                questionText:   questionDef?.text   || "Unknown question",
+                questionTextHi: questionDef?.textHi,
                 category: questionDef?.category || "uncategorized",
             };
         }
@@ -603,7 +604,8 @@ class VisionScanService {
                 enrichedResults[question.id] = {
                     answer: this.normalizeDateFormat(aiField.value, question.type),
                     confidence: aiField.confidence,
-                    questionText: question.text,
+                    questionText:   question.text,
+                    questionTextHi: question.textHi,
                     category: question.category,
                 };
                 rawConfidenceScores[question.id] = aiField.confidence;
@@ -620,7 +622,8 @@ class VisionScanService {
                 enrichedResults[question.id] = {
                     answer: null,
                     confidence: 0,
-                    questionText: question.text,
+                    questionText:   question.text,
+                    questionTextHi: question.textHi,
                     category: question.category,
                 };
                 lowConfidenceFields.push(
