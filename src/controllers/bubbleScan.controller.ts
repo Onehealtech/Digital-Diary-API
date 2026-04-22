@@ -141,17 +141,21 @@ export const uploadBubbleScan = async (
             details: { patientId, pageNumber, processingStatus: result.processingStatus },
         });
 
+        // Hoist rescanTip from processingMetadata to the top level of the response
+        // so the app can display bilingual rescan guidance without digging into metadata.
+        const meta = result.processingMetadata as Record<string, any> | null;
+        const responseData = {
+            ...result.toJSON(),
+            rescanTip:          meta?.rescanTip          ?? null,
+            isValidCantracForm: meta?.isValidCantracForm ?? null,
+        };
+
         if (result.processingStatus === "completed") {
-            sendResponse(res, 200, "Scan completed successfully", result);
+            sendResponse(res, 200, "Scan completed successfully", responseData);
         } else if (result.processingStatus === "failed") {
-            sendResponse(res, 200, "Scan processing failed", result);
+            sendResponse(res, 200, "Scan processing failed", responseData);
         } else {
-            sendResponse(
-                res,
-                202,
-                "Scan uploaded and processing in background",
-                result
-            );
+            sendResponse(res, 202, "Scan uploaded and processing in background", responseData);
         }
     } catch (error: any) {
         console.error("Bubble scan upload error:", error);
