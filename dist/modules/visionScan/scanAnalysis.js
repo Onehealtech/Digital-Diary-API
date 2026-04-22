@@ -84,12 +84,20 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
         rejectionReasons.push(`More than 70% of fields could not be read — image is unreadable`);
     }
     // ── Schedule-page checks ────────────────────────────────────────────
+    //
+    // isSchedule  — page has at least one date or select field
+    // hasStatusFields — page has a select/status field paired with the date
+    //
+    // Pages like Page 36 (NACT Completed) have a date field that records a
+    // PAST completion event — no paired status field. Date/status cross-checks
+    // and future-date validation must NOT apply to those pages.
     const isSchedule = questions.some(q => q.type === "date" || q.type === "select");
     const dataErrors = [];
     if (isSchedule) {
         // Identify first/second date and status fields by question type order
         const dateQs = questions.filter(q => q.type === "date");
         const statusQs = questions.filter(q => q.type === "select");
+        const hasStatusFields = statusQs.length > 0;
         const firstDateId = dateQs[0]?.id;
         const secondDateId = dateQs[1]?.id;
         const firstStatusId = statusQs[0]?.id;
@@ -106,9 +114,9 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
             rescanReasons.push(`First appointment date has low confidence — value may be misread`);
         if (sDateField && sDateField.confidence < 0.5 && sDateField.answer !== null)
             rescanReasons.push(`Second attempt date has low confidence — value may be misread`);
-        if (fStatusField && fStatusField.confidence < 0.5 && fStatusField.answer !== null)
+        if (hasStatusFields && fStatusField && fStatusField.confidence < 0.5 && fStatusField.answer !== null)
             rescanReasons.push(`First appointment status has low confidence — value may be misread`);
-        if (sStatusField && sStatusField.confidence < 0.5 && sStatusField.answer !== null)
+        if (hasStatusFields && sStatusField && sStatusField.confidence < 0.5 && sStatusField.answer !== null)
             rescanReasons.push(`Second attempt status has low confidence — value may be misread`);
         // Chronological order: second attempt MUST be after first appointment
         if (firstDate && secondDate) {
@@ -136,30 +144,34 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
             firstDate.yy === secondDate.yy) {
             rescanReasons.push(`Both appointments have the same date (${fDateField.answer}) — likely a duplicate misread`);
         }
-        // Missed/Cancelled with no second-attempt data filled
-        if (["Missed", "Cancelled"].includes(firstStatus ?? "") && !sDateField?.answer) {
-            rescanReasons.push(`First appointment is '${firstStatus}' but second attempt section appears empty — may have been overlooked`);
-        }
-        // Second attempt present when first was Completed → contradictory
-        if (firstStatus === "Completed" && sDateField?.answer) {
-            rescanReasons.push(`Second attempt data present but first appointment is 'Completed' — second attempt is only for Missed/Cancelled appointments`);
-        }
-        // First appointment date partially filled (some components null)
-        if (!fDateField?.answer && fStatusField?.answer) {
-            rescanReasons.push(`First appointment status is filled but date could not be read`);
-        }
-        if (fDateField?.answer && !fStatusField?.answer) {
-            rescanReasons.push(`First appointment date is filled but status could not be read`);
-        }
-        // ── Future-date validation ─────────────────────────────────────────
-        // A "Scheduled" appointment must be a future date — it hasn't happened yet.
-        if (firstDate && firstStatus === "Scheduled" && toDate(firstDate) < today) {
-            rescanReasons.push(`First appointment is 'Scheduled' but date ${fDateField.answer} is in the past — scheduled appointments must have a future date`);
-            dataErrors.push("Scheduled appointment date cannot be in the past");
-        }
-        if (secondDate && sStatusField?.answer === "Scheduled" && toDate(secondDate) < today) {
-            rescanReasons.push(`Second appointment is 'Scheduled' but date ${sDateField.answer} is in the past — scheduled appointments must have a future date`);
-            dataErrors.push("Second scheduled appointment date cannot be in the past");
+        // The following checks only make sense on pages that have a paired status
+        // field (true appointment-schedule pages). Pages that only record a completion
+        // date (e.g. Page 36 NACT Completed) must not be validated against these rules.
+        if (hasStatusFields) {
+            // Missed/Cancelled with no second-attempt data filled
+            if (["Missed", "Cancelled"].includes(firstStatus ?? "") && !sDateField?.answer) {
+                rescanReasons.push(`First appointment is '${firstStatus}' but second attempt section appears empty — may have been overlooked`);
+            }
+            // Second attempt present when first was Completed → contradictory
+            if (firstStatus === "Completed" && sDateField?.answer) {
+                rescanReasons.push(`Second attempt data present but first appointment is 'Completed' — second attempt is only for Missed/Cancelled appointments`);
+            }
+            // Date and status must both be present or both absent
+            if (!fDateField?.answer && fStatusField?.answer)
+                rescanReasons.push(`First appointment status is filled but date could not be read`);
+            if (fDateField?.answer && !fStatusField?.answer)
+                rescanReasons.push(`First appointment date is filled but status could not be read`);
+            // ── Future-date validation ─────────────────────────────────────
+            // Only applies to pages with a status field — completion-date pages
+            // (e.g. Page 36) record past events and must never be flagged here.
+            if (firstDate && firstStatus === "Scheduled" && toDate(firstDate) < today) {
+                rescanReasons.push(`First appointment is 'Scheduled' but date ${fDateField.answer} is in the past — scheduled appointments must have a future date`);
+                dataErrors.push("Scheduled appointment date cannot be in the past");
+            }
+            if (secondDate && sStatusField?.answer === "Scheduled" && toDate(secondDate) < today) {
+                rescanReasons.push(`Second appointment is 'Scheduled' but date ${sDateField.answer} is in the past — scheduled appointments must have a future date`);
+                dataErrors.push("Second scheduled appointment date cannot be in the past");
+            }
         }
         // ── Duplicate-date check against history ───────────────────────────
         // If this page has been scanned before, the new dates must be different
