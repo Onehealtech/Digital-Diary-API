@@ -426,6 +426,29 @@ class VisionScanService {
                 ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
             ];
 
+            // Detect partial date fills from raw cantrac sub-fields (Anthropic path only).
+            // e.g. user filled only DD but left MM/YY blank → combined date is null, but not a blank page.
+            if (useAnthropic && metadata.cantracFields) {
+                const cf = metadata.cantracFields as Record<string, { value: string | null } | null>;
+                const sections = [
+                    { pfx: "first_appointment", label: "First appointment" },
+                    { pfx: "second_attempt",    label: "Second attempt" },
+                ] as const;
+                for (const { pfx, label } of sections) {
+                    const dd  = cf[`${pfx}_dd`]?.value  ?? null;
+                    const mm  = cf[`${pfx}_mm`]?.value  ?? null;
+                    const yy  = cf[`${pfx}_yy`]?.value  ?? null;
+                    const sts = cf[pfx === "first_appointment" ? "first_appointment_status" : "second_attempt_status"]?.value ?? null;
+                    const anyFilled  = [dd, mm, yy, sts].some(Boolean);
+                    const allPresent = [dd, mm, yy, sts].every(Boolean);
+                    if (anyFilled && !allPresent) {
+                        const missing = [!dd && "day", !mm && "month", !yy && "year", !sts && "status"]
+                            .filter(Boolean).join(", ");
+                        warnings.push(`partial_date:${label} — ${missing} missing`);
+                    }
+                }
+            }
+
             const historicalDates = await visionScanRepository.findHistoricalDatesForPage(
                 data.patientId,
                 data.detectedPageNumber,

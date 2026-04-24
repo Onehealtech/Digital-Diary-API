@@ -600,21 +600,21 @@ DD (CRITICAL — two-step): STEP 1 read number ABOVE filled bubble (not below). 
 MM: 12 labeled bubbles Jan-Dec. YY: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Status: Scheduled/Completed/Missed/Cancelled. If blank, return null for all.
 Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
 // ─── Inline-layout retry prompts (page 7) ─────────────────────────────────
-const buildDDMMRetryInline = (label) => `Focus ONLY on the "${label}" section (INLINE-LABELED BUBBLE layout).
+const buildDDMMRetryInline = (label, side) => `Focus ONLY on the "${label}" section — this is the ${side} HALF of the page (INLINE-LABELED BUBBLE layout).
 DD grid — number printed INSIDE each bubble:
   Row 1: [01][02][03][04][05][06][07][08]
   Row 2: [09][10][11][12][13][14][15][16]
   Row 3: [17][18][19][20][21][22][23][24]
   Row 4: [25][26][27][28][29][30][31]
-Find the ONE FILLED (solid dark) bubble → read the number inside it directly. Zero-pad.
-MM — TWO rows of 6 labeled bubbles: Row 1: Jan Feb Mar Apr May Jun | Row 2: Jul Aug Sep Oct Nov Dec. Find the filled one.
-Respond: { "dd": "<01-31>", "dd_confidence": "high|medium|low", "mm": "<Jan|...|Dec|null>", "mm_confidence": "high|medium|low" }`;
-const buildDDRetryInline = (label, cur, plus1) => plus1
-    ? `Focus on "${label}" (INLINE-LABELED BUBBLE layout). Compare only bubble [${cur}] and bubble [${plus1}] — number is printed inside each. Which is FILLED (solid dark interior)?
+Find the ONE FILLED (solid dark) bubble in the ${side} half → read the number inside it directly. Zero-pad. Return null if no bubble is clearly filled.
+MM — TWO rows of 6 labeled bubbles in the ${side} half: Row 1: Jan Feb Mar Apr May Jun | Row 2: Jul Aug Sep Oct Nov Dec. Find the filled one, or return null if none is clearly filled.
+Respond: { "dd": "<01-31|null>", "dd_confidence": "high|medium|low", "mm": "<Jan|...|Dec|null>", "mm_confidence": "high|medium|low" }`;
+const buildDDRetryInline = (label, side, cur, plus1) => plus1
+    ? `Focus on "${label}" — ${side} HALF of the page (INLINE-LABELED BUBBLE layout). Compare only bubble [${cur}] and bubble [${plus1}] in the ${side} half — number is printed inside each. Which is FILLED (solid dark interior)?
 Respond: { "dd": "<${cur}|${plus1}>", "confidence": "high|medium|low" }`
-    : `Focus on "${label}" (INLINE-LABELED BUBBLE layout). DD grid with number inside each bubble:
+    : `Focus on "${label}" — ${side} HALF of the page (INLINE-LABELED BUBBLE layout). DD grid with number inside each bubble:
   Row 1: [01-08] | Row 2: [09-16] | Row 3: [17-24] | Row 4: [25-31]
-Find the ONE FILLED bubble → read its inline number. Zero-pad.
+Find the ONE FILLED bubble in the ${side} half → read its inline number. Zero-pad.
 Respond: { "dd": "<01-31>", "confidence": "high|medium|low" }`;
 const buildYYBothRetryInline = () => `Look at the YEAR rows in BOTH appointment sections (INLINE-LABELED BUBBLE layout).
 Each YY row has 4 bubbles with the year printed inside: 2026 · 2027 · 2028 · 2029. ONE is SOLID dark — read the number inside it.
@@ -622,24 +622,24 @@ Respond: { "first_yy": "<2026|2027|2028|2029>", "first_yy_confidence": "...", "s
 const buildYYSingleRetryInline = (label) => `Look at the YEAR row in the "${label}" section (INLINE-LABELED BUBBLE layout).
 4 bubbles with years printed inside: 2026 · 2027 · 2028 · 2029. Which ONE is SOLID dark?
 Respond: { "yy": "<2026|2027|2028|2029>", "confidence": "high|medium|low" }`;
-const buildSecondSectionRetryInline = (fDD, fMM, fYY) => `Re-read ONLY the SECOND ATTEMPT section (INLINE-LABELED BUBBLE layout). First appointment: ${fMM} ${fDD}, ${fYY}. Expect year ${fYY} (or at most ${parseInt(fYY) + 1}).
-DD: number printed inside each bubble (Row1=01-08, Row2=09-16, Row3=17-24, Row4=25-31) — find the filled bubble and read its inline number.
-MM: 2 rows of 6 (Jan-Jun, Jul-Dec) — find the filled one. YY: 4 bubbles 2026/2027/2028/2029. Status: Scheduled/Completed/Missed/Cancelled. If blank, return null for all.
+const buildSecondSectionRetryInline = (fDD, fMM, fYY) => `Re-read ONLY the SECOND ATTEMPT section — RIGHT HALF of the page (INLINE-LABELED BUBBLE layout). First appointment (LEFT half): ${fMM} ${fDD}, ${fYY}. Do NOT re-read the left half. Expect year ${fYY} (or at most ${parseInt(fYY) + 1}).
+DD: look only in the RIGHT half — number printed inside each bubble (Row1=01-08, Row2=09-16, Row3=17-24, Row4=25-31) — find the filled bubble and read its inline number.
+MM: 2 rows of 6 in the RIGHT half (Jan-Jun, Jul-Dec) — find the filled one. YY: 4 bubbles 2026/2027/2028/2029 in RIGHT half. Status: Scheduled/Completed/Missed/Cancelled in RIGHT half. If blank, return null for all.
 Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028|2029 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
-const buildMMRetryInline = (label, hasData) => `Focus on "${label}" (INLINE-LABELED BUBBLE layout). Month (MM) — two rows of 6 bubbles, each labeled inside or directly below:
+const buildMMRetryInline = (label, side, hasData) => `Focus on "${label}" — ${side} HALF of the page (INLINE-LABELED BUBBLE layout). Month (MM) — two rows of 6 bubbles in the ${side} half, each labeled inside or directly below:
 
   Row 1 position → label:  1=Jan  2=Feb  3=Mar  4=Apr  5=May  6=Jun
   Row 2 position → label:  1=Jul  2=Aug  3=Sep  4=Oct  5=Nov  6=Dec
 
 ${hasData ? "Other date fields in this section are filled, so a month IS selected." : ""}
-STEP 1 — Find the ONE darkened/filled bubble in the MM rows.
+STEP 1 — Find the ONE darkened/filled bubble in the MM rows of the ${side} half.
 STEP 2 — Read the label printed ON or BESIDE that bubble (do NOT infer from position alone).
 STEP 3 — COUNTING CHECK: count from Jan=1 through all 12 in sequence.
           Jan=1 Feb=2 Mar=3 Apr=4 May=5 Jun=6 Jul=7 Aug=8 Sep=9 Oct=10 Nov=11 Dec=12
           May = Row 1 col 5 = count 5.  Sep = Row 2 col 3 = count 9.  Mar = Row 1 col 3 = count 3.
 STEP 4 — If label (step 2) and count (step 3) agree, return that month. If they disagree, re-examine — trust the label you can READ on the bubble.
 
-Return null only if the entire section is completely blank.
+Return null if no bubble in the MM rows is clearly and unambiguously filled with solid dark ink. Other fields (DD, YY) being filled does NOT mean a month bubble must be filled — the user may have skipped it.
 Respond: { "mm": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|null>", "confidence": "high|medium|low" }`;
 // ─── Cross-Validation ─────────────────────────────────────────────────────
 async function crossValidate(base64, apiKey, fields, tracker, warnings) {
@@ -849,11 +849,11 @@ async function extractWithAnthropic(imageBuffer, pageNumber, pageTitle, question
     const useGridLayout = !useInlineLayout && GRID_LAYOUT_PAGES.has(pageNumber); // pages 17,36: strip above row
     if (isSchedule && rawResult.fields) {
         const SECTIONS = [
-            { prefix: "first_appointment", label: "First Appointment" },
-            { prefix: "second_attempt", label: "Second Attempt (If First Missed/Cancelled)" },
+            { prefix: "first_appointment", label: "First Appointment", side: "LEFT" },
+            { prefix: "second_attempt", label: "Second Attempt (If First Missed/Cancelled)", side: "RIGHT" },
         ];
         const nearEndApplied = new Set();
-        for (const { prefix, label } of SECTIONS) {
+        for (const { prefix, label, side } of SECTIONS) {
             const ddKey = `${prefix}_dd`;
             const mmKey = `${prefix}_mm`;
             const ddF = rawResult.fields[ddKey];
@@ -872,7 +872,7 @@ async function extractWithAnthropic(imageBuffer, pageNumber, pageTitle, question
                 const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
                 console.log(`[Anthropic] DD+MM both bad for ${label} — combined retry (${layout})`);
                 try {
-                    const prompt = useInlineLayout ? buildDDMMRetryInline(label)
+                    const prompt = useInlineLayout ? buildDDMMRetryInline(label, side)
                         : useGridLayout ? buildDDMMRetryGrid(label)
                             : buildDDMMRetry(label);
                     const c = await callAnthropic(base64, prompt, apiKey, tracker);
@@ -898,7 +898,7 @@ async function extractWithAnthropic(imageBuffer, pageNumber, pageTitle, question
                 const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
                 console.log(`[Anthropic] DD=${ddF?.value ?? "null"} for ${label}${nearEnd ? " [near-end]" : ""} — retrying (${layout})`);
                 try {
-                    const prompt = useInlineLayout ? buildDDRetryInline(label, ddF?.value ?? null, p1Str)
+                    const prompt = useInlineLayout ? buildDDRetryInline(label, side, ddF?.value ?? null, p1Str)
                         : useGridLayout ? buildDDRetryGrid(label, ddF?.value ?? null, p1Str)
                             : buildDDRetry(label, ddF?.value ?? null, p1Str);
                     const r = await callAnthropic(base64, prompt, apiKey, tracker);
@@ -920,12 +920,15 @@ async function extractWithAnthropic(imageBuffer, pageNumber, pageTitle, question
                 }
             }
             if (mmBad) {
-                const hasData = rawResult.fields[ddKey]?.value != null;
+                // hasData: only tell the AI "a month IS selected" when the initial extraction
+                // actually found something (even low confidence). If initial returned null, the
+                // bubble may genuinely be empty — hinting "month is selected" causes hallucination.
+                const hasData = mmF?.value != null;
                 const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
                 const mmReason = useInlineLayout && mmF?.confidence === "high" && mmF?.value ? "forced-verify" : "retry";
                 console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — ${mmReason} (${layout})`);
                 try {
-                    const prompt = useInlineLayout ? buildMMRetryInline(label, hasData) : buildMMRetry(label, hasData);
+                    const prompt = useInlineLayout ? buildMMRetryInline(label, side, hasData) : buildMMRetry(label, hasData);
                     const r = await callAnthropic(base64, prompt, apiKey, tracker);
                     const mv = r?.mm && r.mm !== "null" ? r.mm : null;
                     const isForcedVerify = useInlineLayout && mmF?.confidence === "high" && mmF?.value != null;

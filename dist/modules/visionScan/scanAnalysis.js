@@ -68,16 +68,16 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
         : 0;
     if (overallConfidence > 0 && overallConfidence < 0.65) {
         rescanReasons.push({
-            english: `Overall confidence is ${overallConfidence} — extraction may be inaccurate`,
-            hindi: `समग्र विश्वसनीयता ${overallConfidence} है — निष्कर्षण अशुद्ध हो सकता है`,
+            english: "Some fields could not be read clearly. Please retake the photo.",
+            hindi: "कुछ फ़ील्ड स्पष्ट नहीं पढ़ी जा सकीं। कृपया फ़ोटो दोबारा लें।",
         });
     }
     const lowConfFields = Object.entries(enrichedResults)
         .filter(([, f]) => f.confidence < 0.5 && f.answer !== null);
     if (lowConfFields.length >= 1) {
         rescanReasons.push({
-            english: `${lowConfFields.length} field(s) have low confidence — verify manually`,
-            hindi: `${lowConfFields.length} फ़ील्ड में कम विश्वसनीयता है — कृपया मैन्युअल रूप से सत्यापित करें`,
+            english: "Some answers look uncertain. Please retake on a plain surface.",
+            hindi: "कुछ उत्तर अनिश्चित लगते हैं। कृपया सादी सतह पर दोबारा फ़ोटो लें।",
         });
     }
     // ── Rejection ──────────────────────────────────────────────────────
@@ -293,7 +293,14 @@ function computeScanAnalysis(enrichedResults, questions, processingWarnings, his
     const qualityWarnings = processingWarnings
         .filter(w => qualityPhrases.some(phrase => w.toLowerCase().includes(phrase)))
         .map(qualityWarningToBilingual);
-    const allRescanReasons = [...rescanReasons, ...qualityWarnings];
+    // ── Partial-date fill warnings (tagged "partial_date:" by service layer) ─
+    const partialDateWarnings = processingWarnings
+        .filter(w => w.startsWith("partial_date:"))
+        .map(() => ({
+        english: "Please fill the date, month, year, and status completely.",
+        hindi: "कृपया तारीख, महीना, वर्ष और स्थिति पूरी तरह भरें।",
+    }));
+    const allRescanReasons = [...rescanReasons, ...qualityWarnings, ...partialDateWarnings];
     // ── Final action ──────────────────────────────────────────────────────
     const rejectionRequired = rejectionReasons.length > 0;
     const rescanRequired = allRescanReasons.length > 0;
