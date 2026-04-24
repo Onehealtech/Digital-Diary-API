@@ -6,7 +6,7 @@ import path from "path";
 // Mapping: "production" → .env.production, anything else → .env.staging
 const NODE_ENV = process.env.NODE_ENV || "staging";
 const envFile = NODE_ENV === "production" ? ".env.production" : ".env.staging";
-const envPath = path.resolve(process.cwd(), envFile);
+const envPath = path.resolve(__dirname, "..", envFile);
 
 const result = dotenv.config({ path: envPath });
 if (result.error) {

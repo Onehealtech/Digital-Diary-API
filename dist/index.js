@@ -10,7 +10,7 @@ const path_1 = __importDefault(require("path"));
 // Mapping: "production" → .env.production, anything else → .env.staging
 const NODE_ENV = process.env.NODE_ENV || "staging";
 const envFile = NODE_ENV === "production" ? ".env.production" : ".env.staging";
-const envPath = path_1.default.resolve(process.cwd(), envFile);
+const envPath = path_1.default.resolve(__dirname, "..", envFile);
 const result = dotenv_1.default.config({ path: envPath });
 if (result.error) {
     console.error(`[ENV] Failed to load ${envFile}:`, result.error.message);

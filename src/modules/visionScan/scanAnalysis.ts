@@ -8,7 +8,7 @@ import { DiaryQuestion, EnrichedResult } from "./visionScan.types";
 
 // ─── Public types ──────────────────────────────────────────────────────────
 
-export type ScanAction = "success" | "rescan_required" | "rejected";
+export type ScanAction = "success" | "rescan_required" | "rejected" | "duplicate" | "page_number_hidden";
 
 export interface BilingualMessage { english: string; hindi: string; }
 
@@ -89,9 +89,10 @@ export function computeScanAnalysis(
     const now   = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const rescanReasons: BilingualMessage[] = [];
-    const rejectionReasons: string[]        = [];
-    const dataErrors: BilingualMessage[]    = [];
+    const rescanReasons: BilingualMessage[]      = [];
+    const duplicateDateReasons: BilingualMessage[] = [];
+    const rejectionReasons: string[]              = [];
+    const dataErrors: BilingualMessage[]          = [];
 
     // ── Overall confidence ──────────────────────────────────────────────
     const scores = Object.values(enrichedResults).map(f => f.confidence);
@@ -333,15 +334,19 @@ export function computeScanAnalysis(
             }
         }
 
-        // Duplicate-date check against history
+        // Duplicate-date check against history — only flag "duplicate" if ALL submitted dates are already in history.
+        // If at least one date is new (e.g. second attempt added), the scan is legitimate and should be accepted.
         if (historicalDates.length > 0) {
             const newDates = [fDateField?.answer, sDateField?.answer].filter((d): d is string => !!d);
-            for (const d of newDates) {
-                if (historicalDates.includes(d)) {
-                    rescanReasons.push({
-                        english: `Date ${d} was already recorded in a previous scan for this page — if this is the same appointment, no re-upload is needed; if it is a new appointment, please ensure a different date is marked`,
-                        hindi:   `तारीख ${d} इस पृष्ठ के पिछले स्कैन में पहले से दर्ज है — यदि यह वही अपॉइंटमेंट है तो दोबारा अपलोड की आवश्यकता नहीं है; यदि यह नई अपॉइंटमेंट है तो कृपया एक अलग तारीख भरें`,
-                    });
+            if (newDates.length > 0) {
+                const allDuplicates = newDates.every(d => historicalDates.includes(d));
+                if (allDuplicates) {
+                    for (const d of newDates) {
+                        duplicateDateReasons.push({
+                            english: `Date ${d} was already recorded in a previous scan for this page`,
+                            hindi:   `तारीख ${d} इस पृष्ठ के पिछले स्कैन में पहले से दर्ज है`,
+                        });
+                    }
                 }
             }
         }
@@ -358,15 +363,22 @@ export function computeScanAnalysis(
     // ── Final action ──────────────────────────────────────────────────────
     const rejectionRequired = rejectionReasons.length > 0;
     const rescanRequired    = allRescanReasons.length > 0;
+    const isDuplicateOnly   = duplicateDateReasons.length > 0 && !rescanRequired && !rejectionRequired;
 
     const action: ScanAction = rejectionRequired ? "rejected"
         : rescanRequired    ? "rescan_required"
+        : isDuplicateOnly   ? "duplicate"
         :                     "success";
+
+    // Merge duplicate reasons into rescanReasons for the response so app has full list
+    if (isDuplicateOnly) allRescanReasons.push(...duplicateDateReasons);
 
     const userMessage = action === "rejected"
         ? "This scan could not be processed — the image is unreadable. Please retake it clearly and try again."
         : action === "rescan_required"
             ? "The photo could not be read accurately. Please retake it on a plain surface, held directly above the form, and try again."
+        : action === "duplicate"
+            ? "This date was already recorded from a previous scan. No need to scan again."
             : "Data extracted successfully.";
 
     const dataError = dataErrors.length > 0
@@ -383,7 +395,10 @@ export function computeScanAnalysis(
         rejectionRequired,
         rejectionReasons,
         dataError,
-        alertMessage: action !== "success" ? "Rescan is required" : null,
+        alertMessage: action === "rejected" ? "Scan rejected"
+            : action === "rescan_required" ? "Rescan is required"
+            : action === "duplicate"       ? "Already submitted"
+            : null,
         userMessage,
         dataReliable: action === "success" && dataError === null,
         overallConfidence,

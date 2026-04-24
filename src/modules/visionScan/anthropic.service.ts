@@ -214,7 +214,7 @@ Your job is to examine photos of diary pages and extract which bubbles are fille
 CRITICAL RULES:
 1. FILLED bubble: interior is COMPLETELY SOLID dark (blue/purple ink, no light center visible). EMPTY bubble: thin ring outline only, white/light interior — the vast majority of bubbles look like this. Exactly ONE bubble per row is filled (zero if unanswered). If two look similarly dark, pick the darker one and set confidence "medium". Never mistake printed border lines or box edges for bubbles.
 2. Return ONLY valid JSON — no markdown, no backticks, no explanation.
-3. If a bubble appears partially filled or ambiguous, mark it as filled and set confidence to "low".
+3. If a bubble appears partially filled or ambiguous due to ink/pen marks, mark it as filled and set confidence to "low". However, if the darkness is due to background texture, patterned surface bleeding through thin paper, or shadows — treat it as EMPTY (null).
 4. If you cannot determine a field at all (image too blurry, cut off), set value to null.
 5. For Yes/No fields: return "Yes" or "No" (or null if unreadable).
 6. For status fields: return one of the exact option strings.
@@ -223,9 +223,13 @@ CRITICAL RULES:
 9. DATE FIELDS — three possible DD layouts the extraction prompt will specify: (a) TWO-LINE: 16 unlabeled bubbles Line 1 (01-16) + 15 bubbles Line 2 (17-31) — count N empty from left to find position; (b) CALENDAR GRID: alternating number strip → bubble row — the strip ABOVE labels that row, the strip BELOW belongs to the NEXT row; always read the number ABOVE the filled bubble and verify by counting from W1 col 1 left-to-right row-by-row; (c) INLINE: day number printed INSIDE every bubble — find the filled bubble and read its number directly. MM is always labeled bubbles (Jan-Dec). YY is always labeled bubbles (2026/2027/2028/2029). Exactly ONE bubble per group is filled. DD values must be zero-padded: "01", "05", "14", "31".`;
 }
 
-function buildExtractionPrompt(pageNumber: number, pageTitle: string, questions: DiaryQuestion[]): string {
+const PATTERNED_BG_WARNING = `
+STRICT MODE (patterned background detected): The page may be on a textured surface whose pattern bleeds through the thin paper. Be EXTRA conservative — only mark a bubble as filled if it is CLEARLY and SIGNIFICANTLY darker than ALL neighbouring bubbles in the same group. If there is ANY doubt, return null. Do NOT guess.`;
+
+function buildExtractionPrompt(pageNumber: number, pageTitle: string, questions: DiaryQuestion[], patternedBackground = false): string {
     const isSchedule = questions.some(q => q.type === "date" || q.type === "select");
-    if (isSchedule) return buildSchedulePrompt(pageNumber, pageTitle);
+    if (isSchedule) return buildSchedulePrompt(pageNumber, pageTitle, patternedBackground);
+    const bgWarning = patternedBackground ? PATTERNED_BG_WARNING : "";
     const fieldLines = questions.filter(q => q.type !== "info").map((q, i) => {
         if (q.type === "yes_no") return `  ${i+1}. "${q.id}" (yes_no): "${q.text}" → options: [Yes | No]`;
         if (q.type === "text")   return `  ${i+1}. "${q.id}" (text): "${q.text}" → read handwritten text or ""`;
@@ -233,18 +237,19 @@ function buildExtractionPrompt(pageNumber: number, pageTitle: string, questions:
     }).join("\n");
     const exFields = questions.filter(q => q.type !== "info")
         .map(q => `    "${q.id}": { "value": <extracted_value_or_null>, "confidence": "high"|"medium"|"low" }`).join(",\n");
-    return `This is CANTrac page ${pageNumber}: "${pageTitle}"
+    return `This is CANTrac page ${pageNumber}: "${pageTitle}"${bgWarning}
 Extract the value of each field by examining which bubble is filled next to each question.
 Fields to extract:\n${fieldLines}
 Respond with ONLY this JSON (no markdown):\n{\n  "pageNumber": ${pageNumber},\n  "title": "${pageTitle}",\n  "fields": {\n${exFields}\n  }\n}`;
 }
 
-function buildSchedulePrompt(pageNumber: number, pageTitle: string): string {
-    if (INLINE_LABEL_PAGES.has(pageNumber)) return buildSchedulePromptInline(pageNumber, pageTitle);
-    if (GRID_LAYOUT_PAGES.has(pageNumber))  return buildSchedulePromptGrid(pageNumber, pageTitle);
+function buildSchedulePrompt(pageNumber: number, pageTitle: string, patternedBackground = false): string {
+    if (INLINE_LABEL_PAGES.has(pageNumber)) return buildSchedulePromptInline(pageNumber, pageTitle, patternedBackground);
+    if (GRID_LAYOUT_PAGES.has(pageNumber))  return buildSchedulePromptGrid(pageNumber, pageTitle, patternedBackground);
 
     // ── Default: original two-line layout ────────────────────────────────
-    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE.
+    const bgWarning = patternedBackground ? PATTERNED_BG_WARNING : "";
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE.${bgWarning}
 
 Read TWO sections (First Appointment at the top, Second Attempt at the bottom). For each section extract:
 
@@ -253,7 +258,9 @@ Read TWO sections (First Appointment at the top, Second Attempt at the bottom). 
    Line 1: day=N+1, verify N+R+1=16. Line 2: day=N+17, verify N+R+1=15.
    Near-end (N≥13): count from BOTH sides and confirm both agree.
    Always return a value; zero-pad: "01", "15", "31". Return null only if the section is entirely blank.
-2. MM row: 12 bubbles — Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. Count N empty left of filled → N=0→Jan…N=11→Dec. The LAST bubble (Dec, rightmost) is easy to miss.
+2. MM row: 12 bubbles in a single row — [Jan/जन.][Feb/फर.][Mar/मार्च][Apr/अप्रैल][May/मई][Jun/जून][Jul/जुला.][Aug/आग.][Sep/सित.][Oct/अक्टू.][Nov/नव.][Dec/दिस.]
+   READ the label printed on/below the filled bubble — do NOT guess from count alone.
+   Cross-check: May is position 5, Sep is position 9 — they are 4 apart. Apr(4) vs Sep(9) also differ. Verify the English label text matches. The LAST bubble (Dec, rightmost) is easy to miss.
 3. YY row: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Assess each bubble individually — which one is solid dark?
 4. Status: Scheduled / Completed / Missed / Cancelled.
 
@@ -289,8 +296,11 @@ Reasoning must show your count (e.g. "L1:N=4,R=11,sum=16→05"):
  * No counting or above/below confusion — just read the number inside the filled bubble.
  * MM: 2 rows of 6.  YY: 4 options (2026-2029).
  */
-function buildSchedulePromptInline(pageNumber: number, pageTitle: string): string {
-    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (INLINE-LABELED BUBBLE LAYOUT).
+function buildSchedulePromptInline(pageNumber: number, pageTitle: string, patternedBackground = false): string {
+    const bgWarning = patternedBackground ? PATTERNED_BG_WARNING : "";
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (INLINE-LABELED BUBBLE LAYOUT).${bgWarning}
+
+ANTI-HALLUCINATION RULE: A bubble is ONLY filled if it has a clearly visible, intentional ink or pen mark that is significantly darker than ALL other bubbles in the same group. If bubbles look similarly dark or you cannot clearly distinguish one filled bubble from the rest, return null for that entire field. Prefer null over a wrong guess.
 
 This page has TWO sections side-by-side: First Appointment (left half) and Second Attempt (right half). For each section extract:
 
@@ -300,12 +310,22 @@ This page has TWO sections side-by-side: First Appointment (left half) and Secon
    Row 3: [17][18][19][20][21][22][23][24]
    Row 4: [25][26][27][28][29][30][31]
    Find the ONE FILLED (solid dark interior) bubble → read the number printed inside it. That IS the day. No counting needed.
-   Zero-pad: "01", "09", "17", "31". Return null only if the entire section is blank.
+   Zero-pad: "01", "09", "17", "31".
+   IMPORTANT: A bubble is only FILLED if its interior is clearly and definitively solid dark with visible ink or pen mark. A bubble that appears slightly darker due to background texture, paper pattern bleeding through, or shadows is NOT filled — return null. If no bubble is unmistakably filled, return null.
 
-2. MMM (Month) — TWO rows of 6 bubbles, month label inside/below each bubble:
-   Row 1: Jan  Feb  Mar  Apr  May  Jun
-   Row 2: Jul  Aug  Sep  Oct  Nov  Dec
-   Find the ONE FILLED bubble → read its label. Check both rows.
+2. MMM (Month) — TWO rows of 6 labeled bubbles:
+   Row 1 (positions 1-6): [Jan/जन.] [Feb/फर.] [Mar/मार्च] [Apr/अप्रैल] [May/मई] [Jun/जून]
+   Row 2 (positions 1-6): [Jul/जुला.] [Aug/आग.] [Sep/सित.] [Oct/अक्टू.] [Nov/नव.] [Dec/दिस.]
+
+   THREE-STEP VERIFICATION (all three must agree):
+   Step 1 — Find the ONE clearly filled bubble (solid dark ink mark).
+   Step 2 — READ the English+Hindi label printed on/below that specific bubble (e.g. "May/मई" or "Sep/सित."). Do NOT guess from position alone — read the actual label text.
+   Step 3 — COUNTING CHECK: count from Jan=1 through all 12 months in sequence. The filled bubble's count must match its label.
+              Count key: Jan=1 Feb=2 Mar=3 Apr=4 May=5 Jun=6 Jul=7 Aug=8 Sep=9 Oct=10 Nov=11 Dec=12
+              Known positions: May/मई = Row 1 col 5 = count 5. Sep/सित. = Row 2 col 3 = count 9.
+              Apr/अप्रैल = Row 1 col 4 = count 4. Oct/अक्टू. = Row 2 col 4 = count 10.
+   If the label from Step 2 and the count from Step 3 disagree, re-examine — one of the steps was wrong.
+   The filled bubble must clearly stand out from all others. If adjacent bubbles look similar, return null.
 
 3. YYYY (Year) — 4 bubbles with year printed inside: 2026 · 2027 · 2028 · 2029. Which is FILLED?
 
@@ -320,11 +340,11 @@ Reasoning must name row, column and the inline number of the filled bubble:
   "title": "${pageTitle}",
   "reasoning": {
     "first_dd":     "<Row ? col ? — bubble shows NN inside and is filled>",
-    "first_mm":     "<bubble labeled Mon is filled>",
+    "first_mm":     "<Row ? col ? — label=Mon — count_from_jan=N — filled>",
     "first_yy":     "<bubble showing YYYY is filled>",
     "first_status": "<which bubble is filled>",
     "second_dd":     "<Row ? col ? — bubble shows NN inside and is filled, or blank>",
-    "second_mm":     "<bubble labeled Mon is filled, or blank>",
+    "second_mm":     "<Row ? col ? — label=Mon — count_from_jan=N — filled, or blank>",
     "second_yy":     "<bubble showing YYYY is filled, or blank>",
     "second_status": "<which bubble is filled, or blank>"
   },
@@ -347,8 +367,9 @@ Reasoning must name row, column and the inline number of the filled bubble:
  * The strip BELOW a row belongs to the NEXT row — always read the number ABOVE the filled bubble,
  * then verify with a sequential count (count wins on disagreement).
  */
-function buildSchedulePromptGrid(pageNumber: number, pageTitle: string): string {
-    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (CALENDAR GRID LAYOUT).
+function buildSchedulePromptGrid(pageNumber: number, pageTitle: string, patternedBackground = false): string {
+    const bgWarning = patternedBackground ? PATTERNED_BG_WARNING : "";
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (CALENDAR GRID LAYOUT).${bgWarning}
 
 Read TWO sections (First Appointment at the top, Second Attempt at the bottom). For each section extract:
 
@@ -408,6 +429,13 @@ export function generateRescanTip(
     invalidFormReasons: string[],
     action: string
 ): RescanTip {
+    // Duplicate scan — completely different tip, no "retake photo" messaging
+    if (action === "duplicate")
+        return {
+            english: "This date was already recorded from a previous scan for this page. Your data is saved — no need to scan again.",
+            hindi:   "यह तारीख पहले से इस पृष्ठ के स्कैन में दर्ज है। आपका डेटा सुरक्षित है — दोबारा स्कैन की जरूरत नहीं।",
+        };
+
     const combined = [...allRescanReasons, ...warnings, ...invalidFormReasons].join(" ").toLowerCase();
 
     const notCantrac = combined.includes("does not appear to be a cantrac") || combined.includes("not a cantrac") ||
@@ -533,7 +561,14 @@ async function callAnthropic(
     const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("").trim();
     if (!text) throw new Error("Anthropic API returned empty response");
     const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    const fixed   = cleaned.replace(/:\s*0+(\d+)/g, ": $1");
+    // Try direct parse first; if the model added preamble text, extract the outermost {...} block
+    let jsonText = cleaned;
+    try { return JSON.parse(cleaned.replace(/:\s*0+(\d+)/g, ": $1")); }
+    catch {
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (jsonMatch) jsonText = jsonMatch[0].trim();
+    }
+    const fixed = jsonText.replace(/:\s*0+(\d+)/g, ": $1");
     try { return JSON.parse(fixed); }
     catch { throw new Error(`Failed to parse Anthropic response: ${cleaned.substring(0, 400)}`); }
 }
@@ -680,11 +715,21 @@ MM: 2 rows of 6 (Jan-Jun, Jul-Dec) — find the filled one. YY: 4 bubbles 2026/2
 Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028|2029 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
 
 const buildMMRetryInline = (label: string, hasData: boolean) =>
-    `Focus on "${label}" (INLINE-LABELED BUBBLE layout). MM — TWO rows of 6 labeled bubbles:
-  Row 1: Jan  Feb  Mar  Apr  May  Jun
-  Row 2: Jul  Aug  Sep  Oct  Nov  Dec
-${hasData ? "Other fields in this section are filled, so a month IS selected." : ""} Find the ONE FILLED bubble and read its label. Return null only if section is completely blank.
-Respond: { "mm": "<Jan|...|Dec|null>", "confidence": "high|medium|low" }`;
+    `Focus on "${label}" (INLINE-LABELED BUBBLE layout). Month (MM) — two rows of 6 bubbles, each labeled inside or directly below:
+
+  Row 1 position → label:  1=Jan  2=Feb  3=Mar  4=Apr  5=May  6=Jun
+  Row 2 position → label:  1=Jul  2=Aug  3=Sep  4=Oct  5=Nov  6=Dec
+
+${hasData ? "Other date fields in this section are filled, so a month IS selected." : ""}
+STEP 1 — Find the ONE darkened/filled bubble in the MM rows.
+STEP 2 — Read the label printed ON or BESIDE that bubble (do NOT infer from position alone).
+STEP 3 — COUNTING CHECK: count from Jan=1 through all 12 in sequence.
+          Jan=1 Feb=2 Mar=3 Apr=4 May=5 Jun=6 Jul=7 Aug=8 Sep=9 Oct=10 Nov=11 Dec=12
+          May = Row 1 col 5 = count 5.  Sep = Row 2 col 3 = count 9.  Mar = Row 1 col 3 = count 3.
+STEP 4 — If label (step 2) and count (step 3) agree, return that month. If they disagree, re-examine — trust the label you can READ on the bubble.
+
+Return null only if the entire section is completely blank.
+Respond: { "mm": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|null>", "confidence": "high|medium|low" }`;
 
 // ─── Cross-Validation ─────────────────────────────────────────────────────
 
@@ -765,6 +810,55 @@ Respond: { "patterned_background":bool, "severe_angle":bool, "blurry":bool, "poo
     } catch (err: any) { console.log(`[Anthropic] Quality check failed: ${err.message}`); }
 }
 
+interface QualityResult {
+    patterned_background: boolean;
+    overall_quality: string;
+    issues: string[];
+}
+
+async function assessImageQualityEarly(lowRes: string, apiKey: string, tracker: TokenTracker): Promise<QualityResult> {
+    try {
+        const q = await callAnthropic(lowRes,
+            `You are checking whether a CANTrac diary page photo has a background that bleeds through the paper.
+
+CRITICAL — patterned_background must be TRUE only if the page is placed DIRECTLY on a SOFT TEXTILE surface whose pattern physically shows through the thin paper. This includes:
+  - Fabric / cloth / bedsheet / dupatta / saree placed UNDER the page
+  - Tablecloth with printed/woven pattern underneath the page
+  - Carpet or rug directly under the page
+  - Any textile where the weave/pattern is visible THROUGH the white paper
+
+patterned_background must be FALSE for:
+  - Wooden table or desk (wood grain does NOT bleed through paper)
+  - Tiled floor or marble surface
+  - Plain table surface of any colour
+  - Hard surface (glass, plastic, metal)
+  - Patterned objects visible AROUND the page but not directly under it
+  - Any surface where the diary page itself looks clean and white
+
+The test: does the pattern appear INSIDE the white area of the diary page itself? If NO, set false.
+
+Also check:
+- severe_angle: Is the camera at a severe angle (not directly above the page)?
+- blurry: Is the image out of focus or motion-blurred?
+- poor_lighting: Is there severe shadow, glare, or very poor lighting making bubbles hard to see?
+- form_cut_off: Are the diary page edges significantly cut off?
+
+Respond with ONLY this JSON (no explanation):
+{ "patterned_background": true|false, "severe_angle": true|false, "blurry": true|false, "poor_lighting": true|false, "form_cut_off": true|false, "overall_quality": "good"|"acceptable"|"poor" }`,
+            apiKey, tracker, { model: ANTHROPIC_MODEL, maxTokens: 256 });
+        const issues: string[] = [];
+        if (q.severe_angle)   issues.push("diary page is photographed at a severe angle — hold camera directly above");
+        if (q.blurry)         issues.push("image is blurry — hold steady and let it focus");
+        if (q.poor_lighting)  issues.push("poor lighting or glare — improve lighting");
+        if (q.form_cut_off)   issues.push("diary page edges cut off — ensure the whole page is in frame");
+        console.log(`[Anthropic] Quality check: patterned=${q.patterned_background}, quality=${q.overall_quality}, issues=${issues.join(", ") || "none"}`);
+        return { patterned_background: !!q.patterned_background, overall_quality: q.overall_quality || "good", issues };
+    } catch (err: any) {
+        console.log(`[Anthropic] Quality check failed: ${err.message}`);
+        return { patterned_background: false, overall_quality: "good", issues: [] };
+    }
+}
+
 // ─── Main Export ──────────────────────────────────────────────────────────
 
 export async function extractWithAnthropic(
@@ -803,15 +897,30 @@ export async function extractWithAnthropic(
         wasPortrait:      mainPrep.metadata.wasPortrait,
     };
 
-    // Form validity check via Haiku (cheap, non-blocking)
-    const { valid: isValidCantracForm, reason: invalidReason } = await checkFormValidity(lowRes64, apiKey, tracker);
+    // Form validity + image quality checks via Haiku — run BEFORE extraction so bad photos are rejected early
+    const [{ valid: isValidCantracForm, reason: invalidReason }, qualityIssues] = await Promise.all([
+        checkFormValidity(lowRes64, apiKey, tracker),
+        assessImageQualityEarly(lowRes64, apiKey, tracker),
+    ]);
+
     if (!isValidCantracForm) {
         warnings.push(`Image may not be a valid CANTrac diary page: ${invalidReason || "unknown"}`);
         console.log(`[Anthropic] Form invalid: ${invalidReason}`);
     }
 
-    // Main extraction
-    const rawResult = await callAnthropic(base64, buildExtractionPrompt(pageNumber, pageTitle, questions), apiKey, tracker) as AnthropicRawResult;
+    const hasPatternedBackground = qualityIssues.patterned_background;
+    if (hasPatternedBackground) {
+        console.log("[Anthropic] Patterned background detected — will extract with stricter rules");
+        warnings.push("Image quality issues detected: diary page may be on a patterned surface — retake on a plain surface if results look wrong");
+    }
+    if (qualityIssues.issues.length > 0) {
+        warnings.push("Image quality issues detected: " + qualityIssues.issues.join("; ") + " — retake recommended for accuracy");
+        if (qualityIssues.overall_quality === "poor") warnings.push("Overall image quality is poor — retake the photo");
+        else if (qualityIssues.overall_quality === "acceptable" && qualityIssues.issues.length > 0) warnings.push("Image quality is marginal — retake recommended to improve accuracy");
+    }
+
+    // Always attempt extraction — pass patterned background flag so prompt can be stricter
+    const rawResult = await callAnthropic(base64, buildExtractionPrompt(pageNumber, pageTitle, questions, hasPatternedBackground), apiKey, tracker) as AnthropicRawResult;
     if (rawResult.reasoning) { console.log("[Anthropic] Reasoning:", JSON.stringify(rawResult.reasoning, null, 2)); delete rawResult.reasoning; }
 
     // ── Schedule: component-level retries ────────────────────────────────
@@ -842,7 +951,8 @@ export async function extractWithAnthropic(
                 : (ddVal >= 14 && ddVal <= 16) || (ddVal >= 26 && ddVal <= 31);
 
             const ddBad = !ddF || ddF.value === null || ddF.confidence === "low" || nearEnd;
-            const mmBad = !mmF || mmF.value === null || mmF.confidence === "low";
+            // For inline layout (page 7), always verify MM — AI confuses nearby columns at high confidence
+            const mmBad = !mmF || mmF.value === null || mmF.confidence === "low" || useInlineLayout;
 
             if (ddBad && !nearEnd && mmBad) {
                 const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
@@ -887,13 +997,24 @@ export async function extractWithAnthropic(
             if (mmBad) {
                 const hasData = rawResult.fields[ddKey]?.value != null;
                 const layout  = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
-                console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — retrying (${layout})`);
+                const mmReason = useInlineLayout && mmF?.confidence === "high" && mmF?.value ? "forced-verify" : "retry";
+                console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — ${mmReason} (${layout})`);
                 try {
                     const prompt = useInlineLayout ? buildMMRetryInline(label, hasData) : buildMMRetry(label, hasData);
                     const r = await callAnthropic(base64, prompt, apiKey, tracker);
                     const mv = r?.mm && r.mm !== "null" ? r.mm : null;
-                    if (mv) rawResult.fields[mmKey] = { value: mv, confidence: r.confidence || "medium" };
-                    else warnings.push(`MM for ${label} could not be read — manual verification required`);
+                    const isForcedVerify = useInlineLayout && mmF?.confidence === "high" && mmF?.value != null;
+                    if (mv) {
+                        if (isForcedVerify && mv !== mmF!.value) {
+                            // Initial was confident but verify disagrees — keep initial, lower confidence
+                            console.log(`[Anthropic] MM verify disagreement for ${label}: initial=${mmF!.value} verify=${mv} — keeping initial with medium confidence`);
+                            rawResult.fields[mmKey] = { value: mmF!.value, confidence: "medium" };
+                        } else {
+                            rawResult.fields[mmKey] = { value: mv, confidence: r.confidence || "medium" };
+                        }
+                    } else if (!isForcedVerify) {
+                        warnings.push(`MM for ${label} could not be read — manual verification required`);
+                    }
                 } catch (e: any) { console.log(`[Anthropic] MM retry failed: ${e.message}`); }
             }
         }
@@ -965,8 +1086,7 @@ export async function extractWithAnthropic(
         if (secondRetryChanged)   warnings.push("Second attempt section required re-extraction — initial read was incorrect, verify values");
     }
 
-    // Image quality (Haiku, run in background — don't await)
-    assessImageQuality(lowRes64, apiKey, tracker, warnings).catch(() => {});
+    // (image quality already checked before extraction above)
 
     // Portrait warning
     if (imageMetadata.wasPortrait) warnings.push("Photo was taken in portrait orientation of a landscape diary page — extraction accuracy may be reduced");
@@ -1023,6 +1143,20 @@ export async function extractWithAnthropic(
             } else {
                 warnings.push(`Field "${q.id}" not returned by Anthropic`);
                 extraction[q.id] = { value: null, confidence: 0 };
+            }
+        }
+    }
+
+    // For schedule pages: clear second attempt fields unless first appointment was Missed or Cancelled
+    if (isSchedule) {
+        const firstStatus = extraction["q1_status"]?.value?.toLowerCase();
+        const firstStatusCantrac = cantracFields["first_appointment_status"]?.value?.toLowerCase();
+        const status = firstStatus || firstStatusCantrac || "";
+        const secondAttemptAllowed = status === "missed" || status === "cancelled";
+        if (!secondAttemptAllowed) {
+            for (const key of ["q2_date", "second_attempt_dd", "second_attempt_mm", "second_attempt_yy", "second_attempt_status"]) {
+                if (key in extraction) extraction[key] = { value: null, confidence: 0 };
+                if (key in cantracFields) cantracFields[key] = { value: null, confidence: "high" };
             }
         }
     }
