@@ -8,11 +8,11 @@ const DIARY_CODE = "CanTRAC-A001";
 // ── Helper: standard schedule questions (shared by all schedule pages) ──
 function scheduleQuestions() {
     return [
-        { id: "q1_date", text: "First Appointment Date", textHi: "पहली अपॉइंटमेंट की तारीख", type: "date", category: "schedule" },
-        { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-        { id: "q2_date", text: "Second Attempt Date (If First Missed/Cancelled)", textHi: "दूसरे प्रयास की तारीख (यदि पहला छूट गया/रद्द हो गया)", type: "date", category: "schedule" },
-        { id: "q2_status", text: "Second Attempt Status", textHi: "दूसरे प्रयास की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-        // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+        { id: "q1_date", text: "First Appointment Date", textHi: "पहली अपॉइंटमेंट की तारीख", type: "date", category: "appointment" },
+        { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+        { id: "q2_date", text: "Second Attempt Date (If First Missed/Cancelled)", textHi: "दूसरे प्रयास की तारीख (यदि पहला छूट गया/रद्द हो गया)", type: "date", category: "appointment" },
+        { id: "q2_status", text: "Second Attempt Status", textHi: "दूसरे प्रयास की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+        // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "appointment" },
     ];
 }
 // ── Helper: standard "done & report" questions ──
@@ -304,11 +304,11 @@ const PAGES = [
         titleHi: "क्लिप लगाने की तारीख",
         layoutType: "schedule",
         questions: [
-            { id: "q1_date", text: "Get A Date For Clip Placement", textHi: "क्लिप लगाने के लिए तारीख", type: "date", category: "schedule" },
-            { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            { id: "q2_date", text: "Get A Redate For Clip Placement", textHi: "क्लिप लगाने की नई तारीख", type: "date", category: "schedule" },
-            { id: "q2_status", text: "Redate Status", textHi: "नई तारीख की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+            { id: "q1_date", text: "Get A Date For Clip Placement", textHi: "क्लिप लगाने के लिए तारीख", type: "date", category: "appointment" },
+            { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+            { id: "q2_date", text: "Get A Redate For Clip Placement", textHi: "क्लिप लगाने की नई तारीख", type: "date", category: "appointment" },
+            { id: "q2_status", text: "Redate Status", textHi: "नई तारीख की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "appointment" },
         ],
     },
     // ─── Page 32: Next Steps ───
@@ -378,11 +378,11 @@ const PAGES = [
         titleHi: "क्या सर्जरी शुरू होने से पहले रेडिएशन थेरेपी की तारीख बुक की गई है?",
         layoutType: "schedule",
         questions: [
-            { id: "q1_date", text: "Got a date for Radiation Therapy", textHi: "रेडिएशन थेरेपी के लिए डेट मिल गई है", type: "date", category: "schedule" },
-            { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            { id: "q2_date", text: "Got a reappointment date", textHi: "दोबारा अपॉइंटमेंट की तारीख मिल गई है", type: "date", category: "schedule" },
-            { id: "q2_status", text: "Reappointment Status", textHi: "दोबारा अपॉइंटमेंट की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "schedule" },
-            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "schedule" },
+            { id: "q1_date", text: "Got a date for Radiation Therapy", textHi: "रेडिएशन थेरेपी के लिए डेट मिल गई है", type: "date", category: "appointment" },
+            { id: "q1_status", text: "Status", textHi: "स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+            { id: "q2_date", text: "Got a reappointment date", textHi: "दोबारा अपॉइंटमेंट की तारीख मिल गई है", type: "date", category: "appointment" },
+            { id: "q2_status", text: "Reappointment Status", textHi: "दोबारा अपॉइंटमेंट की स्थिति (एक चुनें)", type: "select", options: ["Scheduled", "Completed", "Missed", "Cancelled"], category: "appointment" },
+            // { id: "q3", text: "Next Appointment Required?", textHi: "अगला अपॉइंटमेंट चाहिए?", type: "yes_no", category: "appointment" },
         ],
     },
     // ─── Page 38: Surgery Admission Date Provided ───

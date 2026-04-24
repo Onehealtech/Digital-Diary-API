@@ -26,11 +26,13 @@ export class VisionScanRepository {
     async createScanRecord(data: {
         patientId: string;
         pageNumber: number;
-        diaryPageId: string;
+        diaryPageId?: string;
         submissionType: SubmissionType;
         processingStatus: ProcessingStatus;
         imageUrl?: string;
         scanResults?: Record<string, EnrichedResult>;
+        processingMetadata?: ProcessingMetadata;
+        errorMessage?: string;
     }): Promise<BubbleScanResult> {
         return BubbleScanResult.create({
             patientId: data.patientId,
@@ -41,6 +43,8 @@ export class VisionScanRepository {
             imageUrl: data.imageUrl,
             processingStatus: data.processingStatus,
             scanResults: data.scanResults,
+            processingMetadata: data.processingMetadata,
+            errorMessage: data.errorMessage,
             scannedAt: new Date(),
         });
     }
@@ -175,12 +179,17 @@ export class VisionScanRepository {
 
         const previous = await BubbleScanResult.findAll({
             where,
-            attributes: ["scanResults"],
+            attributes: ["scanResults", "processingMetadata"],
             order: [["scannedAt", "DESC"]],
         });
 
         const dates = new Set<string>();
         for (const scan of previous) {
+            const meta = scan.processingMetadata as { action?: string } | null;
+            // Only treat a scan as "already submitted" if it was a clean success.
+            // Scans that needed a rescan or were rejected are not valid submissions.
+            if (meta?.action && meta.action !== "success") continue;
+
             const results = scan.scanResults as Record<string, { answer: string | null }> | null;
             if (!results) continue;
             for (const field of Object.values(results)) {

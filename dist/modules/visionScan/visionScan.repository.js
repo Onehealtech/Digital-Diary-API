@@ -24,6 +24,8 @@ class VisionScanRepository {
             imageUrl: data.imageUrl,
             processingStatus: data.processingStatus,
             scanResults: data.scanResults,
+            processingMetadata: data.processingMetadata,
+            errorMessage: data.errorMessage,
             scannedAt: new Date(),
         });
     }
@@ -116,11 +118,16 @@ class VisionScanRepository {
             where.id = { [sequelize_1.Op.ne]: excludeScanId };
         const previous = await BubbleScanResult_1.BubbleScanResult.findAll({
             where,
-            attributes: ["scanResults"],
+            attributes: ["scanResults", "processingMetadata"],
             order: [["scannedAt", "DESC"]],
         });
         const dates = new Set();
         for (const scan of previous) {
+            const meta = scan.processingMetadata;
+            // Only treat a scan as "already submitted" if it was a clean success.
+            // Scans that needed a rescan or were rejected are not valid submissions.
+            if (meta?.action && meta.action !== "success")
+                continue;
             const results = scan.scanResults;
             if (!results)
                 continue;

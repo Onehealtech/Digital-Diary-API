@@ -52,7 +52,7 @@ export interface ProcessingMetadata {
     processingTimeMs: number;
     lowConfidenceFields: string[];
     // Scan analysis (rescan / rejection decision)
-    action?:            "success" | "rescan_required" | "rejected";
+    action?:            "success" | "rescan_required" | "rejected" | "duplicate" | "page_number_hidden";
     rescanRequired?:    boolean;
     rescanReasons?:     Array<{ english: string; hindi: string }>;
     rejectionRequired?: boolean;

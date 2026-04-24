@@ -793,7 +793,7 @@
 
 //   for (const q of questions) {
 //     let raw = fieldData[q.id];
-//     const category = (q.type === "date" || q.type === "select") ? "schedule" : "general";
+//     const category = (q.type === "date" || q.type === "select") ? "appointment" : "general";
 
 //     // Fuzzy key match
 //     if (raw === undefined) {
@@ -1193,8 +1193,14 @@ RULES:
 // 2. PAGE DETECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const PAGE_DETECTION_PROMPT = `What is the 2-digit page number at the top center of this CANTrac diary page?
-Return JSON only: {"isValidDiaryPage": true, "pageNumber": <number>} or {"isValidDiaryPage": false, "reason": "<brief>"}`;
+export const PAGE_DETECTION_PROMPT = `Look at this image. Is it a CANTrac diary page? If yes, what is the page number at the top center?
+
+Reply with ONLY valid JSON — no explanation, no markdown, no code fences:
+- If valid diary page with visible number: {"isValidDiaryPage": true, "pageNumber": 7}
+- If valid diary page but number is covered/not visible: {"isValidDiaryPage": true, "pageNumber": null}
+- If not a diary page: {"isValidDiaryPage": false, "reason": "brief reason"}
+
+Start your response with { and end with }. Nothing else.`;
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1570,7 +1576,7 @@ export function mapResponseToBackend(
 
   for (const q of questions) {
     let raw = fieldData[q.id];
-    const category = (q.type === "date" || q.type === "select") ? "schedule" : "general";
+    const category = (q.type === "date" || q.type === "select") ? "appointment" : "general";
 
     // Fuzzy key match
     if (raw === undefined) {

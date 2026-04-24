@@ -62,6 +62,12 @@ class VisionScanService {
         mimeType: string
     ): Promise<PageDetectionResult> {
 
+        const useAnthropic = process.env.USE_ANTHROPIC === "true" && isAnthropicConfigured();
+
+        if (useAnthropic) {
+            return this.detectPageNumberWithAnthropic(base64, mimeType);
+        }
+
         const body = {
             model: VISION_SCAN_CONFIG.MODEL,
             messages: [
@@ -96,12 +102,11 @@ class VisionScanService {
             },
             body: JSON.stringify(body),
         });
-        console.log(response,"response");
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             if (response.status === 401) {
-                throw new AppError(502, "Scan service unavailable: invalid or missing OPENROUTER_API_KEY. Check .env.production on the server.");
+                throw new AppError(502, `Scan service unavailable: invalid or missing OPENROUTER_API_KEY. Check .env.${process.env.NODE_ENV || "staging"} on the server.`);
             }
             throw new AppError(502, `Page detection API error (${response.status}): ${errorText}`);
         }
@@ -129,20 +134,86 @@ class VisionScanService {
         }
 
         if (!parsed.isValidDiaryPage) {
-            return {
-                valid: false,
-                reason: `Invalid image: This does not appear to be a CANTrac diary page. ${parsed.reason || ""}`,
-            };
+            return { valid: false, reason: `not_cantrac_page: ${parsed.reason || ""}` };
         }
 
         if (!parsed.pageNumber || typeof parsed.pageNumber !== "number") {
-            return {
-                valid: false,
-                reason: `Could not detect page number from the diary page image.`,
-            };
+            return { valid: false, reason: `page_number_hidden` };
         }
 
         return { valid: true, pageNumber: parsed.pageNumber, usage };
+    }
+
+    private async detectPageNumberWithAnthropic(
+        base64: string,
+        mimeType: string
+    ): Promise<PageDetectionResult> {
+        const apiKey = process.env.ANTHROPIC_API_KEY!;
+        const model = "claude-haiku-4-5-20251001"; // always use Haiku for page detection — fast, cheap, sufficient
+
+        const body = {
+            model,
+            max_tokens: 256,
+            messages: [{
+                role: "user",
+                content: [
+                    {
+                        type: "image",
+                        source: { type: "base64", media_type: mimeType as any, data: base64 },
+                    },
+                    { type: "text", text: PAGE_DETECTION_PROMPT },
+                ],
+            }],
+        };
+
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            if (response.status === 401) {
+                throw new AppError(502, `Scan service unavailable: invalid or missing ANTHROPIC_API_KEY. Check .env.${process.env.NODE_ENV || "staging"} on the server.`);
+            }
+            throw new AppError(502, `Anthropic page detection error (${response.status}): ${errText}`);
+        }
+
+        const data = await response.json() as { content: Array<{ type: string; text: string }> };
+        const rawText = data.content?.[0]?.text?.trim() || "";
+
+        // Extract JSON robustly — handle responses with explanatory text before/after the JSON
+        let jsonText: string | null = null;
+        const codeBlockMatch = rawText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+        if (codeBlockMatch) {
+            jsonText = codeBlockMatch[1].trim();
+        } else {
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) jsonText = jsonMatch[0].trim();
+        }
+
+        let parsed: { isValidDiaryPage?: boolean; pageNumber?: number; reason?: string } = {};
+        try {
+            parsed = JSON.parse(jsonText || rawText);
+        } catch {
+            // If we can't parse at all, treat as page number not visible rather than crashing
+            console.warn(`[VisionScan] Could not parse page detection response, treating as page_number_hidden. Raw: ${rawText.slice(0, 200)}`);
+            return { valid: false, reason: "page_number_hidden" };
+        }
+
+        if (parsed.isValidDiaryPage === false) {
+            return { valid: false, reason: `not_cantrac_page: ${parsed.reason || ""}` };
+        }
+        if (!parsed.pageNumber || typeof parsed.pageNumber !== "number") {
+            return { valid: false, reason: `page_number_hidden` };
+        }
+
+        return { valid: true, pageNumber: parsed.pageNumber, usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };
     }
 
     /**
@@ -162,7 +233,38 @@ class VisionScanService {
             detectedPageNumber = pageNumber;
         } else {
             const detection = await this.detectPageNumber(base64, mimeType);
-            if (!detection.valid) return detection;
+            if (!detection.valid) {
+                const isPageHidden  = detection.reason === "page_number_hidden";
+                const isNotCantrac  = detection.reason?.startsWith("not_cantrac_page");
+                const s3Url = await this.uploadToS3(imageBuffer, mimeType, patientId, diaryType, 0).catch(() => undefined);
+
+                const action         = isPageHidden ? "page_number_hidden" : "rescan_required";
+                const rescanReasons  = isPageHidden
+                    ? [{ english: "Page number is covered or not visible. Remove any objects covering the top of the page and retake the photo.", hindi: "पृष्ठ संख्या ढकी हुई है या दिखाई नहीं दे रही। पेज के ऊपरी हिस्से से कोई भी वस्तु हटाएँ और दोबारा फोटो लें।" }]
+                    : [{ english: isNotCantrac ? `This does not appear to be a CANTrac diary page. ${detection.reason!.replace("not_cantrac_page: ", "")}` : "Page could not be identified. Please retake the photo clearly showing the full diary page.", hindi: "यह CANTrac डायरी का पेज नहीं लग रहा। कृपया पूरे डायरी पेज को दिखाते हुए दोबारा फोटो खींचें।" }];
+                const rescanTip      = isPageHidden
+                    ? { english: "The page number is printed at the top-center of every diary page. Make sure it is not covered by fingers, objects, or other papers when taking the photo.", hindi: "पेज नंबर हर डायरी पेज के ऊपर बीच में छपा होता है। फोटो खींचते समय उसे उँगलियों, वस्तुओं या कागज़ों से न ढकें।" }
+                    : { english: "Photograph a page from your CANTrac breast cancer diary, ensuring the full page is visible and in focus.", hindi: "अपनी CANTrac ब्रेस्ट कैंसर डायरी का पेज फोटो खींचें — पूरा पेज साफ़ और फोकस में होना चाहिए।" };
+
+                const scanRecord = await visionScanRepository.createScanRecord({
+                    patientId,
+                    pageNumber: 0,
+                    submissionType: SubmissionType.SCAN,
+                    processingStatus: ProcessingStatus.COMPLETED,
+                    imageUrl: s3Url,
+                    scanResults: {},
+                    processingMetadata: {
+                        model: "claude-haiku-4-5-20251001",
+                        promptTokens: 0, responseTokens: 0, totalTokens: 0,
+                        processingTimeMs: 0, lowConfidenceFields: [],
+                        action,
+                        rescanRequired: true,
+                        rescanReasons,
+                        rescanTip,
+                    },
+                });
+                return scanRecord;
+            }
             detectedPageNumber = detection.pageNumber;
         }
 
@@ -246,63 +348,33 @@ class VisionScanService {
             if (useAnthropic) {
                 // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
                 const imageBuffer = Buffer.from(data.base64, "base64");
-                let anthropicFailed = false;
 
-                try {
-                    const result = await extractWithAnthropic(
-                        imageBuffer,
-                        data.detectedPageNumber,
-                        diaryPage.title,
-                        diaryPage.questions
-                    );
+                const result = await extractWithAnthropic(
+                    imageBuffer,
+                    data.detectedPageNumber,
+                    diaryPage.title,
+                    diaryPage.questions
+                );
 
-                    const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
-                    enrichedResults      = built.enrichedResults;
-                    rawConfidenceScores  = built.rawConfidenceScores;
-                    lowConfidenceFields  = built.lowConfidenceFields;
+                const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                enrichedResults      = built.enrichedResults;
+                rawConfidenceScores  = built.rawConfidenceScores;
+                lowConfidenceFields  = built.lowConfidenceFields;
 
-                    metadata = {
-                        model:            process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-                        promptTokens:     result.tokenUsage?.inputTokens     ?? 0,
-                        responseTokens:   result.tokenUsage?.outputTokens    ?? 0,
-                        totalTokens:      result.tokenUsage?.totalTokens     ?? 0,
-                        processingTimeMs: result.processingTimeMs,
-                        lowConfidenceFields,
-                        // cantrac-omr enriched fields
-                        rescanTip:          result.rescanTip,
-                        isValidCantracForm: result.isValidCantracForm,
-                        cantracFields:      result.cantracFields,
-                        tokenUsage:         result.tokenUsage,
-                        imageMetadata:      result.imageMetadata,
-                    };
-                } catch (anthropicErr: any) {
-                    // Auth / network failures fall back to OpenRouter so the scan isn't lost.
-                    // Configuration errors (invalid key, timeout) are logged clearly.
-                    console.error(`[VisionScan] Anthropic failed — falling back to OpenRouter. Reason: ${anthropicErr.message}`);
-                    anthropicFailed = true;
-                }
-
-                if (anthropicFailed) {
-                    // ─── OpenRouter fallback ─────────────────────────────────────
-                    const prompt = buildExtractionPrompt(diaryPage);
-                    const startTime = Date.now();
-                    const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
-                    const processingTimeMs = Date.now() - startTime;
-
-                    const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
-                    enrichedResults      = built.enrichedResults;
-                    rawConfidenceScores  = built.rawConfidenceScores;
-                    lowConfidenceFields  = built.lowConfidenceFields;
-
-                    metadata = {
-                        model: `${VISION_SCAN_CONFIG.MODEL} (anthropic-fallback)`,
-                        promptTokens:   aiResult.usage.prompt_tokens,
-                        responseTokens: aiResult.usage.completion_tokens,
-                        totalTokens:    aiResult.usage.total_tokens,
-                        processingTimeMs,
-                        lowConfidenceFields,
-                    };
-                }
+                metadata = {
+                    model:            process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+                    promptTokens:     result.tokenUsage?.inputTokens     ?? 0,
+                    responseTokens:   result.tokenUsage?.outputTokens    ?? 0,
+                    totalTokens:      result.tokenUsage?.totalTokens     ?? 0,
+                    processingTimeMs: result.processingTimeMs,
+                    lowConfidenceFields,
+                    // cantrac-omr enriched fields
+                    rescanTip:          result.rescanTip,
+                    isValidCantracForm: result.isValidCantracForm,
+                    cantracFields:      result.cantracFields,
+                    tokenUsage:         result.tokenUsage,
+                    imageMetadata:      result.imageMetadata,
+                };
 
             } else if (useDocAI) {
                 // ─── Google Document AI (trained custom extractor) ───────────
@@ -353,6 +425,29 @@ class VisionScanService {
             const warnings: string[] = [
                 ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
             ];
+
+            // Detect partial date fills from raw cantrac sub-fields (Anthropic path only).
+            // e.g. user filled only DD but left MM/YY blank → combined date is null, but not a blank page.
+            if (useAnthropic && metadata.cantracFields) {
+                const cf = metadata.cantracFields as Record<string, { value: string | null } | null>;
+                const sections = [
+                    { pfx: "first_appointment", label: "First appointment" },
+                    { pfx: "second_attempt",    label: "Second attempt" },
+                ] as const;
+                for (const { pfx, label } of sections) {
+                    const dd  = cf[`${pfx}_dd`]?.value  ?? null;
+                    const mm  = cf[`${pfx}_mm`]?.value  ?? null;
+                    const yy  = cf[`${pfx}_yy`]?.value  ?? null;
+                    const sts = cf[pfx === "first_appointment" ? "first_appointment_status" : "second_attempt_status"]?.value ?? null;
+                    const anyFilled  = [dd, mm, yy, sts].some(Boolean);
+                    const allPresent = [dd, mm, yy, sts].every(Boolean);
+                    if (anyFilled && !allPresent) {
+                        const missing = [!dd && "day", !mm && "month", !yy && "year", !sts && "status"]
+                            .filter(Boolean).join(", ");
+                        warnings.push(`partial_date:${label} — ${missing} missing`);
+                    }
+                }
+            }
 
             const historicalDates = await visionScanRepository.findHistoricalDatesForPage(
                 data.patientId,
