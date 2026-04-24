@@ -35,7 +35,12 @@ const LOWRES_QUAL   = 70;
 const CONFIDENCE_MAP: Record<string, number> = { high: 0.95, medium: 0.75, low: 0.45 };
 
 const VALID_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const VALID_YEARS  = ["2026","2027","2028"];
+const VALID_YEARS  = ["2026","2027","2028","2029"]; // 2029 added for page-07 inline layout
+
+// Pages whose hard-copy uses the new 5-week CALENDAR GRID layout (number strip above bubble rows).
+const GRID_LAYOUT_PAGES   = new Set([17, 36]);
+// Pages whose hard-copy uses the INLINE layout (day number printed inside each bubble).
+const INLINE_LABEL_PAGES  = new Set([7]);
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -215,7 +220,7 @@ CRITICAL RULES:
 6. For status fields: return one of the exact option strings.
 7. The page number is printed at the top center of every page.
 8. Photos may be taken at an angle, rotated sideways, or on a textured background — mentally rotate the image if needed. Focus on the white paper area.
-9. DATE ROWS (DD/MM/YY): rows of small bubbles numbered 01-31, or labeled Jan-Dec, or 2026/2027/2028. Exactly ONE per row is filled. DD values must be zero-padded: "01", "05", "14", "31".`;
+9. DATE FIELDS — three possible DD layouts the extraction prompt will specify: (a) TWO-LINE: 16 unlabeled bubbles Line 1 (01-16) + 15 bubbles Line 2 (17-31) — count N empty from left to find position; (b) CALENDAR GRID: alternating number strip → bubble row — the strip ABOVE labels that row, the strip BELOW belongs to the NEXT row; always read the number ABOVE the filled bubble and verify by counting from W1 col 1 left-to-right row-by-row; (c) INLINE: day number printed INSIDE every bubble — find the filled bubble and read its number directly. MM is always labeled bubbles (Jan-Dec). YY is always labeled bubbles (2026/2027/2028/2029). Exactly ONE bubble per group is filled. DD values must be zero-padded: "01", "05", "14", "31".`;
 }
 
 function buildExtractionPrompt(pageNumber: number, pageTitle: string, questions: DiaryQuestion[]): string {
@@ -235,6 +240,10 @@ Respond with ONLY this JSON (no markdown):\n{\n  "pageNumber": ${pageNumber},\n 
 }
 
 function buildSchedulePrompt(pageNumber: number, pageTitle: string): string {
+    if (INLINE_LABEL_PAGES.has(pageNumber)) return buildSchedulePromptInline(pageNumber, pageTitle);
+    if (GRID_LAYOUT_PAGES.has(pageNumber))  return buildSchedulePromptGrid(pageNumber, pageTitle);
+
+    // ── Default: original two-line layout ────────────────────────────────
     return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE.
 
 Read TWO sections (First Appointment at the top, Second Attempt at the bottom). For each section extract:
@@ -260,6 +269,122 @@ Reasoning must show your count (e.g. "L1:N=4,R=11,sum=16→05"):
     "first_mm": "<N=?→Mon>",  "first_yy": "<which is solid>",  "first_status": "<which is solid>",
     "second_dd": "<same or blank>",  "second_mm": "<N=?→Mon or blank>",
     "second_yy": "<which or blank>", "second_status": "<which or blank>"
+  },
+  "fields": {
+    "first_appointment_dd":      { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "first_appointment_mm":      { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "first_appointment_yy":      { "value": "<2026|2027|2028 or null>", "confidence": "high|medium|low" },
+    "first_appointment_status":  { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "second_attempt_dd":         { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "second_attempt_mm":         { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "second_attempt_yy":         { "value": "<2026|2027|2028 or null>", "confidence": "high|medium|low" },
+    "second_attempt_status":     { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "next_appointment_required": { "value": "<Yes|No or null>", "confidence": "high|medium|low" }
+  }
+}`;
+}
+
+/**
+ * INLINE layout (page 7): day number printed INSIDE every bubble.
+ * No counting or above/below confusion — just read the number inside the filled bubble.
+ * MM: 2 rows of 6.  YY: 4 options (2026-2029).
+ */
+function buildSchedulePromptInline(pageNumber: number, pageTitle: string): string {
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (INLINE-LABELED BUBBLE LAYOUT).
+
+This page has TWO sections side-by-side: First Appointment (left half) and Second Attempt (right half). For each section extract:
+
+1. DD (Day) — grid with the day number printed INSIDE every bubble:
+   Row 1: [01][02][03][04][05][06][07][08]
+   Row 2: [09][10][11][12][13][14][15][16]
+   Row 3: [17][18][19][20][21][22][23][24]
+   Row 4: [25][26][27][28][29][30][31]
+   Find the ONE FILLED (solid dark interior) bubble → read the number printed inside it. That IS the day. No counting needed.
+   Zero-pad: "01", "09", "17", "31". Return null only if the entire section is blank.
+
+2. MMM (Month) — TWO rows of 6 bubbles, month label inside/below each bubble:
+   Row 1: Jan  Feb  Mar  Apr  May  Jun
+   Row 2: Jul  Aug  Sep  Oct  Nov  Dec
+   Find the ONE FILLED bubble → read its label. Check both rows.
+
+3. YYYY (Year) — 4 bubbles with year printed inside: 2026 · 2027 · 2028 · 2029. Which is FILLED?
+
+4. Status — 4 labeled bubbles: Scheduled / Completed / Missed / Cancelled. Which is FILLED?
+
+The Second Attempt section may be completely blank. Also read "Next Appointment Required" (Yes/No) at the very bottom.
+
+Reasoning must name row, column and the inline number of the filled bubble:
+{
+  "pageNumber": ${pageNumber},
+  "pageType": "schedule",
+  "title": "${pageTitle}",
+  "reasoning": {
+    "first_dd":     "<Row ? col ? — bubble shows NN inside and is filled>",
+    "first_mm":     "<bubble labeled Mon is filled>",
+    "first_yy":     "<bubble showing YYYY is filled>",
+    "first_status": "<which bubble is filled>",
+    "second_dd":     "<Row ? col ? — bubble shows NN inside and is filled, or blank>",
+    "second_mm":     "<bubble labeled Mon is filled, or blank>",
+    "second_yy":     "<bubble showing YYYY is filled, or blank>",
+    "second_status": "<which bubble is filled, or blank>"
+  },
+  "fields": {
+    "first_appointment_dd":      { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "first_appointment_mm":      { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "first_appointment_yy":      { "value": "<2026|2027|2028|2029 or null>", "confidence": "high|medium|low" },
+    "first_appointment_status":  { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "second_attempt_dd":         { "value": "<01-31 or null>", "confidence": "high|medium|low" },
+    "second_attempt_mm":         { "value": "<Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec or null>", "confidence": "high|medium|low" },
+    "second_attempt_yy":         { "value": "<2026|2027|2028|2029 or null>", "confidence": "high|medium|low" },
+    "second_attempt_status":     { "value": "<Scheduled|Completed|Missed|Cancelled or null>", "confidence": "high|medium|low" },
+    "next_appointment_required": { "value": "<Yes|No or null>", "confidence": "high|medium|low" }
+  }
+}`;
+}
+
+/**
+ * GRID layout (pages 17, 36): number strip above each row of bubbles.
+ * The strip BELOW a row belongs to the NEXT row — always read the number ABOVE the filled bubble,
+ * then verify with a sequential count (count wins on disagreement).
+ */
+function buildSchedulePromptGrid(pageNumber: number, pageTitle: string): string {
+    return `CANTrac page ${pageNumber}: "${pageTitle}" — SCHEDULE PAGE (CALENDAR GRID LAYOUT).
+
+Read TWO sections (First Appointment at the top, Second Attempt at the bottom). For each section extract:
+
+1. DD (Day) — CALENDAR GRID. Each row of bubbles has a number strip ABOVE it (that row's labels) and a number strip BELOW it (the NEXT row's labels):
+     Numbers: 01  02  03  04  05  06  07
+     Bubbles: (○)(○)(○)(○)(○)(○)(○)   ← W1
+     Numbers: 08  09  10  11  12  13  14
+     Bubbles: (○)(○)(○)(○)(○)(○)(○)   ← W2
+     Numbers: 15  16  17  18  19  20  21
+     Bubbles: (○)(○)(○)(○)(○)(○)(○)   ← W3
+     Numbers: 22  23  24  25  26  27  28
+     Bubbles: (○)(○)(○)(○)(○)(○)(○)   ← W4
+     Numbers: 29  30  31
+     Bubbles: (○)(○)(○)               ← W5
+   TWO-STEP VERIFICATION:
+   STEP 1 — Label: find the filled bubble → read the number strip DIRECTLY ABOVE it (not below).
+   STEP 2 — Count: from W1 col 1, count every circle LEFT-TO-RIGHT ROW-BY-ROW and stop at the filled one. Count = day (1=01, 8=08, 16=16…).
+   Both agree → use that value, confidence "high". Disagree → use STEP 2 count, confidence "medium".
+   Zero-pad. Return null only if section is entirely blank.
+
+2. MM row: 12 labeled bubbles — Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. The LAST bubble (Dec) is easy to miss.
+3. YY row: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Which is solid dark?
+4. Status: Scheduled / Completed / Missed / Cancelled.
+
+The Second Attempt section may be completely blank. Also read "Next Appointment Required" (Yes/No) at the very bottom.
+
+Reasoning must show both steps for DD:
+{
+  "pageNumber": ${pageNumber},
+  "pageType": "schedule",
+  "title": "${pageTitle}",
+  "reasoning": {
+    "first_dd":     "<W? col ? | step1_label=NN | step2_count=NN | agree/disagree → using NN>",
+    "first_mm":     "<N=?→Mon>",  "first_yy": "<which is solid>",  "first_status": "<which is solid>",
+    "second_dd":    "<same format or blank>",
+    "second_mm":    "<N=?→Mon or blank>", "second_yy": "<which or blank>", "second_status": "<which or blank>"
   },
   "fields": {
     "first_appointment_dd":      { "value": "<01-31 or null>", "confidence": "high|medium|low" },
@@ -486,6 +611,81 @@ DD: Check Line 2 (17-31) first, then Line 1 (01-16). MM: 12 bubbles Jan-Dec. YY:
 If blank, return null for all.
 Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
 
+// ─── Grid-layout retry prompts (pages 17, 36) ─────────────────────────────
+
+const buildDDMMRetryGrid = (label: string) =>
+    `Focus ONLY on the "${label}" section (CALENDAR GRID layout).
+CRITICAL: number strip ABOVE a bubble row labels those bubbles; strip BELOW belongs to the NEXT row — always read ABOVE.
+Grid (number strip → bubble row, alternating):
+  Numbers: 01 02 03 04 05 06 07  Bubbles: (○)(○)(○)(○)(○)(○)(○) ← W1
+  Numbers: 08 09 10 11 12 13 14  Bubbles: (○)(○)(○)(○)(○)(○)(○) ← W2
+  Numbers: 15 16 17 18 19 20 21  Bubbles: (○)(○)(○)(○)(○)(○)(○) ← W3
+  Numbers: 22 23 24 25 26 27 28  Bubbles: (○)(○)(○)(○)(○)(○)(○) ← W4
+  Numbers: 29 30 31              Bubbles: (○)(○)(○)              ← W5
+TWO-STEP for DD: STEP 1 read number ABOVE filled bubble. STEP 2 count from W1 col 1 L→R row-by-row; stop at filled bubble — count = day. Disagree → use STEP 2. Zero-pad.
+MM — 12 labeled bubbles: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. Check Oct/Nov/Dec carefully.
+Respond: { "dd": "<01-31>", "dd_confidence": "high|medium|low", "mm": "<Jan|...|Dec|null>", "mm_confidence": "high|medium|low" }`;
+
+const buildDDRetryGrid = (label: string, cur: string | null, plus1: string | null) =>
+    plus1
+        ? `Focus on "${label}" (CALENDAR GRID). Compare adjacent bubbles day ${cur} and day ${plus1}. STEP 1 read number ABOVE each; STEP 2 count from W1 to confirm. Which bubble is FILLED (solid dark)?
+Respond: { "dd": "<${cur}|${plus1}>", "confidence": "high|medium|low" }`
+        : `Focus on "${label}" (CALENDAR GRID). Grid (number strip ABOVE → bubble row below):
+  01-07 → W1 bubbles | 08-14 → W2 bubbles | 15-21 → W3 bubbles | 22-28 → W4 bubbles | 29-31 → W5 bubbles
+TWO-STEP: STEP 1 read number ABOVE filled bubble. STEP 2 count from W1 col 1 L→R row-by-row; count = day. Disagree → use STEP 2. Zero-pad.
+Respond: { "dd": "<01-31>", "confidence": "high|medium|low" }`;
+
+const buildSecondSectionRetryGrid = (fDD: string, fMM: string, fYY: string) =>
+    `Re-read ONLY the SECOND ATTEMPT (bottom) section (CALENDAR GRID layout). First appointment: ${fMM} ${fDD}, ${fYY}. Expect year ${fYY} (or at most ${parseInt(fYY)+1}).
+DD (CRITICAL — two-step): STEP 1 read number ABOVE filled bubble (not below). STEP 2 count from W1 col 1 L→R row-by-row; count = day. Disagree → use STEP 2. Grid: W1=01-07, W2=08-14, W3=15-21, W4=22-28, W5=29-31.
+MM: 12 labeled bubbles Jan-Dec. YY: LEFTMOST=2026, MIDDLE=2027, RIGHTMOST=2028. Status: Scheduled/Completed/Missed/Cancelled. If blank, return null for all.
+Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
+
+// ─── Inline-layout retry prompts (page 7) ─────────────────────────────────
+
+const buildDDMMRetryInline = (label: string) =>
+    `Focus ONLY on the "${label}" section (INLINE-LABELED BUBBLE layout).
+DD grid — number printed INSIDE each bubble:
+  Row 1: [01][02][03][04][05][06][07][08]
+  Row 2: [09][10][11][12][13][14][15][16]
+  Row 3: [17][18][19][20][21][22][23][24]
+  Row 4: [25][26][27][28][29][30][31]
+Find the ONE FILLED (solid dark) bubble → read the number inside it directly. Zero-pad.
+MM — TWO rows of 6 labeled bubbles: Row 1: Jan Feb Mar Apr May Jun | Row 2: Jul Aug Sep Oct Nov Dec. Find the filled one.
+Respond: { "dd": "<01-31>", "dd_confidence": "high|medium|low", "mm": "<Jan|...|Dec|null>", "mm_confidence": "high|medium|low" }`;
+
+const buildDDRetryInline = (label: string, cur: string | null, plus1: string | null) =>
+    plus1
+        ? `Focus on "${label}" (INLINE-LABELED BUBBLE layout). Compare only bubble [${cur}] and bubble [${plus1}] — number is printed inside each. Which is FILLED (solid dark interior)?
+Respond: { "dd": "<${cur}|${plus1}>", "confidence": "high|medium|low" }`
+        : `Focus on "${label}" (INLINE-LABELED BUBBLE layout). DD grid with number inside each bubble:
+  Row 1: [01-08] | Row 2: [09-16] | Row 3: [17-24] | Row 4: [25-31]
+Find the ONE FILLED bubble → read its inline number. Zero-pad.
+Respond: { "dd": "<01-31>", "confidence": "high|medium|low" }`;
+
+const buildYYBothRetryInline = () =>
+    `Look at the YEAR rows in BOTH appointment sections (INLINE-LABELED BUBBLE layout).
+Each YY row has 4 bubbles with the year printed inside: 2026 · 2027 · 2028 · 2029. ONE is SOLID dark — read the number inside it.
+Respond: { "first_yy": "<2026|2027|2028|2029>", "first_yy_confidence": "...", "second_yy": "<2026|2027|2028|2029|null>", "second_yy_confidence": "..." }`;
+
+const buildYYSingleRetryInline = (label: string) =>
+    `Look at the YEAR row in the "${label}" section (INLINE-LABELED BUBBLE layout).
+4 bubbles with years printed inside: 2026 · 2027 · 2028 · 2029. Which ONE is SOLID dark?
+Respond: { "yy": "<2026|2027|2028|2029>", "confidence": "high|medium|low" }`;
+
+const buildSecondSectionRetryInline = (fDD: string, fMM: string, fYY: string) =>
+    `Re-read ONLY the SECOND ATTEMPT section (INLINE-LABELED BUBBLE layout). First appointment: ${fMM} ${fDD}, ${fYY}. Expect year ${fYY} (or at most ${parseInt(fYY)+1}).
+DD: number printed inside each bubble (Row1=01-08, Row2=09-16, Row3=17-24, Row4=25-31) — find the filled bubble and read its inline number.
+MM: 2 rows of 6 (Jan-Jun, Jul-Dec) — find the filled one. YY: 4 bubbles 2026/2027/2028/2029. Status: Scheduled/Completed/Missed/Cancelled. If blank, return null for all.
+Respond: { "second_attempt_dd": {"value":"<01-31 or null>","confidence":"..."}, "second_attempt_mm": {"value":"<Jan|...|Dec or null>","confidence":"..."}, "second_attempt_yy": {"value":"<2026|2027|2028|2029 or null>","confidence":"..."}, "second_attempt_status": {"value":"<...or null>","confidence":"..."} }`;
+
+const buildMMRetryInline = (label: string, hasData: boolean) =>
+    `Focus on "${label}" (INLINE-LABELED BUBBLE layout). MM — TWO rows of 6 labeled bubbles:
+  Row 1: Jan  Feb  Mar  Apr  May  Jun
+  Row 2: Jul  Aug  Sep  Oct  Nov  Dec
+${hasData ? "Other fields in this section are filled, so a month IS selected." : ""} Find the ONE FILLED bubble and read its label. Return null only if section is completely blank.
+Respond: { "mm": "<Jan|...|Dec|null>", "confidence": "high|medium|low" }`;
+
 // ─── Cross-Validation ─────────────────────────────────────────────────────
 
 async function crossValidate(
@@ -618,6 +818,10 @@ export async function extractWithAnthropic(
     let crossValidationFired = false;
     let secondRetryChanged   = false;
 
+    // Determine which layout this page uses — drives prompt and nearEnd selection.
+    const useInlineLayout = INLINE_LABEL_PAGES.has(pageNumber);   // page 7: number inside bubble
+    const useGridLayout   = !useInlineLayout && GRID_LAYOUT_PAGES.has(pageNumber); // pages 17,36: strip above row
+
     if (isSchedule && rawResult.fields) {
         const SECTIONS = [
             { prefix: "first_appointment" as const, label: "First Appointment" },
@@ -628,15 +832,26 @@ export async function extractWithAnthropic(
         for (const { prefix, label } of SECTIONS) {
             const ddKey = `${prefix}_dd`; const mmKey = `${prefix}_mm`;
             const ddF = rawResult.fields[ddKey]; const mmF = rawResult.fields[mmKey];
-            const ddVal  = parseInt(ddF?.value || "0");
-            const nearEnd = (ddVal >= 14 && ddVal <= 16) || (ddVal >= 26 && ddVal <= 31);
-            const ddBad   = !ddF || ddF.value === null || ddF.confidence === "low" || nearEnd;
-            const mmBad   = !mmF || mmF.value === null || mmF.confidence === "low";
+            const ddVal = parseInt(ddF?.value || "0");
+
+            // nearEnd:
+            //   two-line  — flag the row-boundary zones (14-16 and 26-31)
+            //   grid/inline — only the last (short) row warrants a verify pass
+            const nearEnd = useInlineLayout || useGridLayout
+                ? ddVal >= 29
+                : (ddVal >= 14 && ddVal <= 16) || (ddVal >= 26 && ddVal <= 31);
+
+            const ddBad = !ddF || ddF.value === null || ddF.confidence === "low" || nearEnd;
+            const mmBad = !mmF || mmF.value === null || mmF.confidence === "low";
 
             if (ddBad && !nearEnd && mmBad) {
-                console.log(`[Anthropic] DD+MM both bad for ${label} — combined retry`);
+                const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
+                console.log(`[Anthropic] DD+MM both bad for ${label} — combined retry (${layout})`);
                 try {
-                    const c = await callAnthropic(base64, buildDDMMRetry(label), apiKey, tracker);
+                    const prompt = useInlineLayout ? buildDDMMRetryInline(label)
+                                 : useGridLayout   ? buildDDMMRetryGrid(label)
+                                 :                   buildDDMMRetry(label);
+                    const c = await callAnthropic(base64, prompt, apiKey, tracker);
                     if (c.dd) rawResult.fields[ddKey] = { value: String(c.dd).padStart(2,"0"), confidence: c.dd_confidence || "medium" };
                     const mv = c.mm && c.mm !== "null" ? c.mm : null;
                     if (mv) rawResult.fields[mmKey] = { value: mv, confidence: c.mm_confidence || "medium" };
@@ -646,11 +861,18 @@ export async function extractWithAnthropic(
             }
 
             if (ddBad) {
-                const plus1 = Math.min(ddVal+1, ddVal <= 16 ? 16 : 31);
+                // plus1: inline/grid have no mid-array split at 16 — just clamp to 31.
+                const plus1 = (useInlineLayout || useGridLayout)
+                    ? Math.min(ddVal + 1, 31)
+                    : Math.min(ddVal + 1, ddVal <= 16 ? 16 : 31);
                 const p1Str = nearEnd && plus1 > ddVal ? String(plus1).padStart(2,"0") : null;
-                console.log(`[Anthropic] DD=${ddF?.value ?? "null"} for ${label}${nearEnd ? " [near-end]":""} — retrying`);
+                const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
+                console.log(`[Anthropic] DD=${ddF?.value ?? "null"} for ${label}${nearEnd ? " [near-end]":""} — retrying (${layout})`);
                 try {
-                    const r = await callAnthropic(base64, buildDDRetry(label, ddF?.value ?? null, p1Str), apiKey, tracker);
+                    const prompt = useInlineLayout ? buildDDRetryInline(label, ddF?.value ?? null, p1Str)
+                                 : useGridLayout   ? buildDDRetryGrid(label, ddF?.value ?? null, p1Str)
+                                 :                   buildDDRetry(label, ddF?.value ?? null, p1Str);
+                    const r = await callAnthropic(base64, prompt, apiKey, tracker);
                     if (r.dd) {
                         const padded = String(r.dd).padStart(2,"0");
                         if (nearEnd && padded === ddF?.value && p1Str && plus1 > ddVal) {
@@ -664,9 +886,11 @@ export async function extractWithAnthropic(
 
             if (mmBad) {
                 const hasData = rawResult.fields[ddKey]?.value != null;
-                console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — retrying`);
+                const layout  = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
+                console.log(`[Anthropic] MM=${mmF?.value ?? "null"} for ${label} — retrying (${layout})`);
                 try {
-                    const r = await callAnthropic(base64, buildMMRetry(label, hasData), apiKey, tracker);
+                    const prompt = useInlineLayout ? buildMMRetryInline(label, hasData) : buildMMRetry(label, hasData);
+                    const r = await callAnthropic(base64, prompt, apiKey, tracker);
                     const mv = r?.mm && r.mm !== "null" ? r.mm : null;
                     if (mv) rawResult.fields[mmKey] = { value: mv, confidence: r.confidence || "medium" };
                     else warnings.push(`MM for ${label} could not be read — manual verification required`);
@@ -674,7 +898,7 @@ export async function extractWithAnthropic(
             }
         }
 
-        // YY retry
+        // YY retry — inline layout has 4 year bubbles (2026-2029); others have 3.
         const hasSecondData = rawResult.fields["second_attempt_dd"]?.value != null || rawResult.fields["second_attempt_mm"]?.value != null;
         const fYYF = rawResult.fields["first_appointment_yy"]; const sYYF = rawResult.fields["second_attempt_yy"];
         const fYYBad = !fYYF || fYYF.value === null || fYYF.confidence !== "high";
@@ -683,7 +907,8 @@ export async function extractWithAnthropic(
         if (fYYBad && sYYBad) {
             console.log("[Anthropic] YY bad for both sections — combined retry");
             try {
-                const c = await callAnthropic(base64, buildYYBothRetry(), apiKey, tracker);
+                const prompt = useInlineLayout ? buildYYBothRetryInline() : buildYYBothRetry();
+                const c = await callAnthropic(base64, prompt, apiKey, tracker);
                 if (c.first_yy  && VALID_YEARS.includes(String(c.first_yy)))  rawResult.fields["first_appointment_yy"] = { value: String(c.first_yy),  confidence: c.first_yy_confidence  || "medium" };
                 if (c.second_yy && VALID_YEARS.includes(String(c.second_yy))) rawResult.fields["second_attempt_yy"]    = { value: String(c.second_yy), confidence: c.second_yy_confidence || "medium" };
             } catch (e: any) { console.log(`[Anthropic] YY combined retry failed: ${e.message}`); }
@@ -694,7 +919,8 @@ export async function extractWithAnthropic(
             ].filter(Boolean) as Array<{ key: string; label: string; field: AnthropicField | undefined }>) {
                 console.log(`[Anthropic] YY=${field?.value ?? "null"} for ${label} — retrying`);
                 try {
-                    const r = await callAnthropic(base64, buildYYSingleRetry(label), apiKey, tracker);
+                    const prompt = useInlineLayout ? buildYYSingleRetryInline(label) : buildYYSingleRetry(label);
+                    const r = await callAnthropic(base64, prompt, apiKey, tracker);
                     if (r.yy && VALID_YEARS.includes(String(r.yy))) rawResult.fields[key] = { value: String(r.yy), confidence: r.confidence || "medium" };
                 } catch (e: any) { console.log(`[Anthropic] YY retry failed: ${e.message}`); }
             }
@@ -703,19 +929,23 @@ export async function extractWithAnthropic(
         // Second section retry (year gap / terminal status)
         const fDD = rawResult.fields["first_appointment_dd"]?.value; const fMM = rawResult.fields["first_appointment_mm"]?.value;
         const fYY = rawResult.fields["first_appointment_yy"]?.value; const sYY = rawResult.fields["second_attempt_yy"]?.value;
-        const sDd = rawResult.fields["second_attempt_dd"]?.value;     const sMm = rawResult.fields["second_attempt_mm"]?.value;
+        const sDd = rawResult.fields["second_attempt_dd"]?.value;    const sMm = rawResult.fields["second_attempt_mm"]?.value;
         const fSt = rawResult.fields["first_appointment_status"]?.value;
         const yearGap = fYY && sYY && Math.abs(parseInt(sYY) - parseInt(fYY)) > 1;
         const secondHasData = sDd != null || sMm != null;
         if (yearGap || (["Completed","Missed","Cancelled"].includes(fSt ?? "") && secondHasData)) {
-            console.log(`[Anthropic] ${yearGap ? `Year gap (${fYY} vs ${sYY})` : `First status='${fSt}'`} — retrying second section`);
+            const layout = useInlineLayout ? "inline" : useGridLayout ? "grid" : "lines";
+            console.log(`[Anthropic] ${yearGap ? `Year gap (${fYY} vs ${sYY})` : `First status='${fSt}'`} — retrying second section (${layout})`);
             try {
-                const retried = await callAnthropic(base64, buildSecondSectionRetry(fDD||"", fMM||"", fYY||""), apiKey, tracker);
-                const origGap  = fYY ? Math.abs(parseInt(sYY||"0")                              - parseInt(fYY)) : 0;
+                const prompt = useInlineLayout ? buildSecondSectionRetryInline(fDD||"", fMM||"", fYY||"")
+                             : useGridLayout   ? buildSecondSectionRetryGrid(fDD||"", fMM||"", fYY||"")
+                             :                   buildSecondSectionRetry(fDD||"", fMM||"", fYY||"");
+                const retried = await callAnthropic(base64, prompt, apiKey, tracker);
+                const origGap  = fYY ? Math.abs(parseInt(sYY||"0")                                - parseInt(fYY)) : 0;
                 const retryGap = fYY ? Math.abs(parseInt(retried["second_attempt_yy"]?.value||"0") - parseInt(fYY)) : 0;
                 const curYear  = new Date().getFullYear();
                 if (yearGap && retryGap > origGap && retryGap > 1) warnings.push("Second attempt retry rejected — year gap worse");
-                else if (parseInt(retried["second_attempt_yy"]?.value||"0") > curYear + 1) warnings.push("Second attempt retry rejected — year implausibly far in future");
+                else if (parseInt(retried["second_attempt_yy"]?.value||"0") > curYear + 3) warnings.push("Second attempt retry rejected — year implausibly far in future");
                 else {
                     for (const k of ["second_attempt_dd","second_attempt_mm","second_attempt_yy","second_attempt_status"] as const) {
                         if (k === "second_attempt_dd" && nearEndApplied.has(k)) continue;
@@ -728,7 +958,7 @@ export async function extractWithAnthropic(
             } catch (e: any) { console.log(`[Anthropic] Second section retry failed: ${e.message}`); }
         }
 
-        // Cross-validation
+        // Cross-validation — same logic for all layouts
         crossValidationFired = await crossValidate(base64, apiKey, rawResult.fields, tracker, warnings);
 
         if (crossValidationFired) warnings.push("Logical inconsistencies detected in date fields — values may still be inaccurate despite auto-correction");

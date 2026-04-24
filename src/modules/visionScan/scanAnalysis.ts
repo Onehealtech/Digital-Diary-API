@@ -86,9 +86,8 @@ export function computeScanAnalysis(
     processingWarnings: string[],
     historicalDates: string[] = []
 ): ScanAnalysis {
-    const now         = new Date();
-    const today       = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const currentYear = now.getFullYear();
+    const now   = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     const rescanReasons: BilingualMessage[] = [];
     const rejectionReasons: string[]        = [];
@@ -147,9 +146,10 @@ export function computeScanAnalysis(
         const fStatusField = statusQs[0]?.id ? enrichedResults[statusQs[0].id] : undefined;
         const sStatusField = statusQs[1]?.id ? enrichedResults[statusQs[1].id] : undefined;
 
-        const firstDate   = parseCombinedDate(fDateField?.answer  ?? null);
-        const secondDate  = parseCombinedDate(sDateField?.answer  ?? null);
-        const firstStatus = fStatusField?.answer ?? null;
+        const firstDate    = parseCombinedDate(fDateField?.answer  ?? null);
+        const secondDate   = parseCombinedDate(sDateField?.answer  ?? null);
+        const firstStatus  = fStatusField?.answer ?? null;
+        const secondStatus = sStatusField?.answer ?? null;
 
         // Low confidence on individual date/status fields
         if (fDateField  && fDateField.confidence  < 0.5 && fDateField.answer  !== null)
@@ -185,24 +185,11 @@ export function computeScanAnalysis(
             });
         }
 
-        // Completed/Missed/Cancelled in a future year
-        const terminalStatuses = ["Completed", "Missed", "Cancelled"];
-        if (terminalStatuses.includes(firstStatus ?? "") && firstDate && firstDate.yy > currentYear) {
-            rescanReasons.push({
-                english: `First appointment is '${firstStatus}' but year ${firstDate.yy} is in the future — impossible`,
-                hindi:   `पहली अपॉइंटमेंट '${firstStatus}' है लेकिन वर्ष ${firstDate.yy} भविष्य में है — यह असंभव है`,
-            });
-            dataErrors.push({
-                english: `First appointment is marked as '${firstStatus}' but year ${firstDate.yy} is in the future — year appears to be misread`,
-                hindi:   `पहली अपॉइंटमेंट '${firstStatus}' के रूप में चिह्नित है, लेकिन वर्ष ${firstDate.yy} भविष्य में है — वर्ष गलत पढ़ा गया लगता है`,
-            });
-        }
-
-        // Year gap > 1
+        // Year gap > 1 between first and second appointments
         if (firstDate && secondDate && Math.abs(secondDate.yy - firstDate.yy) > 1) {
             rescanReasons.push({
-                english: `Year gap between first (${firstDate.yy}) and second attempt (${secondDate.yy}) is implausible`,
-                hindi:   `पहली (${firstDate.yy}) और दूसरे प्रयास (${secondDate.yy}) के बीच वर्षों का अंतर अविश्वसनीय है`,
+                english: `Year gap between first (${firstDate.yy}) and second attempt (${secondDate.yy}) is implausible — likely a year misread`,
+                hindi:   `पहली (${firstDate.yy}) और दूसरे प्रयास (${secondDate.yy}) के बीच वर्षों का अंतर अविश्वसनीय है — संभवतः वर्ष गलत पढ़ा गया`,
             });
         }
 
@@ -217,22 +204,121 @@ export function computeScanAnalysis(
             });
         }
 
-        // Status-paired checks (not applicable to completion-only pages like Page 36)
+        // ── Status × Date validation (hasStatusFields pages only) ─────────
+        //
+        //  SCHEDULED : date must be TODAY or FUTURE  (appointment is upcoming)
+        //  COMPLETED : date must be TODAY or PAST    (can't complete future event)
+        //  MISSED    : date must be TODAY or PAST    (can't miss future event)
+        //  CANCELLED : past OR future both valid     (can cancel upcoming or record past cancellation)
+
         if (hasStatusFields) {
-            if (["Missed", "Cancelled"].includes(firstStatus ?? "") && !sDateField?.answer) {
+            // ── First appointment ─────────────────────────────────────────
+
+            // SCHEDULED + past date
+            if (firstStatus === "Scheduled" && firstDate && toDate(firstDate) < today) {
                 rescanReasons.push({
-                    english: `First appointment is '${firstStatus}' but second attempt section appears empty — may have been overlooked`,
-                    hindi:   `पहली अपॉइंटमेंट '${firstStatus}' है लेकिन दूसरे प्रयास का भाग खाली दिखता है — यह छूट गया हो सकता है`,
+                    english: `First appointment is 'Scheduled' but date ${fDateField!.answer} is in the past — a Scheduled appointment must have a future date`,
+                    hindi:   `पहली अपॉइंटमेंट 'निर्धारित' है लेकिन तारीख ${fDateField!.answer} भूतकाल में है — निर्धारित अपॉइंटमेंट की तारीख भविष्य में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "Scheduled appointment date cannot be in the past",
+                    hindi:   "निर्धारित अपॉइंटमेंट की तारीख भूतकाल में नहीं हो सकती",
                 });
             }
 
+            // COMPLETED + future date (any future date, not just future year)
+            if (firstStatus === "Completed" && firstDate && toDate(firstDate) > today) {
+                rescanReasons.push({
+                    english: `First appointment is 'Completed' but date ${fDateField!.answer} is in the future — a Completed appointment must have a past or today's date`,
+                    hindi:   `पहली अपॉइंटमेंट 'पूर्ण' है लेकिन तारीख ${fDateField!.answer} भविष्य में है — पूर्ण अपॉइंटमेंट की तारीख आज या भूतकाल में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "A Completed appointment cannot have a future date",
+                    hindi:   "पूर्ण अपॉइंटमेंट की तारीख भविष्य में नहीं हो सकती",
+                });
+            }
+
+            // MISSED + future date
+            if (firstStatus === "Missed" && firstDate && toDate(firstDate) > today) {
+                rescanReasons.push({
+                    english: `First appointment is 'Missed' but date ${fDateField!.answer} is in the future — a Missed appointment must have a past or today's date`,
+                    hindi:   `पहली अपॉइंटमेंट 'छूटी' है लेकिन तारीख ${fDateField!.answer} भविष्य में है — छूटी अपॉइंटमेंट की तारीख आज या भूतकाल में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "A Missed appointment cannot have a future date",
+                    hindi:   "छूटी अपॉइंटमेंट की तारीख भविष्य में नहीं हो सकती",
+                });
+            }
+
+            // CANCELLED — no date restriction (past and future both valid)
+
+            // ── Second attempt ────────────────────────────────────────────
+
+            // SCHEDULED + past date
+            if (secondDate && secondStatus === "Scheduled" && toDate(secondDate) < today) {
+                rescanReasons.push({
+                    english: `Second attempt is 'Scheduled' but date ${sDateField!.answer} is in the past — a Scheduled appointment must have a future date`,
+                    hindi:   `दूसरा प्रयास 'निर्धारित' है लेकिन तारीख ${sDateField!.answer} भूतकाल में है — निर्धारित अपॉइंटमेंट की तारीख भविष्य में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "Second attempt Scheduled date cannot be in the past",
+                    hindi:   "दूसरे प्रयास की निर्धारित तारीख भूतकाल में नहीं हो सकती",
+                });
+            }
+
+            // COMPLETED + future date
+            if (secondDate && secondStatus === "Completed" && toDate(secondDate) > today) {
+                rescanReasons.push({
+                    english: `Second attempt is 'Completed' but date ${sDateField!.answer} is in the future — a Completed appointment must have a past or today's date`,
+                    hindi:   `दूसरा प्रयास 'पूर्ण' है लेकिन तारीख ${sDateField!.answer} भविष्य में है — पूर्ण अपॉइंटमेंट की तारीख आज या भूतकाल में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "A Completed second attempt cannot have a future date",
+                    hindi:   "पूर्ण दूसरे प्रयास की तारीख भविष्य में नहीं हो सकती",
+                });
+            }
+
+            // MISSED + future date
+            if (secondDate && secondStatus === "Missed" && toDate(secondDate) > today) {
+                rescanReasons.push({
+                    english: `Second attempt is 'Missed' but date ${sDateField!.answer} is in the future — a Missed appointment must have a past or today's date`,
+                    hindi:   `दूसरा प्रयास 'छूटा' है लेकिन तारीख ${sDateField!.answer} भविष्य में है — छूटी अपॉइंटमेंट की तारीख आज या भूतकाल में होनी चाहिए`,
+                });
+                dataErrors.push({
+                    english: "A Missed second attempt cannot have a future date",
+                    hindi:   "छूटे दूसरे प्रयास की तारीख भविष्य में नहीं हो सकती",
+                });
+            }
+
+            // CANCELLED second — no date restriction
+
+            // ── Cross-appointment logic ───────────────────────────────────
+
+            // First SCHEDULED → second section must be blank (appointment hasn't happened yet)
+            if (firstStatus === "Scheduled" && sDateField?.answer) {
+                rescanReasons.push({
+                    english: `First appointment is 'Scheduled' (upcoming) but second attempt section has data — second attempt is only relevant after a Missed or Cancelled first appointment`,
+                    hindi:   `पहली अपॉइंटमेंट 'निर्धारित' (आगामी) है लेकिन दूसरे प्रयास का भाग भरा है — दूसरा प्रयास केवल छूटी या रद्द अपॉइंटमेंट के बाद प्रासंगिक है`,
+                });
+            }
+
+            // First COMPLETED → no second attempt needed
             if (firstStatus === "Completed" && sDateField?.answer) {
                 rescanReasons.push({
-                    english: "Second attempt data present but first appointment is 'Completed' — second attempt is only for Missed/Cancelled appointments",
-                    hindi:   "दूसरे प्रयास का डेटा मौजूद है लेकिन पहली अपॉइंटमेंट 'पूर्ण' है — दूसरा प्रयास केवल छूटी/रद्द अपॉइंटमेंट के लिए है",
+                    english: `Second attempt data is present but first appointment is 'Completed' — second attempt is only for Missed or Cancelled appointments`,
+                    hindi:   `दूसरे प्रयास का डेटा मौजूद है लेकिन पहली अपॉइंटमेंट 'पूर्ण' है — दूसरा प्रयास केवल छूटी या रद्द अपॉइंटमेंट के लिए है`,
                 });
             }
 
+            // First MISSED or CANCELLED → second attempt section expected
+            if (["Missed", "Cancelled"].includes(firstStatus ?? "") && !sDateField?.answer) {
+                rescanReasons.push({
+                    english: `First appointment is '${firstStatus}' but second attempt section appears empty — please check if a second attempt was scheduled`,
+                    hindi:   `पहली अपॉइंटमेंट '${firstStatus === "Missed" ? "छूटी" : "रद्द"}' है लेकिन दूसरे प्रयास का भाग खाली दिखता है — कृपया जाँचें कि दूसरा प्रयास निर्धारित था या नहीं`,
+                });
+            }
+
+            // Date/status pairing checks
             if (!fDateField?.answer && fStatusField?.answer) {
                 rescanReasons.push({
                     english: "First appointment status is filled but date could not be read",
@@ -243,28 +329,6 @@ export function computeScanAnalysis(
                 rescanReasons.push({
                     english: "First appointment date is filled but status could not be read",
                     hindi:   "पहली अपॉइंटमेंट की तारीख भरी है लेकिन स्थिति नहीं पढ़ी जा सकी",
-                });
-            }
-
-            // Future-date validation (only for true appointment pages)
-            if (firstDate && firstStatus === "Scheduled" && toDate(firstDate) < today) {
-                rescanReasons.push({
-                    english: `First appointment is 'Scheduled' but date ${fDateField!.answer} is in the past — scheduled appointments must have a future date`,
-                    hindi:   `पहली अपॉइंटमेंट 'निर्धारित' है लेकिन तारीख ${fDateField!.answer} भूतकाल में है — निर्धारित अपॉइंटमेंट की तारीख भविष्य में होनी चाहिए`,
-                });
-                dataErrors.push({
-                    english: "Scheduled appointment date cannot be in the past",
-                    hindi:   "निर्धारित अपॉइंटमेंट की तारीख भूतकाल में नहीं हो सकती",
-                });
-            }
-            if (secondDate && sStatusField?.answer === "Scheduled" && toDate(secondDate) < today) {
-                rescanReasons.push({
-                    english: `Second appointment is 'Scheduled' but date ${sDateField!.answer} is in the past — scheduled appointments must have a future date`,
-                    hindi:   `दूसरी अपॉइंटमेंट 'निर्धारित' है लेकिन तारीख ${sDateField!.answer} भूतकाल में है — निर्धारित अपॉइंटमेंट की तारीख भविष्य में होनी चाहिए`,
-                });
-                dataErrors.push({
-                    english: "Second scheduled appointment date cannot be in the past",
-                    hindi:   "दूसरी निर्धारित अपॉइंटमेंट की तारीख भूतकाल में नहीं हो सकती",
                 });
             }
         }
