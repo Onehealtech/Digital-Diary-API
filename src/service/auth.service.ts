@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { AppUser } from "../models/Appuser";
 import { Wallet } from "../models/Wallet";
 import { creditReferralCoins } from "./wallet.service";
+import { sendPasswordResetEmail } from "./emailService";
 import dotenv from "dotenv";
 
 dotenv.config(); // ✅ MUST be first
@@ -185,9 +186,10 @@ export class DoctorAuthService {
       { expiresIn: "1h" }
     );
 
+    await sendPasswordResetEmail(user.email, user.fullName || user.email, resetToken);
+
     return {
-      message: "Identity verified. You can now reset your password.",
-      resetToken,
+      message: "If the email exists, a password reset link has been sent to your inbox.",
     };
   }
 

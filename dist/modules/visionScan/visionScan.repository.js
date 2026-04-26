@@ -106,6 +106,32 @@ class VisionScanRepository {
             },
         };
     }
+    /**
+     * Returns all distinct date strings (DD/MMM/YYYY) found in previous COMPLETED
+     * scans for this patient + page, excluding the current scan being processed.
+     */
+    async findHistoricalDatesForPage(patientId, pageNumber, excludeScanId) {
+        const where = { patientId, pageNumber, processingStatus: visionScan_types_1.ProcessingStatus.COMPLETED };
+        if (excludeScanId)
+            where.id = { [sequelize_1.Op.ne]: excludeScanId };
+        const previous = await BubbleScanResult_1.BubbleScanResult.findAll({
+            where,
+            attributes: ["scanResults"],
+            order: [["scannedAt", "DESC"]],
+        });
+        const dates = new Set();
+        for (const scan of previous) {
+            const results = scan.scanResults;
+            if (!results)
+                continue;
+            for (const field of Object.values(results)) {
+                if (field.answer && /^\d{2}\/[A-Za-z]{3}\/\d{4}$/.test(field.answer)) {
+                    dates.add(field.answer);
+                }
+            }
+        }
+        return [...dates];
+    }
     async resolveDoctorId(userId, role) {
         if (role === "ASSISTANT") {
             const assistant = await Appuser_1.AppUser.findByPk(userId);

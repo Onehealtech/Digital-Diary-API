@@ -103,7 +103,12 @@ const createReminder = async (req, res) => {
             attachmentUrl,
         });
         const isHindi = patient.language === "hi";
-        const formattedDate = new Date(reminderDate).toLocaleString();
+        const dateObj = new Date(reminderDate);
+        const formattedDate = dateObj.toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit", hour12: true,
+        });
         const enAlertMessage = `You have a ${type} reminder scheduled on ${formattedDate}.`;
         const enSmsContent = `OneHeal Appointment/Reminder: ${type}\nDate: ${formattedDate}\n${message}`;
         let alertTitle = "New Appointment Reminder";
@@ -136,8 +141,8 @@ const createReminder = async (req, res) => {
         // Send SMS via Fortius (DLT-approved templates) + Twilio fallback
         if (patient.phone) {
             const dateObj = new Date(reminderDate);
-            const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-            const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+            const dateStr = dateObj.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+            const timeStr = dateObj.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true });
             // Get doctor name for Fortius template
             const doctor = await Appuser_1.AppUser.findByPk(req.user.role === "ASSISTANT" ? req.user.parentId : req.user.id, { attributes: ["fullName", "phone"] });
             const doctorName = doctor?.fullName || "your Doctor";
@@ -540,7 +545,11 @@ const resendReminder = async (req, res) => {
         // Create in-app notification
         if (reminder.patient) {
             const isHindi = reminder.patient.language === "hi";
-            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString();
+            const rescheduledDate = new Date(reminder.newReminderDate || reminder.reminderDate).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit", hour12: true,
+            });
             const doctorMessage = reminder.newReminderMessage || reminder.message;
             const enAlertMessage = `Your ${reminder.type} appointment has been rescheduled to ${rescheduledDate}.`;
             const enSmsContent = `OneHeal Appointment Update\n\nType: ${reminder.type}\nNew Date: ${rescheduledDate}\n\n${doctorMessage}`;
@@ -573,8 +582,8 @@ const resendReminder = async (req, res) => {
             });
             if (reminder.patient.phone) {
                 const reschedDateObj = new Date(reminder.newReminderDate || reminder.reminderDate);
-                const reschedDateStr = reschedDateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-                const reschedTimeStr = reschedDateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+                const reschedDateStr = reschedDateObj.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+                const reschedTimeStr = reschedDateObj.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true });
                 // Get doctor name for Fortius template
                 const doctor = await Appuser_1.AppUser.findByPk(userId, { attributes: ["fullName"] });
                 const doctorName = doctor?.fullName || "your Doctor";

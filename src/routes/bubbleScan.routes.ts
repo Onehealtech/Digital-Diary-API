@@ -1,10 +1,43 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { patientAuthCheck, authCheck } from "../middleware/authMiddleware";
 import { requireApprovedDiary } from "../middleware/diaryApproval.middleware";
 import { requirePermission } from "../middleware/permissionMiddleware";
 import { visionScanUpload, reportUpload } from "../middleware/upload.middleware";
 import { UserRole } from "../utils/constants";
 import * as bubbleScanController from "../controllers/bubbleScan.controller";
+
+/**
+ * Wraps a multer middleware and converts upload errors into 400 responses.
+ * Without this wrapper, multer errors (e.g. "Unexpected end of form" caused by a
+ * missing boundary in the client's Content-Type header) propagate to the global
+ * 500 error handler instead of returning a useful client error.
+ */
+function withMulterErrors(multerMiddleware: (req: Request, res: Response, cb: (err?: any) => void) => void) {
+    return (req: Request, res: Response, next: NextFunction) => {
+        multerMiddleware(req, res, (err?: any) => {
+            if (!err) return next();
+
+            // Missing boundary / truncated body — client sent Content-Type without boundary,
+            // or manually set Content-Type: multipart/form-data (stripping the boundary).
+            if (err.message === "Unexpected end of form") {
+                res.status(400).json({
+                    success: false,
+                    message: "Invalid file upload: multipart form is malformed. " +
+                        "Do NOT manually set Content-Type — let your HTTP library set it automatically so the boundary is included.",
+                });
+                return;
+            }
+
+            if (err instanceof multer.MulterError) {
+                res.status(400).json({ success: false, message: err.message });
+                return;
+            }
+
+            next(err);
+        });
+    };
+}
 
 const router = express.Router();
 
@@ -26,7 +59,7 @@ router.post(
     "/upload",
     patientAuthCheck,
     requireApprovedDiary,
-    visionScanUpload.single("image"),
+    withMulterErrors(visionScanUpload.single("image")),
     bubbleScanController.uploadBubbleScan
 );
 
@@ -75,7 +108,7 @@ router.post(
     "/:id/reports",
     patientAuthCheck,
     requireApprovedDiary,
-    reportUpload.array("reports", 5),
+    reportUpload.array("reports", 10),
     bubbleScanController.attachReportFiles
 );
 
@@ -93,7 +126,7 @@ router.post(
     "/:id/question-reports",
     patientAuthCheck,
     requireApprovedDiary,
-    reportUpload.array("reports", 5),
+    reportUpload.array("reports", 10),
     bubbleScanController.attachQuestionReportFiles
 );
 

@@ -7,6 +7,7 @@ node_modules
 
 # Ignore environment variables
 .env
+.env.staging
 
 # Ignore logs
 public/logs
@@ -18,3 +19,5 @@ src/uploads
 # Firebase service account (contains private keys)
 *firebase-adminsdk*.json
 firebase-service-account.json
+
+REFACTORING_REPORT.md

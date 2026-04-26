@@ -8,6 +8,8 @@ const visionScan_repository_1 = require("./visionScan.repository");
 const visionScan_prompts_1 = require("./visionScan.prompts");
 const visionScan_config_1 = require("./visionScan.config");
 const documentAI_service_1 = require("./documentAI.service");
+const anthropic_service_1 = require("./anthropic.service");
+const scanAnalysis_1 = require("./scanAnalysis");
 const visionScan_types_1 = require("./visionScan.types");
 class VisionScanService {
     constructor() {
@@ -162,12 +164,67 @@ class VisionScanService {
             return null;
         }
         try {
-            const useDocAI = process.env.USE_DOCUMENT_AI === "true" && (0, documentAI_service_1.isDocumentAIConfigured)();
-            let enrichedResults;
-            let rawConfidenceScores;
-            let lowConfidenceFields;
-            let metadata;
-            if (useDocAI) {
+            const useAnthropic = process.env.USE_ANTHROPIC === "true" && (0, anthropic_service_1.isAnthropicConfigured)();
+            const useDocAI = !useAnthropic && process.env.USE_DOCUMENT_AI === "true" && (0, documentAI_service_1.isDocumentAIConfigured)();
+            let enrichedResults = {};
+            let rawConfidenceScores = {};
+            let lowConfidenceFields = [];
+            let metadata = {
+                model: "", promptTokens: 0, responseTokens: 0,
+                totalTokens: 0, processingTimeMs: 0, lowConfidenceFields: [],
+            };
+            if (useAnthropic) {
+                // ─── Anthropic Claude Vision (Sharp preprocessing + claude-sonnet) ─
+                const imageBuffer = Buffer.from(data.base64, "base64");
+                let anthropicFailed = false;
+                try {
+                    const result = await (0, anthropic_service_1.extractWithAnthropic)(imageBuffer, data.detectedPageNumber, diaryPage.title, diaryPage.questions);
+                    const built = this.buildEnrichedResults(diaryPage.questions, result.extraction);
+                    enrichedResults = built.enrichedResults;
+                    rawConfidenceScores = built.rawConfidenceScores;
+                    lowConfidenceFields = built.lowConfidenceFields;
+                    metadata = {
+                        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+                        promptTokens: result.tokenUsage?.inputTokens ?? 0,
+                        responseTokens: result.tokenUsage?.outputTokens ?? 0,
+                        totalTokens: result.tokenUsage?.totalTokens ?? 0,
+                        processingTimeMs: result.processingTimeMs,
+                        lowConfidenceFields,
+                        // cantrac-omr enriched fields
+                        rescanTip: result.rescanTip,
+                        isValidCantracForm: result.isValidCantracForm,
+                        cantracFields: result.cantracFields,
+                        tokenUsage: result.tokenUsage,
+                        imageMetadata: result.imageMetadata,
+                    };
+                }
+                catch (anthropicErr) {
+                    // Auth / network failures fall back to OpenRouter so the scan isn't lost.
+                    // Configuration errors (invalid key, timeout) are logged clearly.
+                    console.error(`[VisionScan] Anthropic failed — falling back to OpenRouter. Reason: ${anthropicErr.message}`);
+                    anthropicFailed = true;
+                }
+                if (anthropicFailed) {
+                    // ─── OpenRouter fallback ─────────────────────────────────────
+                    const prompt = (0, visionScan_prompts_1.buildExtractionPrompt)(diaryPage);
+                    const startTime = Date.now();
+                    const aiResult = await this.callVisionApi(data.base64, data.mimeType, prompt);
+                    const processingTimeMs = Date.now() - startTime;
+                    const built = this.buildEnrichedResults(diaryPage.questions, aiResult.extraction);
+                    enrichedResults = built.enrichedResults;
+                    rawConfidenceScores = built.rawConfidenceScores;
+                    lowConfidenceFields = built.lowConfidenceFields;
+                    metadata = {
+                        model: `${visionScan_config_1.VISION_SCAN_CONFIG.MODEL} (anthropic-fallback)`,
+                        promptTokens: aiResult.usage.prompt_tokens,
+                        responseTokens: aiResult.usage.completion_tokens,
+                        totalTokens: aiResult.usage.total_tokens,
+                        processingTimeMs,
+                        lowConfidenceFields,
+                    };
+                }
+            }
+            else if (useDocAI) {
                 // ─── Google Document AI (trained custom extractor) ───────────
                 const imageBuffer = Buffer.from(data.base64, "base64");
                 const docResult = await (0, documentAI_service_1.extractWithDocumentAI)(imageBuffer, data.mimeType, diaryPage.questions);
@@ -183,7 +240,6 @@ class VisionScanService {
                     processingTimeMs: docResult.usage.processingTimeMs,
                     lowConfidenceFields,
                 };
-                console.log(`[VisionScan] Document AI extraction complete — ${docResult.usage.entityCount} entities, ${docResult.usage.processingTimeMs}ms`);
             }
             else {
                 // ─── OpenRouter LLM (prompt-based fallback) ─────────────────
@@ -204,12 +260,34 @@ class VisionScanService {
                     lowConfidenceFields,
                 };
             }
+            // ── Scan analysis: rescan / rejection decision ────────────────
+            const warnings = [
+                ...lowConfidenceFields.map(f => `Low confidence: ${f}`),
+            ];
+            const historicalDates = await visionScan_repository_1.visionScanRepository.findHistoricalDatesForPage(data.patientId, data.detectedPageNumber, data.scanRecordId // exclude the record currently being processed
+            );
+            const analysis = (0, scanAnalysis_1.computeScanAnalysis)(enrichedResults, diaryPage.questions, warnings, historicalDates);
+            // Merge analysis into metadata so it's stored and returned in the response
+            metadata = {
+                ...metadata,
+                action: analysis.action,
+                rescanRequired: analysis.rescanRequired,
+                rescanReasons: analysis.rescanReasons,
+                rejectionRequired: analysis.rejectionRequired,
+                rejectionReasons: analysis.rejectionReasons,
+                dataError: analysis.dataError,
+                alertMessage: analysis.alertMessage,
+                userMessage: analysis.userMessage,
+                dataReliable: analysis.dataReliable,
+                overallConfidence: analysis.overallConfidence,
+                warnings,
+            };
             await Promise.all([
                 visionScan_repository_1.visionScanRepository.updateScanCompleted(scanRecord, {
                     scanResults: enrichedResults,
                     rawConfidenceScores,
                     processingMetadata: metadata,
-                    flagged: lowConfidenceFields.length > 0,
+                    flagged: analysis.rescanRequired || analysis.rejectionRequired,
                 }),
                 visionScan_repository_1.visionScanRepository.syncToScanLog(data.patientId, data.detectedPageNumber, enrichedResults),
             ]);
@@ -312,6 +390,42 @@ class VisionScanService {
     async getAllScans(doctorId, role, filters = {}) {
         return visionScan_repository_1.visionScanRepository.getDoctorPatientScans(doctorId, role, filters);
     }
+    /**
+     * Normalize any AI-returned date value to "DD/MMM/YYYY" (3-letter month name).
+     * Handles: "DD/MMM/YYYY" (current), "DD/MM/YYYY" (numeric), ISO "YYYY-MM-DD".
+     * Leaves non-date fields and null values untouched.
+     */
+    normalizeDateFormat(value, questionType) {
+        if (!value || questionType !== "date")
+            return value;
+        const NUM_TO_MONTH = {
+            "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "May", "06": "Jun",
+            "07": "Jul", "08": "Aug", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec",
+        };
+        const MONTH_NAMES = Object.values(NUM_TO_MONTH);
+        // Already DD/MMM/YYYY — normalize capitalization only
+        const nameMatch = value.match(/^(\d{2})\/([A-Za-z]{3})\/(\d{4})$/);
+        if (nameMatch) {
+            const abbr = nameMatch[2].charAt(0).toUpperCase() + nameMatch[2].slice(1).toLowerCase();
+            if (MONTH_NAMES.includes(abbr))
+                return `${nameMatch[1]}/${abbr}/${nameMatch[3]}`;
+        }
+        // DD/MM/YYYY (numeric) → DD/MMM/YYYY
+        const numMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (numMatch) {
+            const abbr = NUM_TO_MONTH[numMatch[2]];
+            if (abbr)
+                return `${numMatch[1]}/${abbr}/${numMatch[3]}`;
+        }
+        // ISO YYYY-MM-DD → DD/MMM/YYYY
+        const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoMatch) {
+            const abbr = NUM_TO_MONTH[isoMatch[2]];
+            if (abbr)
+                return `${isoMatch[3]}/${abbr}/${isoMatch[1]}`;
+        }
+        return value; // unrecognised — keep as-is
+    }
     buildEnrichedResults(questions, extraction) {
         const enrichedResults = {};
         const rawConfidenceScores = {};
@@ -322,7 +436,7 @@ class VisionScanService {
             const aiField = extraction[question.id];
             if (aiField) {
                 enrichedResults[question.id] = {
-                    answer: aiField.value,
+                    answer: this.normalizeDateFormat(aiField.value, question.type),
                     confidence: aiField.confidence,
                     questionText: question.text,
                     category: question.category,

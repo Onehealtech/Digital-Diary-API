@@ -37,13 +37,6 @@ const MIME_EXT_MAP = {
     "image/png": ".png",
     "image/webp": ".webp",
 };
-function sanitizeFileStem(originalname) {
-    const stem = path_1.default.basename(originalname, path_1.default.extname(originalname))
-        .replace(/[^a-zA-Z0-9._-]+/g, "_")
-        .replace(/^[_\-.]+|[_\-.]+$/g, "")
-        .slice(0, 80);
-    return stem || "report";
-}
 /**
  * Builds an S3 key for a patient report file.
  * Pattern: patient-reports/{patientId}/{scanId}/{timestamp}-{random}.{ext}
@@ -52,9 +45,8 @@ function buildReportS3Key(patientId, scanId, originalname, mimeType) {
     const ext = path_1.default.extname(originalname).toLowerCase() ||
         MIME_EXT_MAP[mimeType] ||
         `.${mimeType.split("/")[1] ?? "bin"}`;
-    const fileStem = sanitizeFileStem(originalname);
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    return `patient-reports/${patientId}/${scanId}/${fileStem}-${unique}${ext}`;
+    return `patient-reports/${patientId}/${scanId}/${unique}${ext}`;
 }
 exports.buildReportS3Key = buildReportS3Key;
 /**
@@ -65,8 +57,7 @@ function buildQuestionReportS3Key(patientId, scanId, questionId, originalname, m
     const ext = path_1.default.extname(originalname).toLowerCase() ||
         MIME_EXT_MAP[mimeType] ||
         `.${mimeType.split("/")[1] ?? "bin"}`;
-    const fileStem = sanitizeFileStem(originalname);
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    return `patient-reports/${patientId}/${scanId}/questions/${questionId}/${fileStem}-${unique}${ext}`;
+    return `patient-reports/${patientId}/${scanId}/questions/${questionId}/${unique}${ext}`;
 }
 exports.buildQuestionReportS3Key = buildQuestionReportS3Key;
